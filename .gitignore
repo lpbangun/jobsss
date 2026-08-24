@@ -1,0 +1,20 @@
+# Local agent/runtime state (Pi goals, ledgers, session artifacts)
+.pi/
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+
+# Logs and temp files
+*.log
+npm-debug.log*
+.tmp/
+tmp/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "jobsss",
   "version": "0.1.0",
-  "description": "Job Search Skill System: a portable Agent Plugin skill that routes job-search intents to the local JobOS runtime over MCP without duplicating it.",
+  "description": "Standalone Agent Plugin with bundled ./bin/jobsss runtime for local job-search workflows (doctor, profile, job ingest, scoring, pursuit, pipeline, review) persisting under PLUGIN_DATA without requiring JobOS or API keys.",
   "license": "MIT",
   "keywords": [
     "job-search",

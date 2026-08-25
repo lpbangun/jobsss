@@ -27,4 +27,4 @@ The following JobOS operations are human-only. They are **not MCP-attestable**, 
 
 Treat approval, rejection, packet creation or freezing, submission and receipt attestation, and recording an outreach send only as typed handoffs. Do not expose or call these through MCP, and do not convert a draft, plan, checkpoint, or request into a claim of completion.
 
-`submit_application_form` is separate from this human-only catalog: it is conditional, user-configured, and default-off. Never claim that it ran, and never portray it as submission success.
+`submit_application_form`, `inspect_application_form`, and `assist_application_form` are blocked and unavailable in standalone JobSSS. Hand browser/application-form work to a trusted human; never claim these tools exist, ran, or produced submission success.

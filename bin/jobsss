@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+// Bundled JobSSS launcher — resolves bundled src independent of cwd.
+// JobOS attribution: launch/transport framing inspired by JobOS src/mcp.js.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const srcMcp = path.resolve(__dirname, '..', 'src', 'mcp.js');
+
+function printHelp() {
+  console.log(`jobsss bundled runtime v0.1.0
+Usage:
+  jobsss mcp --data <dir>     Start MCP stdio server with PLUGIN_DATA
+  jobsss doctor --data <dir>  Diagnose bundled runtime
+  jobsss start --data <dir>   Initialize PLUGIN_DATA`);
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const cmd = argv[0];
+  if (!cmd || cmd === '--help' || cmd === '-h') { printHelp(); process.exit(0); }
+  if (!fs.existsSync(srcMcp)) { console.error(`missing bundled runtime: ${srcMcp}`); process.exit(1); }
+  const { runFromArgv, startMcp } = await import(srcMcp);
+  if (cmd === 'mcp') {
+    runFromArgv(argv.slice(1));
+    return;
+  }
+  // Optional direct CLI shims for manual smoke (not used by MCP tests)
+  if (cmd === 'doctor' || cmd === 'start') {
+    const idx = argv.indexOf('--data');
+    const dir = idx !== -1 ? argv[idx + 1] : process.env.PLUGIN_DATA;
+    if (!dir) { console.error('requires --data <dir>'); process.exit(2); }
+    const { doctor, start } = await import(path.resolve(__dirname, '..', 'src', 'domain.js'));
+    const out = cmd === 'doctor' ? doctor(dir) : start(dir);
+    console.log(JSON.stringify(out, null, 2));
+    return;
+  }
+  console.error(`unknown command: ${cmd}`);
+  printHelp();
+  process.exit(1);
+}
+
+main().catch(e => { console.error(e.stack || e.message); process.exit(1); });

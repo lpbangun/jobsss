@@ -382,3 +382,79 @@ test('B12 full standalone doctor-to-review journey', async t => {
   );
   assertNoJobosUse(ctx.trap, ctx.pluginBefore, ctx.jobAppBefore);
 });
+
+test('B13 real MCP applications_plan rejects a job owned by another profile', async t => {
+  const { launcher, argsTemplate } = resolveStandaloneLauncher();
+  const ctx = isolate(t, 'jobsss-gate0-isolation');
+  const args = expandDataArgs(argsTemplate, ctx.dataDir);
+  const resumePath = pluginPath('tests/fixtures/profile-resume.md');
+  const jobPath = pluginPath('tests/fixtures/job-posting.md');
+  assert.equal(existsSync(resumePath), true, 'missing tests/fixtures/profile-resume.md');
+  assert.equal(existsSync(jobPath), true, 'missing tests/fixtures/job-posting.md');
+
+  const setup = await runMcpRequests(launcher, args, ctx.env, [
+    initializeRequest(1),
+    callRequest(2, 'doctor', {}),
+    callRequest(3, 'start', {}),
+    callRequest(4, 'create_profile', { name: 'Isolation Owner Profile', resumePath, path: resumePath }),
+    callRequest(5, 'create_profile', { name: 'Isolation Foreign Profile', resumePath, path: resumePath })
+  ]);
+  requireOk(setup, 2, 'doctor');
+  requireOk(setup, 3, 'start');
+  const ownerCreated = requireOk(setup, 4, 'create_profile owner');
+  const foreignCreated = requireOk(setup, 5, 'create_profile foreign');
+  const ownerProfileId = pickId(ownerCreated, ['profileId', 'id']);
+  const foreignProfileId = pickId(foreignCreated, ['profileId', 'id']);
+  assert.ok(ownerProfileId, `owner create_profile must return a profile id: ${JSON.stringify(ownerCreated)}`);
+  assert.ok(foreignProfileId, `foreign create_profile must return a profile id: ${JSON.stringify(foreignCreated)}`);
+  assert.notEqual(ownerProfileId, foreignProfileId, 'isolation requires two distinct profiles');
+
+  const imported = await runMcpRequests(launcher, args, ctx.env, [
+    initializeRequest(1),
+    callRequest(2, 'import_job', { profileId: ownerProfileId, path: jobPath, filePath: jobPath })
+  ]);
+  const firstImport = requireOk(imported, 2, 'import_job owner');
+  const jobId = pickId(firstImport, ['jobId', 'id']);
+  assert.ok(jobId, `import_job must return a job id: ${JSON.stringify(firstImport)}`);
+
+  const crossed = await runMcpRequests(launcher, args, ctx.env, [
+    initializeRequest(1),
+    callRequest(2, 'applications_plan', { jobId, profileId: foreignProfileId }),
+    callRequest(3, 'applications_plan', { jobId, profileId: ownerProfileId }),
+    callRequest(4, 'list_jobs', { profileId: foreignProfileId })
+  ]);
+  const foreignFrame = crossed.frames.find(item => item.id === 2);
+  const foreignPlan = parseToolValue(foreignFrame);
+  const foreignErr = foreignFrame?.error || foreignPlan?.error;
+  assert.ok(
+    foreignErr,
+    `applications_plan must reject a job owned by another profile: ${JSON.stringify(foreignFrame || crossed.stderr)}`
+  );
+  assert.match(
+    JSON.stringify(foreignErr),
+    /profile_mismatch|belongs to profile/i,
+    `applications_plan rejection must name the profile isolation failure: ${JSON.stringify(foreignErr)}`
+  );
+  assert.notEqual(
+    foreignPlan?.ok,
+    true,
+    `applications_plan must not succeed for a foreign-owned job: ${JSON.stringify(foreignPlan)}`
+  );
+  assert.ok(
+    !foreignPlan?.plan,
+    `applications_plan must not return a pipeline plan for a foreign-owned job: ${JSON.stringify(foreignPlan)}`
+  );
+
+  const ownerPlan = requireOk(crossed, 3, 'applications_plan owner');
+  assert.ok(
+    ownerPlan.profileId === ownerProfileId || ownerPlan.plan?.profileId === ownerProfileId,
+    `owner applications_plan must stay on the owning profile: ${JSON.stringify(ownerPlan)}`
+  );
+  const foreignListed = asList(requireOk(crossed, 4, 'list_jobs foreign'));
+  assert.equal(
+    foreignListed.some(job => pickId(job, ['jobId', 'id']) === jobId || JSON.stringify(job).includes(jobId)),
+    false,
+    `list_jobs must not expose another profile's job: ${JSON.stringify(foreignListed)}`
+  );
+  assertNoJobosUse(ctx.trap, ctx.pluginBefore, ctx.jobAppBefore);
+});

@@ -252,6 +252,7 @@ export function applicationsPlan(dataDir, args) {
   const store = loadStore(dataDir);
   const job = store.jobs[jobId];
   if (!job) throw Object.assign(new Error(`Unknown job: ${jobId}`), { code: 'unknown_job' });
+  if (job.profileId !== profileId) throw Object.assign(new Error(`Job ${jobId} belongs to profile ${job.profileId}, not ${profileId}`), { code: 'profile_mismatch' });
   const profile = store.profiles[profileId];
   if (!profile) throw Object.assign(new Error(`Unknown profile: ${profileId}`), { code: 'unknown_profile' });
   const score = store.scores[jobId] || null;

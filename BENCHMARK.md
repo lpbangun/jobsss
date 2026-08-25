@@ -15,7 +15,7 @@ read-only reference for attributed ports and remains unmodified.
 
 This lock supersedes the 2026-08-24 JobOS-on-PATH foundation bar. B1–B4
 are preserved. B5 is corrected to the confirmed standalone launch contract.
-B6–B12 are the standalone live proofs.
+B6–B13 are the standalone live proofs.
 
 ---
 
@@ -36,7 +36,7 @@ Product files (`plugin.json`, `mcp.json`, `skills/`, `bin/`, `src/`,
 implementer-owned after Gate 0. They must satisfy this bar. They must not
 absorb reviewer files.
 
-Gate 0 lock: **2026-08-25T03:10:00Z**. Standalone goal
+Gate 0 lock: **2026-08-25T02:49:56.365Z**. Standalone goal
 `mt82020f-c94ug7`. No product runtime may be implemented until this file
 and the focused tests are treated as frozen.
 
@@ -128,7 +128,7 @@ node --test --test-concurrency=1 \
 
 ### What pass means
 
-Exit `0` is necessary and not sufficient. Every check B1–B12 below must hold
+Exit `0` is necessary and not sufficient. Every check B1–B13 below must hold
 on the real files and on a real bundled MCP subprocess. Invented output,
 mocks of the runtime, skipped required checks, or touching real user JobOS
 state are a fail.
@@ -195,7 +195,7 @@ with `jobos` absent from `PATH`:
 | `list_jobs` | `profileId` | lists imported jobs |
 | `score_job` | `jobId`, `profileId` | `overall` number and/or `scoreStatus` string |
 | `pursue_job` | `jobId`, `profileId` | success; must not claim submitted/sent/applied/approved |
-| `applications_plan` | `jobId`, `profileId` | local pipeline/readiness; must not claim submitted/sent/applied |
+| `applications_plan` | `jobId`, `profileId` | local pipeline/readiness; must not claim submitted/sent/applied; must reject a job owned by another profile |
 | `review_queue` | `profileId` | local review state |
 
 Re-importing the same local fixture for one profile must deduplicate to a
@@ -363,11 +363,19 @@ The same local job fixture deduplicates. Score and pursue succeed without
 credentials and without claiming submit/send/apply/approval. A restarted
 MCP process still lists the imported job from `PLUGIN_DATA`.
 
+### B13 — Cross-profile `applications_plan` isolation
+
+A real bundled MCP subprocess with two profiles must reject
+`applications_plan` when `jobId` is owned by the other profile. The call
+must not succeed and must not return a pipeline/readiness plan for the
+foreign job. The owning profile can still plan that job. Isolation must
+hold with JobOS absent from `PATH` and blank provider keys.
+
 ---
 
 ## Verdict
 
-**Pass** only if the frozen validation command exits `0` and B1–B12 hold on
+**Pass** only if the frozen validation command exits `0` and B1–B13 hold on
 inspected files and subprocess output.
 
 **Fail** if any required file is missing, any check mismatches, any command
@@ -379,14 +387,14 @@ required or invoked, or any real user workspace is touched.
 ## Artifact hashes at lock
 
 SHA-256 of reviewer-owned standalone test files and fixtures after the
-Gate 0 relock. Implementers must not change these files.
-`tests/helpers/jobsss-gate0.mjs` is unchanged leftover from the previous
-foundation and is not the standalone contract.
+Gate 0 lock and the B13 isolation strengthening. Implementers must not
+change these files. `tests/helpers/jobsss-gate0.mjs` is unchanged leftover
+from the previous foundation and is not the standalone contract.
 
 ```
 fe69a0b428e6bd727fb1c558bd19bc3a050e529126cbc179a011f548eab75d25  tests/jobsss-gate0.test.mjs
 790def53e34402489ac9f9ee962e1bc9fe5a287c523b8dcec891c6a0d9d3a602  tests/jobsss-mcp-compat.test.mjs
-2f3bd5f40bf57f9fd3cbb4455745c7ca3c05679694d336ee27358bca043f6ad3  tests/jobsss-journey.test.mjs
+1d1fbaaf52acd733ad6c77909cb200caa57d6a8992d8745e5bf14893eeb86a26  tests/jobsss-journey.test.mjs
 5e78590ab93031b334e2c67c4f081a52af0e5713306dcac3ad08eb4d88ac65e9  tests/fixtures/profile-resume.md
 736a9d6957d2a5ab8e3ed4c4f1f95639afcca949facf3b71767af7b358e00db6  tests/fixtures/job-posting.md
 ed0b0fc2f6318eed8255b5cdc459188dfb29b5e28314b7d786e2708162f1d7f9  tests/helpers/jobsss-gate0.mjs
@@ -397,7 +405,7 @@ ed0b0fc2f6318eed8255b5cdc459188dfb29b5e28314b7d786e2708162f1d7f9  tests/helpers/
 - 2026-08-24T20:34:13Z — **B6**. Reason: genuine benchmark defect; the first
   lock froze JobOS skill modes instead of the user's explicit JobSSS set.
   Historical foundation correction. Not done to make tests green.
-- 2026-08-25T03:10:00Z — **Gate 0 relock for standalone goal**. Reason: the
+- 2026-08-25T02:49:56.365Z — **Gate 0 relock for standalone goal**. Reason: the
   confirmed standalone specification (`./bin/jobsss mcp --data ${PLUGIN_DATA}`,
   JobOS absent from PATH, `PLUGIN_DATA` persistence, full local journey)
   contradicts the 2026-08-24 JobOS-on-PATH launch contract. Change: preserved
@@ -406,3 +414,20 @@ ed0b0fc2f6318eed8255b5cdc459188dfb29b5e28314b7d786e2708162f1d7f9  tests/helpers/
   B6/B8/B9/B10 and added B11–B12 as required live proofs. No allowed B10
   skip. Recorded today's failing baseline before freeze. Not done to make
   tests green.
+- 2026-08-25T03:20:46Z — **Lock timestamp correction**. Check: Ownership and
+  lock / Correction log Gate 0 relock entry. Reason: the recorded lock stamp
+  `2026-08-25T03:10:00Z` is contradicted by orchestration evidence that Gate
+  completed before any product implementation. Evidence: Gate reviewer run
+  `64b411c5-08e1-471e-b2b5-e51942721cc6` started `2026-08-25T02:36:53.851Z`
+  and completed `2026-08-25T02:49:56.365Z`; implementation workflow
+  `5c9d7ae8-775a-41d9-8e83-47579d8387d6` started only at
+  `2026-08-25T02:50:50.975Z`. Change: corrected the Gate 0 lock and the
+  relock log timestamp to `2026-08-25T02:49:56.365Z`. Not done to make tests
+  green.
+- 2026-08-25T03:20:46Z — **B13**. Reason: independent auditor found missing
+  core state-integrity coverage; committed `applications_plan` accepted a job
+  owned by another profile. Inspected JobOS `compileApplicationReadiness`
+  rejects that pairing as `profile_job_mismatch`. Change: appended required
+  B13 and a real-MCP two-profile isolation assertion in
+  `tests/jobsss-journey.test.mjs`; updated the frozen journey hash; did not
+  delete, rewrite, or weaken B1–B12. Not done to make tests green.

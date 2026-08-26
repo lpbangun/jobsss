@@ -1,6 +1,6 @@
 ---
 name: jobsss
-description: Standalone job-search skill for offline local workflows using the bundled ./bin/jobsss MCP runtime over PLUGIN_DATA — doctor, start, profile, job ingest, scoring, pursuit, pipeline, and review without requiring JobOS.
+description: Standalone job-search skill for offline local workflows over the bundled ./bin/jobsss MCP runtime and PLUGIN_DATA — profile/preferences, secure staged/inline job & contact intake, discovery, scoring, pipeline, materials, tasks, networking drafts, interview prep, and sync preview, without requiring JobOS or API keys.
 ---
 
 # JobSSS — standalone bundled runtime
@@ -41,6 +41,30 @@ For human-only operations, follow [Human-only handoffs](references/human-only-ha
 Those tools are not available to MCP and must not be reported as done. Approval,
 send, submit, and packet-freeze language is handoff-only via trusted CLI/TUI.
 
+## Extended local workflows (all offline, all under PLUGIN_DATA)
+
+These bundled MCP tools extend the core journey. They all run locally without
+JobOS, without API keys, and with `jobos` absent from `PATH`. Route them by MCP
+tool name or natural language; do not add stable slash sub-intents for
+networking, interview planning, or scheduling. External sending, scheduling,
+and browser actions stay blocked or human-only.
+
+| Workflow | MCP tools | Notes |
+| --- | --- | --- |
+| Secure intake | `import_job` (inline `text`/`content` or a path under `PLUGIN_DATA`), `import_job_url` (rejects `file:` URLs), `import_contact` (inline card or `PLUGIN_DATA` path) | No arbitrary absolute filesystem paths are read. Re-importing the same job deduplicates to one id. |
+| Migration & state | `start` | A legacy `store.json` migrates losslessly into versioned persistence with an audit trail; never drop or rewrite ids. |
+| Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `add_proof_point` | Versioned structured resumes, preferences, and proof candidates remain profile-owned and require human verification. |
+| Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`, `save_job`, `skip_job`, `list_jobs` | Public ATS-board discovery from a fixture under `PLUGIN_DATA`; no API keys. Discovered jobs stay database-only until explicitly saved or pursued; unsaved discoveries create no application folder. |
+| Scoring | `score_job` | Offline deterministic multidimensional fit (`jobos.fit-score.v1`) with all seven weighted dimensions; no API key. |
+| Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` — it cannot attest submission. |
+| Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Proof-grounded drafts and reusable answer suggestions; never invent metrics, auto-fill, or send; persist into review state. |
+| Networking drafts | `map_reachable_network`, `plan_outreach`, `draft_outreach` | Local maps, plans, and drafts only. Sending stays human-only; `mark_outreach_sent` is not MCP. |
+| Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep` | Local story drafting and preparation only. Verification/debrief stay human-only via trusted CLI/TUI; scheduling is blocked. |
+| Sync preview | `preview_sync` | Dry-run, secret-safe preview of derived/export data. No automatic or cloud sync. |
+
+See `references/standalone-journey.md` for argument shapes and the frozen
+human-only catalog.
+
 ## PLUGIN_DATA and bundled launcher
 
 - The host expands `${PLUGIN_DATA}` to an absolute writable data directory. The
@@ -62,12 +86,12 @@ Do not claim, invent, or fabricate success.
 
 ## Out of scope — blocked or handed off
 
-The standalone journey does not include these. They are out of scope and
-blocked (or require explicit human-only handoff) and must not be claimed via
-MCP:
+Local planning and drafting for these domains is available via the bundled MCP
+tools above, but the external or authoritative action is out of scope, blocked,
+or handed off to a trusted human and must never be claimed via MCP:
 
-- network — out of scope and blocked (human-only handoff required; no autonomous outreach or `mark_outreach_sent`).
-- interview — out of scope and blocked (human-only handoff required; no `verify_interview_story` or similar via MCP).
+- network — out of scope and blocked (human-only handoff required; no autonomous outreach or `mark_outreach_sent`; local `map_reachable_network`/`plan_outreach`/`draft_outreach` never send).
+- interview — out of scope and blocked (human-only handoff required; no `verify_interview_story` or similar via MCP; local `draft_interview_story`/`interview_prep` do not verify or schedule).
 - scheduling — out of scope and blocked (human-only handoff required; no autonomous calendar or scheduler via MCP).
 - browser automation including `inspect_application_form` and `assist_application_form` — out of scope and blocked (human-only handoff required; no browser apply).
 

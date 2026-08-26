@@ -1,0 +1,31 @@
+{
+  "jobs": [
+    {
+      "id": 501,
+      "title": "Product Manager, Learning Platform",
+      "absolute_url": "https://boards.greenhouse.io/example-learning/jobs/501",
+      "location": { "name": "Remote US" },
+      "updated_at": "2026-08-01T12:00:00Z",
+      "departments": [{ "name": "Product" }],
+      "offices": [{ "name": "Remote US" }],
+      "metadata": [
+        { "name": "employment_type", "value": "Full-time" },
+        { "name": "salary_range", "value": "$130,000 - $165,000 USD" }
+      ],
+      "content": "<p>Example Learning Co is hiring a Product Manager to lead educator discovery, roadmap planning, and AI-assisted learning workflows.</p><p>Remote work. Compensation range $130k-$165k.</p>"
+    },
+    {
+      "id": 502,
+      "title": "Staff Backend Engineer, Payments",
+      "absolute_url": "https://boards.greenhouse.io/example-learning/jobs/502",
+      "location": { "name": "New York, NY" },
+      "updated_at": "2026-08-02T12:00:00Z",
+      "departments": [{ "name": "Engineering" }],
+      "offices": [{ "name": "New York" }],
+      "metadata": [
+        { "name": "employment_type", "value": "Full-time" }
+      ],
+      "content": "<p>Build payments infrastructure, settlement, and PCI workflows. On-site New York. No salary published.</p>"
+    }
+  ]
+}

@@ -15,7 +15,8 @@ read-only reference for attributed ports and remains unmodified.
 
 This lock supersedes the 2026-08-24 JobOS-on-PATH foundation bar. B1–B4
 are preserved. B5 is corrected to the confirmed standalone launch contract.
-B6–B13 are the standalone live proofs.
+B6–B13 are the standalone live proofs. B14–B25 extend that bar for the
+confirmed JobSSS port round and must not delete, rewrite, or weaken B1–B13.
 
 ---
 
@@ -27,8 +28,15 @@ B6–B13 are the standalone live proofs.
 | `tests/jobsss-gate0.test.mjs` | reviewer | reviewer only |
 | `tests/jobsss-mcp-compat.test.mjs` | reviewer | reviewer only |
 | `tests/jobsss-journey.test.mjs` | reviewer | reviewer only |
+| `tests/jobsss-persistence.test.mjs` | reviewer | reviewer only |
+| `tests/jobsss-discovery.test.mjs` | reviewer | reviewer only |
+| `tests/jobsss-workflows.test.mjs` | reviewer | reviewer only |
+| `tests/helpers/jobsss-live-mcp.mjs` | reviewer | reviewer only |
 | `tests/fixtures/profile-resume.md` | reviewer | reviewer only |
 | `tests/fixtures/job-posting.md` | reviewer | reviewer only |
+| `tests/fixtures/legacy-store-v1.json` | reviewer | reviewer only |
+| `tests/fixtures/ats-board.json` | reviewer | reviewer only |
+| `tests/fixtures/contact-card.md` | reviewer | reviewer only |
 | `tests/helpers/jobsss-gate0.mjs` | leftover foundation helper | do not treat as the standalone contract |
 
 Product files (`plugin.json`, `mcp.json`, `skills/`, `bin/`, `src/`,
@@ -119,7 +127,10 @@ Do not require `jobos` on `PATH`. There is no allowed skip for missing JobOS.
 node --test --test-concurrency=1 \
   tests/jobsss-gate0.test.mjs \
   tests/jobsss-mcp-compat.test.mjs \
-  tests/jobsss-journey.test.mjs
+  tests/jobsss-journey.test.mjs \
+  tests/jobsss-persistence.test.mjs \
+  tests/jobsss-discovery.test.mjs \
+  tests/jobsss-workflows.test.mjs
 ```
 
 ### Expected exit code
@@ -128,12 +139,12 @@ node --test --test-concurrency=1 \
 
 ### What pass means
 
-Exit `0` is necessary and not sufficient. Every check B1–B13 below must hold
+Exit `0` is necessary and not sufficient. Every check B1–B25 below must hold
 on the real files and on a real bundled MCP subprocess. Invented output,
 mocks of the runtime, skipped required checks, or touching real user JobOS
 state are a fail.
 
-No allowed skip. B10–B12 are required even when `jobos` is absent.
+No allowed skip. B10–B12 and B14–B24 are required even when `jobos` is absent.
 
 ### Gate 0 baseline recorded against today's committed foundation
 
@@ -156,6 +167,14 @@ Command above, 2026-08-25, Node v22.22.3, exit `1`.
 
 `# tests 14` `# pass 7` `# fail 7`. These failures are missing standalone
 product behavior, not benchmark defects.
+
+### Round-2 baseline recorded 2026-08-26 against today's committed standalone runtime
+
+B1–B13 now pass on the committed plugin when the original three test files
+are run (`# tests 15` `# pass 15` `# fail 0`). B14–B25 are frozen failing
+against that same runtime using real `PLUGIN_DATA` stores and real
+`./bin/jobsss` MCP subprocesses. Missing product behavior, not benchmark
+defects. Exact new-file fail counts are recorded in the correction log.
 
 ---
 
@@ -235,6 +254,52 @@ browser/submit tools that the standalone journey must not expose:
 
 JobSSS must never claim submission, sending, approval, applied attestation,
 or a deferred/future capability.
+
+### Frozen extended MCP tools (B14–B25)
+
+These are additive. B10 still requires only the frozen journey tools above.
+B19–B24 require the names below on `tools/list` of a real bundled MCP
+subprocess with `jobos` absent from `PATH`. They must not appear in the
+blocked list. Browser apply, calendar send, and attestation remain blocked.
+
+| Tool | Required inputs | Minimum result |
+| --- | --- | --- |
+| `import_job` (inline) | `profileId` plus `text` or `content` | returns `jobId`; no arbitrary filesystem read |
+| `import_job_url` | `profileId`, `url` | rejects `file:` and other non-http(s) URLs; never reads arbitrary local paths |
+| `create_saved_search` | `profileId`, `name`, `adapter`, `config` | persists a profile-owned search; `config.fixture` if present must resolve inside `PLUGIN_DATA` |
+| `list_saved_searches` | `profileId` | lists that profile's searches only |
+| `search_jobs` | `profileId` plus saved-search name or id | runs the search locally without API keys |
+| `daily_discovery` | `profileId` | returns discovered jobs from saved searches / staged public-ATS fixtures; no API key |
+| `save_job` | `jobId`, `profileId` | marks a discovered job saved for the owning profile |
+| `skip_job` | `jobId`, `profileId` | records skip/archive for the owning profile |
+| `tailor_resume` | `jobId`, `profileId` | proof-grounded draft; never submitted |
+| `draft_cover_letter` | `jobId`, `profileId` | proof-grounded draft; never sent |
+| `list_tasks` | `profileId` | profile-owned tasks only |
+| `update_application_status` | profile-owned application | local lifecycle only; must reject `applied` / `submitted` / `approved` |
+| `import_contact` | `profileId` plus inline `name`/`email`/`company`/`text` | no arbitrary filesystem path |
+| `map_reachable_network` | `jobId`, `profileId` | local path map; never sends |
+| `plan_outreach` | `jobId`, `profileId` | local plan; never sends |
+| `draft_outreach` | `jobId`, `profileId` | draft only; never sent |
+| `list_interview_stories` | `profileId` | profile-owned stories |
+| `draft_interview_story` | `profileId` plus story fields | proof-linked draft; verification remains human-only |
+| `interview_prep` | `profileId` plus job/application | local prep/coverage; never schedules |
+| `preview_sync` | `profileId` | secret-safe preview/export; no write outside `PLUGIN_DATA` |
+
+Mutating tools must honor exclusive lock file `PLUGIN_DATA/jobsss.lock`
+(`{ "pid", "createdAt" }`) and optional `expectedRevision`. A live lock or
+mismatched revision must fail with a concurrency/stale/lock error and must
+not persist the rejected write.
+
+MCP filesystem reads are limited to (1) regular files whose realpath is
+under `PLUGIN_DATA` and (2) the frozen Gate 0 fixtures
+`tests/fixtures/profile-resume.md` and `tests/fixtures/job-posting.md`.
+`/etc/passwd`, `$HOME`, temp files outside `PLUGIN_DATA`, `file:` URLs, and
+JobOS user-state trees are forbidden.
+
+Fit scores must use contract `jobos.fit-score.v1` in `deterministic-degraded`
+mode without API keys, with dimensions and weights:
+`roleFit` 28, `domainFit` 18, `seniority` 14, `locationWorkModel` 12,
+`compensation` 8, `missionInterest` 14, `networkAccess` 6.
 
 ---
 
@@ -371,11 +436,124 @@ must not succeed and must not return a pipeline/readiness plan for the
 foreign job. The owning profile can still plan that job. Isolation must
 hold with JobOS absent from `PATH` and blank provider keys.
 
+### B14 — Lossless current `store.json` migration
+
+A real `PLUGIN_DATA` directory preloaded with
+`tests/fixtures/legacy-store-v1.json` (today's v1 shape: profiles, proof
+points, jobs, scores, applications, artifacts) must survive `doctor` and
+`start` on a real bundled MCP subprocess. Every legacy id and core field
+remains: profile `legacy-probe-profile`, job `job_5fa7236535eb384d`, four
+proof ids, pursued application, and artifact `artifact_6e23181c13b9be6c`.
+After start the canonical store is versioned (`version` or `schemaVersion`
+>= 2) with a positive integer `revision`, and an audit/migration trail
+exists under `PLUGIN_DATA`. No legacy record may be dropped or rewritten
+to a new id.
+
+### B15 — Serialized writes and stale-update rejection
+
+Writes under `PLUGIN_DATA` are exclusive. File `PLUGIN_DATA/jobsss.lock`
+with a live `pid` must cause mutating MCP tools to fail with a
+lock/busy/timeout/concurrency error and must not persist the rejected
+write. Mutating tools persist integer `revision`. Passing
+`expectedRevision` that does not match the current revision must fail with
+a stale/revision/concurrency error and must not silently overwrite state.
+
+### B16 — Rejection of arbitrary MCP filesystem paths
+
+`create_profile` and `import_job` may still read the frozen Gate 0 fixtures
+used by B12. They must reject `/etc/passwd`, temp files outside
+`PLUGIN_DATA`, and other arbitrary absolute paths, and must not persist the
+file contents. `import_job` must accept inline `text`/`content` without a
+filesystem path. `import_job_url` and `import_contact` must exist and must
+reject `file:` URLs and arbitrary paths. Allowed reads are `PLUGIN_DATA`
+and the two frozen Gate 0 fixtures only.
+
+### B17 — Post-commit secret-safe projections
+
+After `start` and `create_profile`, derived files under `PLUGIN_DATA`
+other than canonical `store.json` must exist, be human-readable, and be
+secret-safe: no `resumeText` dumps, no env secret values, no `sk-` tokens,
+no private key material. Canonical `store.json` may retain resume text for
+scoring. Provider keys in the process environment must not appear in
+projections or MCP payloads.
+
+### B18 — Profile ownership everywhere
+
+A real two-profile MCP session must reject `score_job`, `pursue_job`,
+`applications_plan`, `tailor_resume`, `draft_cover_letter`, `save_job`,
+`map_reachable_network`, and `interview_prep` when `jobId` belongs to the
+other profile. Rejections must name profile mismatch/ownership.
+`list_jobs`, `review_queue`, and `list_tasks` must not leak the foreign
+job. Isolation holds with JobOS absent from `PATH`.
+
+### B19 — Real discovery, dedup, and offline multidimensional scoring
+
+With blank provider keys and JobOS absent, a real subprocess must expose
+every frozen extended MCP tool. Inline `import_job` text deduplicates to
+one job id. `create_saved_search` with adapter `greenhouse` and a fixture
+copied under `PLUGIN_DATA` plus `daily_discovery` / `search_jobs` must
+return discovered jobs without API keys. `score_job` returns
+`jobos.fit-score.v1` in `deterministic-degraded` mode with all seven
+weighted dimensions (`roleFit` 28, `domainFit` 18, `seniority` 14,
+`locationWorkModel` 12, `compensation` 8, `missionInterest` 14,
+`networkAccess` 6) and a JobOS `scoreStatus`.
+
+### B20 — No application folder for unsaved discovery
+
+Jobs produced by `daily_discovery` may exist in the canonical store but
+must not create `PLUGIN_DATA/jobs/<id>/` or `PLUGIN_DATA/applications/<id>/`
+until `save_job` or `pursue_job`. B12 local fixture import may still
+project imported jobs.
+
+### B21 — Proof-grounded materials
+
+`tailor_resume` and `draft_cover_letter` must exist, cite structured proof
+from the profile, persist through `review_queue` after MCP restart, and
+must not claim submit/send/apply/approval or invent metrics absent from
+the resume/proofs.
+
+### B22 — Restart-persistent pipeline, tasks, networking, and interview prep
+
+After pursue, a real subprocess must persist at least one `list_tasks`
+item, accept inline `import_contact`, return local `map_reachable_network`
+/ `plan_outreach` / `draft_outreach` (never sent), persist
+`draft_interview_story` and `interview_prep`, and return a secret-safe
+`preview_sync`. A restarted MCP process still lists tasks, interview
+stories, network state, and a non-submitted `applications_plan`.
+
+### B23 — Truthful blocks for send, submit, apply, approval, and unsupported actions
+
+Blocked and unsupported names (`mark_outreach_sent`,
+`attest_application_submitted`, `approve_artifact`, `submit_application_form`,
+`apply_job`, `send_email`, `send_outreach`, plus the frozen human-only
+catalog) must not appear on `tools/list`. Calling them must error as not
+available / human-only / blocked and must not claim submitted/sent/applied/
+approved or a deferred/future capability. `update_application_status` must
+exist and must reject `applied` and `submitted`. `pursue_job` remains local.
+`doctor` must not tell the agent to install JobOS.
+
+### B24 — JobOS absent from runtime resolution and PATH
+
+Extended-tool sessions spawn `./bin/jobsss mcp --data <temp>` with a trap
+`jobos` first on `PATH`, blank provider keys, and a fake home. The trap
+must not run. `JOBOS_HOME`, `~/.jobos`, the plugin root, and real JobOS
+user state must remain untouched. `doctor` names `PLUGIN_DATA` and must
+not recommend installing JobOS. All frozen extended tools are listed.
+
+### B25 — Skill routes extended workflows without claiming send, submit, or JobOS
+
+`SKILL.md` plus `skills/jobsss/references/` name every frozen extended MCP
+tool, `PLUGIN_DATA`, and `./bin/jobsss`. They say JobOS is not required.
+Send, submit, and approval stay handoff/blocked/human-only. No extra stable
+slash sub-intents `/jobsss network`, `/jobsss interview`, or `/jobsss schedule`
+may claim those domains. B6 blocked-language for network/interview/
+scheduling/browser remains required.
+
 ---
 
 ## Verdict
 
-**Pass** only if the frozen validation command exits `0` and B1–B13 hold on
+**Pass** only if the frozen validation command exits `0` and B1–B25 hold on
 inspected files and subprocess output.
 
 **Fail** if any required file is missing, any check mismatches, any command
@@ -398,6 +576,19 @@ fe69a0b428e6bd727fb1c558bd19bc3a050e529126cbc179a011f548eab75d25  tests/jobsss-g
 5e78590ab93031b334e2c67c4f081a52af0e5713306dcac3ad08eb4d88ac65e9  tests/fixtures/profile-resume.md
 736a9d6957d2a5ab8e3ed4c4f1f95639afcca949facf3b71767af7b358e00db6  tests/fixtures/job-posting.md
 ed0b0fc2f6318eed8255b5cdc459188dfb29b5e28314b7d786e2708162f1d7f9  tests/helpers/jobsss-gate0.mjs
+```
+
+SHA-256 of reviewer-owned round-2 files. Implementers must not change these
+files. B1–B13 hashes above are unchanged.
+
+```
+7cacf15e8e6f1e6060ed20e07482e77538aaa8f012e45e7dbf11a51e0d391e82  tests/jobsss-persistence.test.mjs
+ed13b3147f2e8bd8a5614fb71f1c244feb27675ebbe7daf42198746939b268ff  tests/jobsss-discovery.test.mjs
+21c23c737d7193641033d31039f429799f999ece40e2e8662a8b59de4b478b1c  tests/jobsss-workflows.test.mjs
+a5871dfac9fc0a99607e5c1798f21f4497dabf54758a66d942de27f8cc237161  tests/helpers/jobsss-live-mcp.mjs
+491bd2087db788c0c03128fc6a5d614c00166447ca2527291fefac59e9b94012  tests/fixtures/legacy-store-v1.json
+0e414582d38f96811682bad733353b3817198d3810d1e635ff2d086c23767dc8  tests/fixtures/ats-board.json
+5c33f1cdd8cc28d07eec4365593782ce5212f576d359a8caf51e8f3e8f82b070  tests/fixtures/contact-card.md
 ```
 
 ## Correction log
@@ -431,3 +622,15 @@ ed0b0fc2f6318eed8255b5cdc459188dfb29b5e28314b7d786e2708162f1d7f9  tests/helpers/
   B13 and a real-MCP two-profile isolation assertion in
   `tests/jobsss-journey.test.mjs`; updated the frozen journey hash; did not
   delete, rewrite, or weaken B1–B12. Not done to make tests green.
+- 2026-08-26T07:00:47Z — **B14–B25 Gate 0 extension for the confirmed JobSSS
+  port round**. Reason: the confirmed acceptance contract requires lossless
+  v1 `store.json` migration, serialized/stale writes, staged-only MCP
+  filesystem intake, secret-safe post-commit projections, profile ownership
+  on new surfaces, offline multidimensional scoring and discovery, no
+  application folder for unsaved discovery, proof-grounded materials,
+  restart-persistent pipeline/tasks/networking/interview prep, truthful
+  send/submit/apply blocks, and JobOS-absent runtime — none of which B1–B13
+  freeze. Change: preserved B1–B13 and their hashes; appended B14–B25 plus
+  real-MCP tests/helpers/fixtures; recorded today's failing baseline
+  (`# tests 27` `# pass 15` `# fail 12`, exit `1`) against the committed
+  standalone runtime before freeze. Not done to make tests green.

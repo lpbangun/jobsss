@@ -1,0 +1,190 @@
+{
+  "version": 1,
+  "profiles": {
+    "legacy-probe-profile": {
+      "id": "legacy-probe-profile",
+      "name": "Legacy Probe Profile",
+      "resumeSource": "profile-resume.md",
+      "resumeText": "# Jordan Example\n\njordan.example@example.test\nRemote\n\n## Experience\n\nProduct Manager | Example Learning Studio | Remote | 2021 - Present\n\n- Led discovery with educators and operations teams to prioritize an AI-assisted learning workflow that reduced manual review time by 30%.\n- Shipped a cross-functional product launch with engineering and design partners, improving activation for a technical user workflow.\n- Built dashboards and weekly operating reviews that connected adoption data to roadmap decisions.\n- Implemented a lightweight experiment cadence that increased weekly active mentors by 18%.\n\n## Skills\n\nProduct discovery, user research, analytics, roadmap planning\n",
+      "proofPointIds": [
+        "proof_134063ea753e1997",
+        "proof_c9ce3bcde80593e5",
+        "proof_da98113c837d187e",
+        "proof_c103b62c0217b093"
+      ],
+      "createdAt": "2026-08-26T06:52:07.470Z",
+      "updatedAt": "2026-08-26T06:52:07.470Z"
+    }
+  },
+  "proofPoints": {
+    "proof_134063ea753e1997": {
+      "id": "proof_134063ea753e1997",
+      "profileId": "legacy-probe-profile",
+      "summary": "Led discovery with educators and operations teams to prioritize an AI-assisted learning workflow that reduced manual review time by 30%.",
+      "skills": [
+        "discovery",
+        "with",
+        "educators",
+        "operations",
+        "teams",
+        "prioritize",
+        "assisted",
+        "learning",
+        "workflow",
+        "that"
+      ],
+      "metrics": [
+        "30%"
+      ],
+      "source": "resume_import",
+      "verification": "human_required",
+      "createdAt": "2026-08-26T06:52:07.469Z"
+    },
+    "proof_c9ce3bcde80593e5": {
+      "id": "proof_c9ce3bcde80593e5",
+      "profileId": "legacy-probe-profile",
+      "summary": "Shipped a cross-functional product launch with engineering and design partners, improving activation for a technical user workflow.",
+      "skills": [
+        "shipped",
+        "cross",
+        "functional",
+        "product",
+        "launch",
+        "with",
+        "engineering",
+        "design",
+        "partners",
+        "improving"
+      ],
+      "metrics": [],
+      "source": "resume_import",
+      "verification": "human_required",
+      "createdAt": "2026-08-26T06:52:07.469Z"
+    },
+    "proof_da98113c837d187e": {
+      "id": "proof_da98113c837d187e",
+      "profileId": "legacy-probe-profile",
+      "summary": "Built dashboards and weekly operating reviews that connected adoption data to roadmap decisions.",
+      "skills": [
+        "built",
+        "dashboards",
+        "weekly",
+        "operating",
+        "reviews",
+        "that",
+        "connected",
+        "adoption",
+        "data",
+        "roadmap"
+      ],
+      "metrics": [],
+      "source": "resume_import",
+      "verification": "human_required",
+      "createdAt": "2026-08-26T06:52:07.469Z"
+    },
+    "proof_c103b62c0217b093": {
+      "id": "proof_c103b62c0217b093",
+      "profileId": "legacy-probe-profile",
+      "summary": "Implemented a lightweight experiment cadence that increased weekly active mentors by 18%.",
+      "skills": [
+        "implemented",
+        "lightweight",
+        "experiment",
+        "cadence",
+        "that",
+        "increased",
+        "weekly",
+        "active",
+        "mentors"
+      ],
+      "metrics": [
+        "18%"
+      ],
+      "source": "resume_import",
+      "verification": "human_required",
+      "createdAt": "2026-08-26T06:52:07.470Z"
+    }
+  },
+  "jobs": {
+    "job_5fa7236535eb384d": {
+      "id": "job_5fa7236535eb384d",
+      "profileId": "legacy-probe-profile",
+      "title": "Product Manager, Learning Platform",
+      "company": "Example Learning Co",
+      "location": "Remote US",
+      "description": "# Product Manager, Learning Platform\n\nCompany: Example Learning Co\nLocation: Remote US\n\nExample Learning Co builds tools for educators and workforce teams. We are looking\nfor a Product Manager to lead discovery, roadmap planning, and launch execution\nfor AI-assisted learning workflows.\n\n## Responsibilities\n\n- Lead customer discovery with educators, learners, and enterprise stakeholders.\n- Define product strategy, metrics, and roadmap for an early-stage EdTech product.\n- Partner with engineering and design to ship usable software in weekly increments.\n- Analyze adoption data and improve activation, retention, and learning outcomes.\n\n## Requirements\n\n- 4+ years product management, education technology, learning design, or related operator experience.\n- Strong written communication and stakeholder management.\n- Evidence of launching products or programs with measurable outcomes.\n- Comfort with remote collaboration across US time zones.\n\nCompensation range $130k-$165k. Remote work. This fixture is synthetic.\n",
+      "sourcePath": "tests/fixtures/job-posting.md",
+      "sourceHash": "736a9d6957d2a5ab8e3ed4c4f1f95639afcca949facf3b71767af7b358e00db6",
+      "dedupeKey": "example learning co|product manager, learning platform|remote us",
+      "createdAt": "2026-08-26T06:52:07.529Z",
+      "updatedAt": "2026-08-26T06:52:07.530Z"
+    }
+  },
+  "scores": {
+    "job_5fa7236535eb384d": {
+      "contract": "jobos.fit-score.v1",
+      "jobId": "job_5fa7236535eb384d",
+      "profileId": "legacy-probe-profile",
+      "overall": 92,
+      "baseOverall": 92,
+      "scoreStatus": "scored",
+      "score": 92,
+      "evidenceCoverage": 100,
+      "confidence": "medium",
+      "mode": "deterministic-degraded",
+      "dimensions": {
+        "roleFit": {
+          "status": "scored",
+          "score": 92,
+          "weight": 28,
+          "reason": "Local token overlap 23 hits",
+          "evidenceRefs": []
+        }
+      },
+      "constraints": [],
+      "postingRisks": [],
+      "reasoning": "Deterministic local score from 23 token overlaps; no external provider. Hits: example, remote, experience, product, manager, learning, discovery, with.",
+      "provider": null,
+      "providerError": null,
+      "generatedAt": "2026-08-26T06:52:07.594Z"
+    }
+  },
+  "applications": {
+    "job_5fa7236535eb384d": {
+      "jobId": "job_5fa7236535eb384d",
+      "profileId": "legacy-probe-profile",
+      "status": "pursued",
+      "createdAt": "2026-08-26T06:52:07.597Z",
+      "pursuedAt": "2026-08-26T06:52:07.597Z",
+      "updatedAt": "2026-08-26T06:52:07.597Z",
+      "localOnly": true,
+      "note": "Pursuit recorded locally; human review required before any external action. No external request was made."
+    }
+  },
+  "artifacts": {
+    "artifact_6e23181c13b9be6c": {
+      "id": "artifact_6e23181c13b9be6c",
+      "jobId": "job_5fa7236535eb384d",
+      "profileId": "legacy-probe-profile",
+      "kind": "application_readiness",
+      "status": "draft_needs_human_review",
+      "title": "Application readiness: Product Manager, Learning Platform",
+      "proofPointIds": [
+        "proof_134063ea753e1997",
+        "proof_c9ce3bcde80593e5",
+        "proof_da98113c837d187e",
+        "proof_c103b62c0217b093"
+      ],
+      "checklist": [
+        "verify profile facts",
+        "verify proof points",
+        "review role fit",
+        "prepare materials"
+      ],
+      "createdAt": "2026-08-26T06:52:07.597Z",
+      "updatedAt": "2026-08-26T06:52:07.597Z"
+    }
+  },
+  "createdAt": "2026-08-26T06:52:07.466Z",
+  "updatedAt": "2026-08-26T06:52:07.597Z"
+}

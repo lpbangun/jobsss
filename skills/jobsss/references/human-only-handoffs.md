@@ -28,3 +28,19 @@ The following JobOS operations are human-only. They are **not MCP-attestable**, 
 Treat approval, rejection, packet creation or freezing, submission and receipt attestation, and recording an outreach send only as typed handoffs. Do not expose or call these through MCP, and do not convert a draft, plan, checkpoint, or request into a claim of completion.
 
 `submit_application_form`, `inspect_application_form`, and `assist_application_form` are blocked and unavailable in standalone JobSSS. Hand browser/application-form work to a trusted human; never claim these tools exist, ran, or produced submission success.
+
+## Unsupported / blocked MCP names
+
+These are unsupported and must not appear on `tools/list`; calling them must
+error as not available / blocked / human-only and must never claim submitted,
+sent, applied, approved, or a deferred/future capability:
+
+- `apply_job`
+- `send_email`
+- `send_outreach`
+- `schedule_interview`
+- `browser_apply`
+
+Local `draft_outreach`, `plan_outreach`, `map_reachable_network`,
+`draft_interview_story`, and `interview_prep` prepare or plan only and are not
+a send, submit, apply, approval, or scheduling action.

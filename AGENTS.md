@@ -12,14 +12,14 @@ Paths:
 - `BENCHMARK.md`, `tests/jobsss-*.test.mjs` — reviewer-owned pass bar (do not edit).
 
 Commands:
-- `node --test --test-concurrency=1 tests/jobsss-gate0.test.mjs tests/jobsss-mcp-compat.test.mjs tests/jobsss-journey.test.mjs`
+- `node --test --test-concurrency=1 tests/jobsss-gate0.test.mjs tests/jobsss-mcp-compat.test.mjs tests/jobsss-journey.test.mjs tests/jobsss-persistence.test.mjs tests/jobsss-discovery.test.mjs tests/jobsss-workflows.test.mjs`
 - Requires Node 22+; no npm dependencies.
 
 Invariants:
 - Standalone: one skill, one MCP server (`jobsss` via `./bin/jobsss mcp --data ${PLUGIN_DATA}`); runtime never resolves or spawns `jobos`.
 - Keep the plugin portable: no credentials/secrets, no user or workspace paths, no symlinks escaping the root, no client-specific packaging.
 - State isolation: all durable state under `PLUGIN_DATA`; never write into the plugin directory.
-- Safety: human-only actions are trusted CLI/TUI handoffs and not MCP-attestable; never claim submission, sending, approval, applied attestation, or deferred capability. Network, interview, scheduling, and browser automation are out of scope/blocked.
+- Safety: human-only actions are trusted CLI/TUI handoffs and not MCP-attestable; never claim submission, sending, approval, applied attestation, or deferred capability. Local networking drafts and interview preparation are allowed; external sending, scheduling, debrief attestation, and browser automation are blocked.
 
 Verification: run the focused test command above from the repo root before
 yielding; keep changes small and report what you ran.

@@ -43,17 +43,17 @@ sub-intents for networking, interview planning, or scheduling.
 | Workflow | Tool | Notes |
 | --- | --- | --- |
 | Secure intake | `import_job` | Accepts inline `text`/`content` or a path under `PLUGIN_DATA`; rejects arbitrary absolute paths. Deduplicates on content. |
-| Secure intake | `import_job_url` | Local posting URL intake; rejects `file:` URLs. |
-| Secure intake | `import_contact` | Inline contact card (`name`, `email`, `company`) or a `PLUGIN_DATA` path; never arbitrary paths. |
+| Secure intake | `import_job_url` | Fetches and parses public HTTP(S) posting content; rejects `file:`, credentialed, private-address, unsafe-redirect, oversized, and failed responses. |
+| Secure intake | `import_contact`, `list_contacts` | Inline contact card (`name`, `email`, `company`) or a `PLUGIN_DATA` path; never arbitrary paths. |
 | Migration & state | `start` | Migrates a legacy `store.json` losslessly into versioned persistence with an audit trail under `PLUGIN_DATA`; ids are preserved. |
 | Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `add_proof_point` | Profile preferences, structured resume revisions, and proof candidates remain profile-owned and need human verification. |
-| Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery` | Public ATS-board discovery (e.g. greenhouse) from a fixture under `PLUGIN_DATA`; no keys. Discovered jobs stay database-only until saved/pursued. |
-| Save / skip | `save_job`, `skip_job`, `list_jobs` | Explicit save/skip; unsaved discoveries create no application folder. |
+| Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery` | Fetches public Greenhouse boards by `boardToken`, with a staged `PLUGIN_DATA` fixture as the offline path; no keys. Discoveries stay database-only until saved/pursued. |
+| Save / skip / archive | `save_job`, `skip_job`, `archive_job`, `list_jobs` | Explicit local decisions; unsaved discoveries create no application folder. |
 | Scoring | `score_job` | Offline deterministic `jobos.fit-score.v1` with all seven weighted dimensions; `deterministic-degraded` mode; no provider. |
 | Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` (cannot attest). |
 | Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Grounded drafts and reusable answer suggestions; no invented metrics, auto-fill, or send; persist after restart. |
-| Networking drafts | `map_reachable_network`, `plan_outreach`, `draft_outreach` | Local maps, plans, and drafts only; never send (`mark_outreach_sent` is not MCP). |
-| Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep` | Local story drafting and preparation only; verification/debrief stay human-only CLI/TUI. |
+| Networking drafts | `record_research`, `list_research`, `map_reachable_network`, `plan_outreach`, `draft_outreach`, `list_outreach` | Local people/company research, maps, plans, follow-ups, and drafts only; never send (`mark_outreach_sent` is not MCP). |
+| Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep`, `get_interview_prep`, `interview_debrief_handoff` | Local stories, prep, coverage gaps, and a non-attesting handoff; verification/debrief confirmation stays human-only CLI/TUI. |
 | Sync preview | `preview_sync` | Dry-run, secret-safe preview of derived/export data; no auto or cloud sync. |
 
 ## Blocked / human-only boundary

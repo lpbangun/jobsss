@@ -11,8 +11,8 @@ import {
 } from './store.js';
 import { localScore } from './scoring.js';
 import {
-  assertPublicJobUrl, parseJobText, urlImportFallbackJob, createSavedSearch as createSearch,
-  listSavedSearches as savedSearches, runSavedSearch, runAllSearches,
+  assertPublicJobUrl, fetchPublicJob, parseJobText, createSavedSearch as createSearch,
+  getSavedSearch, listSavedSearches as savedSearches, fetchSavedSearchSource, runSavedSearch, runAllSearches,
 } from './discovery.js';
 import {
   requireJobOwned, pursueJob as pursueLocal, saveJob as saveLocal, skipJob as skipLocal,
@@ -261,20 +261,26 @@ export function importJob(dataDir, args = {}) {
   return resultValue;
 }
 
-export function importJobUrl(dataDir, args = {}) {
+export async function importJobUrl(dataDir, args = {}) {
   const profileId = String(args.profileId || '').trim();
   const url = assertPublicJobUrl(args.url).href;
+  const snapshot = loadStore(dataDir);
+  requireProfile(snapshot, profileId);
+  const prior = Object.values(snapshot.jobs).find(job => job.profileId === profileId && job.url === url && job.fetchStatus === 'fetched');
+  if (prior) return { ok: true, jobId: prior.id, id: prior.id, job: prior, deduped: true, revision: snapshot.revision };
+  const fetched = await fetchPublicJob(url);
   return mutate(dataDir, args, store => {
     requireProfile(store, profileId);
-    const duplicate = Object.values(store.jobs).find(job => job.profileId === profileId && job.url === url);
+    const duplicate = Object.values(store.jobs).find(job => job.profileId === profileId && job.url === fetched.url && job.fetchStatus === 'fetched');
     if (duplicate) return { ok: true, jobId: duplicate.id, id: duplicate.id, job: duplicate, deduped: true };
-    const fallback = urlImportFallbackJob({ profileId, url });
-    const jobId = id('job', `${profileId}:url:${url}`);
-    const job = { ...fallback, id: jobId, jobId, profileId, discovered: false, saved: false,
-      status: 'needs_enrichment', dedupeKey: dedupeKeyForJob(fallback), createdAt: now(), updatedAt: now() };
+    const sourceHash = hashText(fetched.description);
+    const jobId = id('job', `${profileId}:url:${fetched.url}`);
+    const job = { ...fetched, id: jobId, jobId, profileId, sourceHash,
+      discovered: false, saved: false, status: 'imported_url', dedupeKey: dedupeKeyForJob(fetched),
+      createdAt: now(), updatedAt: now() };
     store.jobs[jobId] = job;
     return { ok: true, jobId, id: jobId, job, created: true,
-      message: 'Public URL recorded locally for review; offline mode did not claim a successful fetch or external action.' };
+      message: 'Public job URL fetched and stored locally for review. No application or other external action was performed.' };
   });
 }
 
@@ -377,11 +383,22 @@ export function listSavedSearches(dataDir, args = {}) {
   const searches = savedSearches(store, { profileId: args.profileId });
   return { ok: true, profileId: args.profileId, searches, items: searches, count: searches.length };
 }
-export function searchJobs(dataDir, args = {}) {
-  return mutate(dataDir, args, store => runSavedSearch(store, { searchRef: args.search || args.searchId || args.name, profileId: args.profileId, dataDir }));
+export async function searchJobs(dataDir, args = {}) {
+  const ref = args.search || args.searchId || args.name;
+  const snapshot = loadStore(dataDir);
+  requireProfile(snapshot, args.profileId);
+  const search = getSavedSearch(snapshot, ref);
+  if (!search) throw error('unknown_saved_search', `Unknown saved search: ${ref}`);
+  if (search.profileId !== args.profileId) throw error('profile_mismatch', `Saved search ${search.id} belongs to profile ${search.profileId}, not ${args.profileId}`);
+  const sourceResult = await fetchSavedSearchSource(search, { dataDir });
+  return mutate(dataDir, args, store => runSavedSearch(store, { searchRef: ref, profileId: args.profileId, dataDir, sourceResult }));
 }
-export function dailyDiscovery(dataDir, args = {}) {
-  return mutate(dataDir, args, store => runAllSearches(store, { profileId: args.profileId, dataDir }));
+export async function dailyDiscovery(dataDir, args = {}) {
+  const snapshot = loadStore(dataDir);
+  requireProfile(snapshot, args.profileId);
+  const searches = savedSearches(snapshot, { profileId: args.profileId });
+  const sourceResults = Object.fromEntries(await Promise.all(searches.map(async search => [search.id, await fetchSavedSearchSource(search, { dataDir })])));
+  return mutate(dataDir, args, store => runAllSearches(store, { profileId: args.profileId, dataDir, sourceResults }));
 }
 
 export function listTasks(dataDir, args = {}) { return tasksForProfile(loadStore(dataDir), args); }

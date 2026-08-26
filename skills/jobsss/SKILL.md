@@ -51,15 +51,15 @@ and browser actions stay blocked or human-only.
 
 | Workflow | MCP tools | Notes |
 | --- | --- | --- |
-| Secure intake | `import_job` (inline `text`/`content` or a path under `PLUGIN_DATA`), `import_job_url` (rejects `file:` URLs), `import_contact` (inline card or `PLUGIN_DATA` path) | No arbitrary absolute filesystem paths are read. Re-importing the same job deduplicates to one id. |
+| Secure intake | `import_job` (inline `text`/`content` or a path under `PLUGIN_DATA`), `import_job_url` (fetches public HTTP(S), rejects `file:`/private URLs), `import_contact` (inline card or `PLUGIN_DATA` path), `list_contacts` | No arbitrary absolute filesystem paths are read. Re-importing the same job deduplicates to one id. |
 | Migration & state | `start` | A legacy `store.json` migrates losslessly into versioned persistence with an audit trail; never drop or rewrite ids. |
 | Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `add_proof_point` | Versioned structured resumes, preferences, and proof candidates remain profile-owned and require human verification. |
-| Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`, `save_job`, `skip_job`, `list_jobs` | Public ATS-board discovery from a fixture under `PLUGIN_DATA`; no API keys. Discovered jobs stay database-only until explicitly saved or pursued; unsaved discoveries create no application folder. |
+| Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`, `save_job`, `skip_job`, `archive_job`, `list_jobs` | Fetch public Greenhouse ATS boards by `boardToken`, or use a fixture under `PLUGIN_DATA` for offline operation; no API keys. Discoveries stay database-only until saved/pursued. |
 | Scoring | `score_job` | Offline deterministic multidimensional fit (`jobos.fit-score.v1`) with all seven weighted dimensions; no API key. |
 | Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` — it cannot attest submission. |
 | Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Proof-grounded drafts and reusable answer suggestions; never invent metrics, auto-fill, or send; persist into review state. |
-| Networking drafts | `map_reachable_network`, `plan_outreach`, `draft_outreach` | Local maps, plans, and drafts only. Sending stays human-only; `mark_outreach_sent` is not MCP. |
-| Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep` | Local story drafting and preparation only. Verification/debrief stay human-only via trusted CLI/TUI; scheduling is blocked. |
+| Networking drafts | `record_research`, `list_research`, `map_reachable_network`, `plan_outreach`, `draft_outreach`, `list_outreach` | Local people/company research, maps, plans, follow-ups, and drafts only. Sending stays human-only; `mark_outreach_sent` is not MCP. |
+| Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep`, `get_interview_prep`, `interview_debrief_handoff` | Local story drafting, preparation, coverage gaps, and a non-attesting handoff. Verification/debrief confirmation stays human-only via trusted CLI/TUI. |
 | Sync preview | `preview_sync` | Dry-run, secret-safe preview of derived/export data. No automatic or cloud sync. |
 
 See `references/standalone-journey.md` for argument shapes and the frozen

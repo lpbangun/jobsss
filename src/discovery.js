@@ -20,6 +20,7 @@
 //     folders, or application artifacts (save/pursue is owned by the parent)
 import fs from 'node:fs';
 import path from 'node:path';
+import dns from 'node:dns/promises';
 import { id, now, hashText, dedupeKeyForJob, ensureDataDir } from './store.js';
 
 export const OFFLINE_ADAPTERS = Object.freeze(['greenhouse']);
@@ -104,6 +105,78 @@ export function normalizeJobUrl(value) {
   } catch {
     return '';
   }
+}
+
+export async function assertPublicNetworkUrl(value, { lookupImpl = dns.lookup } = {}) {
+  const parsed = assertPublicJobUrl(value);
+  let records;
+  try { records = await lookupImpl(parsed.hostname, { all: true, verbatim: true }); }
+  catch (cause) { throw Object.assign(new Error(`Cannot resolve public job host: ${cause.message}`), { code: 'url_dns_error' }); }
+  if (!records.length || records.some(record => isBlockedIp(record.address))) {
+    throw Object.assign(new Error('Job URL resolved to a non-public network address.'), { code: 'non_public_address' });
+  }
+  return parsed;
+}
+
+async function fetchPublicResource(value, { fetchImpl = globalThis.fetch, lookupImpl = dns.lookup, timeoutMs = 12_000, maxBytes = 2 * 1024 * 1024 } = {}) {
+  let url = (await assertPublicNetworkUrl(value, { lookupImpl })).href;
+  for (let redirects = 0; redirects <= 4; redirects += 1) {
+    const response = await fetchImpl(url, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { 'user-agent': 'JobSSS standalone (+human-initiated public intake)', accept: 'application/json,text/html,text/plain' },
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location || redirects === 4) throw Object.assign(new Error('Public job URL redirect limit exceeded.'), { code: 'url_redirect_error' });
+      url = (await assertPublicNetworkUrl(new URL(location, url).href, { lookupImpl })).href;
+      continue;
+    }
+    if (!response.ok) throw Object.assign(new Error(`Public job URL returned HTTP ${response.status}`), { code: 'url_http_error' });
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) throw Object.assign(new Error('Public job response exceeds size limit.'), { code: 'url_response_too_large' });
+    const text = await response.text();
+    if (Buffer.byteLength(text, 'utf8') > maxBytes) throw Object.assign(new Error('Public job response exceeds size limit.'), { code: 'url_response_too_large' });
+    return { url, text, contentType: response.headers.get('content-type') || '', status: response.status };
+  }
+  throw Object.assign(new Error('Public job URL redirect failed.'), { code: 'url_redirect_error' });
+}
+
+function jobPostingJsonLd(html) {
+  for (const match of String(html).matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      const candidates = Array.isArray(parsed) ? parsed : parsed?.['@graph'] || [parsed];
+      const posting = candidates.find(item => item?.['@type'] === 'JobPosting' || (Array.isArray(item?.['@type']) && item['@type'].includes('JobPosting')));
+      if (posting) return posting;
+    } catch { /* malformed page metadata: fall back to visible text */ }
+  }
+  return null;
+}
+
+export async function fetchPublicJob(value, options = {}) {
+  const resource = await fetchPublicResource(value, options);
+  const posting = jobPostingJsonLd(resource.text);
+  const visible = stripHtml(resource.text).slice(0, 50_000);
+  const pageTitle = stripHtml(resource.text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '');
+  const greenhouseTitle = pageTitle.match(/^Job Application for (.+) at (.+)$/i);
+  const location = posting?.jobLocation?.address;
+  const locationText = typeof location === 'string' ? location : [location?.addressLocality, location?.addressRegion, location?.addressCountry].filter(Boolean).join(', ');
+  return {
+    title: String(posting?.title || greenhouseTitle?.[1] || pageTitle || 'Imported URL role').trim(),
+    company: String(posting?.hiringOrganization?.name || greenhouseTitle?.[2] || 'Unknown company').trim(),
+    location: locationText || '',
+    description: stripHtml(posting?.description || '') || visible,
+    url: resource.url,
+    source: 'public_url',
+    sourceId: resource.url,
+    postedDate: String(posting?.datePosted || ''),
+    compensation: posting?.baseSalary || '',
+    workModel: workModelFromLocation(locationText, `${posting?.jobLocationType || ''} ${visible}`),
+    fetchStatus: 'fetched',
+    fetchedAt: now(),
+    httpStatus: resource.status,
+  };
 }
 
 /**
@@ -474,6 +547,10 @@ export function fetchGreenhouseOffline(config = {}, { dataDir, nowMs = Date.now(
   } catch (error) {
     throw Object.assign(new Error(`Cannot read discovery fixture: ${error.message}`), { code: 'fixture_read_error' });
   }
+  return normalizeGreenhouseBoard(data, config, nowMs);
+}
+
+function normalizeGreenhouseBoard(data, config = {}, nowMs = Date.now()) {
   const rows = Array.isArray(data?.jobs) ? data.jobs : [];
   const company = greenhouseCompany(config);
   return {
@@ -488,31 +565,39 @@ export function fetchGreenhouseOffline(config = {}, { dataDir, nowMs = Date.now(
         .flatMap(value => Array.isArray(value) ? value.filter(Boolean).map(item => String(item.name || item)) : value ? [value] : [])
         .map(String).filter(Boolean).join(' / ');
       const rowCompany = greenhouseCompany({ ...config, companyLabel: config.companyLabel || company });
-      const hint = {
-        kind: 'listed_in_public_ats',
-        observedAt: isoFromEpochMs(nowMs),
-        request: { requestedUrl: String(row.absolute_url || row.url || ''), finalUrl: String(row.absolute_url || row.url || ''), httpStatus: 200 },
-      };
+      const hint = { kind: 'listed_in_public_ats', observedAt: isoFromEpochMs(nowMs),
+        request: { requestedUrl: String(row.absolute_url || row.url || ''), finalUrl: String(row.absolute_url || row.url || ''), httpStatus: 200 } };
       return {
-        title: String(row.title || '').trim() || 'Imported role',
-        company: rowCompany,
-        location,
-        url: String(row.absolute_url || row.url || ''),
-        source: 'greenhouse',
-        sourceId: String(row.id || ''),
-        description,
+        title: String(row.title || '').trim() || 'Imported role', company: rowCompany, location,
+        url: String(row.absolute_url || row.url || ''), source: 'greenhouse', sourceId: String(row.id || ''), description,
         postedDate: String(row.updated_at || row.first_published || row.created_at || ''),
         compensation: parseCompensationText(compensationText || metadataValue(row.metadata, ['salary_range'])),
         workModel: workModelFromLocation(workModelValue ? String(workModelValue.name || workModelValue) : location, description),
-        employmentTypes: (() => {
-          const type = employmentTypeFrom(employmentTypeValue ? String(employmentTypeValue.name || employmentTypeValue) : '');
-          return type ? [type] : [];
-        })(),
-        department,
-        livenessHint: hint,
+        employmentTypes: (() => { const type = employmentTypeFrom(employmentTypeValue ? String(employmentTypeValue.name || employmentTypeValue) : ''); return type ? [type] : []; })(),
+        department, livenessHint: hint,
       };
     }),
   };
+}
+
+export async function fetchGreenhousePublic(config = {}, options = {}) {
+  const token = String(config.boardToken || config.board_token || '').trim();
+  if (!/^[a-z0-9][a-z0-9_-]{0,127}$/i.test(token)) {
+    throw Object.assign(new Error('A valid Greenhouse boardToken is required for public discovery.'), { code: 'invalid_board_token' });
+  }
+  const endpoint = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(token)}/jobs?content=true`;
+  const resource = await fetchPublicResource(endpoint, { maxBytes: 10 * 1024 * 1024, ...options });
+  let data;
+  try { data = JSON.parse(resource.text); }
+  catch { throw Object.assign(new Error('Public Greenhouse board returned invalid JSON.'), { code: 'ats_invalid_response' }); }
+  return normalizeGreenhouseBoard(data, config, Date.now());
+}
+
+export async function fetchSavedSearchSource(search, { dataDir, fetchImpl = globalThis.fetch, lookupImpl = dns.lookup } = {}) {
+  if (search.adapter !== 'greenhouse') throw Object.assign(new Error(`No public ATS adapter for: ${search.adapter}`), { code: 'unsupported_adapter' });
+  return search.config?.fixture
+    ? fetchGreenhouseOffline(search.config, { dataDir })
+    : fetchGreenhousePublic(search.config, { fetchImpl, lookupImpl });
 }
 
 // ---------------------------------------------------------------------------
@@ -597,7 +682,7 @@ function emptyRunCounts() {
  * discovery run outputs; the parent persists the store via the serialized
  * commit path and exposes the tool.
  */
-export function runSavedSearch(store, { searchRef, profileId, dataDir, now: nowFn = now } = {}) {
+export function runSavedSearch(store, { searchRef, profileId, dataDir, sourceResult = null, now: nowFn = now } = {}) {
   const search = getSavedSearch(store, searchRef);
   if (!search) throw Object.assign(new Error(`Unknown saved search: ${searchRef}`), { code: 'unknown_saved_search' });
   if (profileId && search.profileId !== profileId) {
@@ -624,7 +709,7 @@ export function runSavedSearch(store, { searchRef, profileId, dataDir, now: nowF
   try {
     let result;
     if (search.adapter === 'greenhouse') {
-      result = fetchGreenhouseOffline(search.config, { dataDir });
+      result = sourceResult || fetchGreenhouseOffline(search.config, { dataDir });
     } else {
       throw Object.assign(new Error(`No offline adapter for: ${search.adapter}`), { code: 'unsupported_adapter' });
     }
@@ -692,13 +777,15 @@ export function runSavedSearch(store, { searchRef, profileId, dataDir, now: nowF
   return outputs;
 }
 
-export function runAllSearches(store, { profileId, dataDir, now: nowFn = now } = {}) {
+export function runAllSearches(store, { profileId, dataDir, sourceResults = {}, now: nowFn = now } = {}) {
   if (!profileId) throw Object.assign(new Error('daily_discovery requires profileId'), { code: 'missing_profile' });
   if (!store.profiles || !store.profiles[profileId]) {
     throw Object.assign(new Error(`Unknown profile: ${profileId}`), { code: 'unknown_profile' });
   }
   const searches = listSavedSearches(store, { profileId });
-  const runs = searches.map(search => runSavedSearch(store, { searchRef: search.id, profileId, dataDir, now: nowFn }));
+  const runs = searches.map(search => runSavedSearch(store, {
+    searchRef: search.id, profileId, dataDir, sourceResult: sourceResults[search.id] || null, now: nowFn,
+  }));
   const counts = emptyRunCounts();
   const jobs = [];
   const errors = [];

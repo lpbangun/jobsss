@@ -14,7 +14,7 @@ const TOOLS = [
   tool('doctor', 'Diagnose the bundled runtime and isolated PLUGIN_DATA; JobOS is not required.'),
   tool('start', 'Initialize or migrate versioned durable state under PLUGIN_DATA.', schema({ expectedRevision: { type: 'integer' } })),
   tool('create_profile', 'Create a profile from inline or safely staged resume content and extract proof candidates.', schema({ name: string, resumeText: string, text: string, content: string, resumePath: string, path: string, filePath: string, preferences: { type: 'object' }, expectedRevision: { type: 'integer' } }, ['name'])),
-  tool('list_profiles', 'List local profiles without raw resume text.'),
+  tool('list_profiles', 'Read one profile-owned profile without raw resume text.', schema(profile, ['profileId'])),
   tool('list_resumes', 'List structured resume revisions and verification state for a profile.', schema(profile, ['profileId'])),
   tool('update_profile', 'Update local profile preferences.', schema({ ...profile, preferences: { type: 'object' }, name: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
   tool('add_proof_point', 'Add a structured proof candidate requiring human verification.', schema({ ...profile, summary: string, skills: { type: 'array' }, metrics: { type: 'array' }, expectedRevision: { type: 'integer' } }, ['profileId', 'summary'])),

@@ -462,6 +462,7 @@ export function draftOutreach(dataDir, args = {}) {
 export function listOutreach(dataDir, args = {}) {
   const store = loadStore(dataDir);
   const profileId = field(args.profileId);
+  requireProfile(store, profileId);
   const plans = Object.values(store.outreachPlans || {}).filter(p => p.profileId === profileId);
   const drafts = Object.values(store.outreachDrafts || {}).filter(d => d.profileId === profileId);
   const followUps = drafts.filter(d => d.kind === 'follow_up');

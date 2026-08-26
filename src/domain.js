@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   slug, id, now, loadStore, commitStore, hashText, dedupeKeyForJob, tokenize,
-  ensureDataDir, STORE_SCHEMA_VERSION,
+  ensureDataDir, redactSecrets, STORE_SCHEMA_VERSION,
 } from './store.js';
 import { localScore } from './scoring.js';
 import {
@@ -186,7 +186,8 @@ export function createProfile(dataDir, args = {}) {
         existing.updatedAt = now();
       }
       const proofPoints = Object.values(store.proofPoints).filter(proof => proof.profileId === profileId);
-      return { profileId, id: profileId, profile: existing, proofPoints, created: false };
+      const { resumeText: _private, ...safeProfile } = existing;
+      return { profileId, id: profileId, profile: safeProfile, proofPoints, created: false };
     }
     const proofPoints = extractProofPoints(profileId, input.text);
     const profile = {
@@ -198,13 +199,16 @@ export function createProfile(dataDir, args = {}) {
     store.profiles[profileId] = profile;
     persistResumeRevision(store, profile, input.text, input.sourceName);
     for (const proof of proofPoints) store.proofPoints[proof.id] = proof;
-    return { profileId, id: profileId, profile, proofPoints, created: true };
+    const { resumeText: _private, ...safeProfile } = profile;
+    return { profileId, id: profileId, profile: safeProfile, proofPoints, created: true };
   });
 }
 
-export function listProfiles(dataDir) {
-  const profiles = Object.values(loadStore(dataDir).profiles || {}).map(({ resumeText: _private, ...profile }) => profile);
-  return { ok: true, profiles, items: profiles, count: profiles.length };
+export function listProfiles(dataDir, args = {}) {
+  const store = loadStore(dataDir);
+  const profile = requireProfile(store, args.profileId);
+  const { resumeText: _private, ...safeProfile } = profile;
+  return { ok: true, profileId: profile.id, profiles: [safeProfile], items: [safeProfile], count: 1 };
 }
 
 export function listResumes(dataDir, args = {}) {
@@ -287,7 +291,7 @@ export async function importJobUrl(dataDir, args = {}) {
 function writeJobProjection(dataDir, job) {
   const dir = path.join(ensureDataDir(dataDir), 'jobs', job.id);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'job.json'), JSON.stringify(job, null, 2));
+  fs.writeFileSync(path.join(dir, 'job.json'), redactSecrets(JSON.stringify(job, null, 2)));
 }
 
 function writeApplicationProjection(dataDir, jobId) {
@@ -296,7 +300,7 @@ function writeApplicationProjection(dataDir, jobId) {
   if (!application) return;
   const dir = path.join(ensureDataDir(dataDir), 'applications', jobId);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'application.json'), JSON.stringify(application, null, 2));
+  fs.writeFileSync(path.join(dir, 'application.json'), redactSecrets(JSON.stringify(application, null, 2)));
 }
 
 export function listJobs(dataDir, args = {}) {

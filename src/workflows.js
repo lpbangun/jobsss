@@ -367,7 +367,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     `Profile: ${profile.name}`,
     '',
     kind === 'cover_letter'
-      ? `I am applying for the ${job.title} role at ${job.company} and offer the verified experience below.`
+      ? `This cover-letter draft for the ${job.title} role at ${job.company} uses only the verified experience below.`
       : profileSummary(profile) || 'Professional summary: verified from the stored profile.',
     '',
     '## Proof-grounded highlights',

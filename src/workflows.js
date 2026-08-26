@@ -476,6 +476,12 @@ export function addAnswer(store, {
     throw Object.assign(new Error(`Unsupported answer reuse scope: ${reuseScope}`), { code: 'invalid_reuse_scope' });
   }
   const ids = persistProofIds(store, profileId, proofPointIds, 'proofPointIds');
+  if (!ids.length) {
+    throw Object.assign(
+      new Error('A reusable answer draft must cite at least one profile-owned proofPointId; arbitrary ungrounded answers are not persisted.'),
+      { code: 'answer_proof_required' }
+    );
+  }
   const answers = ensure(store, 'answers');
   const answerId = id('answer', `${profileId}:${questionText}`);
   const nowIso = now();
@@ -489,6 +495,7 @@ export function addAnswer(store, {
     reuseScope,
     source,
     status: 'unverified',
+    groundingStatus: 'proof_linked_needs_human_verification',
     proofPointIds: ids,
     createdAt: nowIso,
     updatedAt: nowIso,

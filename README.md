@@ -1,8 +1,8 @@
 # JobSSS — standalone Agent Plugin
 
 JobSSS is a self-contained Agent Plugin with a bundled runtime. It does not
-require a JobOS installation or `jobos` on `PATH` and works offline without API
-keys.
+require a JobOS installation or `jobos` on `PATH`. Core workflows work offline
+without API keys; optional public HTTP(S) job intake and ATS discovery use the network.
 
 ## Launch
 
@@ -22,7 +22,7 @@ restarted MCP process. No user state is written into the plugin directory.
 - `mcp.json` — `jobsss` stdio server (`./bin/jobsss mcp --data ${PLUGIN_DATA}`)
 - `skills/jobsss/SKILL.md` — `/jobsss` routing for the standalone journey
 - `skills/jobsss/references/` — journey and human-only handoff guidance
-- `bin/jobsss` + `src/` — bundled runtime (offline, no JobOS dependency)
+- `bin/jobsss` + `src/` — bundled runtime (offline core plus safe public intake; no JobOS dependency)
 - `tests/` — reviewer-owned acceptance checks plus fixtures
 
 ## Core journey
@@ -31,10 +31,12 @@ restarted MCP process. No user state is written into the plugin directory.
 /jobsss doctor
 → /jobsss start
 → create or import a profile (create_profile)
-→ import or discover a job (import_job, list_jobs)
-→ score and pursue it (score_job, pursue_job)
-→ /jobsss pipeline (applications_plan)
-→ /jobsss review (review_queue)
+→ import or discover jobs (import_job, import_job_url, saved searches, daily_discovery)
+→ score, save/skip/archive, or pursue them
+→ prepare proof-grounded materials, reusable answers, and persistent tasks
+→ map local network paths and draft outreach without sending
+→ prepare interview stories, coverage gaps, and a human debrief handoff
+→ /jobsss pipeline (applications_plan) and /jobsss review (review_queue)
 ```
 
 All steps run locally under `PLUGIN_DATA`. Resume imports extract proof-point
@@ -45,11 +47,15 @@ submitted/sent/applied/approved.
 
 ## Boundaries
 
-Network, interview, scheduling, and browser automation (including
-`inspect_application_form` / `assist_application_form` / `submit_application_form`)
-are out of scope and blocked or handed off to a trusted CLI/TUI. Human-only
-operations listed in `skills/jobsss/references/human-only-handoffs.md` are not
-MCP-attestable.
+Local contact/network research, outreach plans and drafts, interview story drafts,
+preparation, coverage gaps, and debrief handoffs are supported. Public job pages
+and ATS boards may be fetched through bounded, public-address-only HTTP(S).
+External sending, application submission or attestation, interview verification or
+debrief confirmation, automatic email/calendar actions, scheduling, and browser
+automation (including `inspect_application_form` / `assist_application_form` /
+`submit_application_form`) are blocked or handed off to a trusted human CLI/TUI.
+Human-only operations listed in `skills/jobsss/references/human-only-handoffs.md`
+are not MCP-attestable.
 
 JobSSS never claims submission, sending, approval, or deferred capability and
 never invents jobs, scores, or proofs.

@@ -36,7 +36,7 @@ const TOOLS = [
   tool('update_task', 'Update a local task as open or completed.', schema({ ...profile, taskId: string, status: string, expectedRevision: { type: 'integer' } }, ['profileId', 'taskId', 'status'])),
   tool('tailor_resume', 'Create a proof-grounded resume draft for human review.', schema({ ...jobProfile, format: string }, ['jobId', 'profileId'])),
   tool('draft_cover_letter', 'Create a proof-grounded cover-letter draft for human review.', schema({ ...jobProfile, format: string }, ['jobId', 'profileId'])),
-  tool('save_answer', 'Store a reusable answer draft locally; never auto-fills or sends.', schema({ ...profile, question: string, answer: string, category: string, sensitivity: string, reuseScope: string, proofPointIds: { type: 'array' }, expectedRevision: { type: 'integer' } }, ['profileId', 'question', 'answer'])),
+  tool('save_answer', 'Store a proof-linked reusable answer draft locally; never auto-fills or sends.', schema({ ...profile, question: string, answer: string, category: string, sensitivity: string, reuseScope: string, proofPointIds: { type: 'array' }, expectedRevision: { type: 'integer' } }, ['profileId', 'question', 'answer'])),
   tool('list_answers', 'List profile-owned reusable answer drafts.', schema(profile, ['profileId'])),
   tool('match_answers', 'Match stored answer drafts to questions for human review.', schema({ ...profile, questions: { type: 'array' }, employer: string }, ['profileId'])),
   tool('review_queue', 'List profile-owned draft artifacts and review items.', schema(profile, ['profileId'])),

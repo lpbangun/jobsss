@@ -51,7 +51,7 @@ sub-intents for networking, interview planning, or scheduling.
 | Save / skip / archive | `save_job`, `skip_job`, `archive_job`, `list_jobs` | Explicit local decisions; unsaved discoveries create no application folder. |
 | Scoring | `score_job` | Offline deterministic `jobos.fit-score.v1` with all seven weighted dimensions; `deterministic-degraded` mode; no provider. |
 | Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` (cannot attest). |
-| Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Grounded drafts and reusable answer suggestions; no invented metrics, auto-fill, or send; persist after restart. |
+| Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Materials cite stored proof candidates. Reusable answers require owned proof ids and exact stored proof wording; no arbitrary claims, invented metrics, auto-fill, or send. |
 | Networking drafts | `record_research`, `list_research`, `map_reachable_network`, `plan_outreach`, `draft_outreach`, `list_outreach` | Local people/company research, maps, plans, follow-ups, and drafts only; never send (`mark_outreach_sent` is not MCP). |
 | Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep`, `get_interview_prep`, `interview_debrief_handoff` | Local stories, prep, coverage gaps, and a non-attesting handoff; verification/debrief confirmation stays human-only CLI/TUI. |
 | Sync preview | `preview_sync` | Dry-run, secret-safe preview of derived/export data; no auto or cloud sync. |

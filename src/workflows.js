@@ -141,7 +141,7 @@ export function syncTasksForApplication(store, { jobId, profileId, status }) {
     },
     {
       kind: 'next',
-      text: `Tailor resume and cover letter from verified proof points for ${String(jobId)}.`,
+      text: `Tailor resume and cover letter from stored proof candidates for ${String(jobId)}; human verification is still required.`,
     },
   ];
   if (status === 'pursued') {
@@ -367,8 +367,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     `Profile: ${profile.name}`,
     '',
     kind === 'cover_letter'
-      ? `This cover-letter draft for the ${job.title} role at ${job.company} uses only the verified experience below.`
-      : profileSummary(profile) || 'Professional summary: verified from the stored profile.',
+      ? `This cover-letter draft for the ${job.title} role at ${job.company} uses only the stored proof candidates below.`
+      : profileSummary(profile) || 'Professional summary draft from the stored profile; human verification is required.',
     '',
     '## Proof-grounded highlights',
     '',
@@ -466,9 +466,8 @@ export function addAnswer(store, {
 }) {
   requireProfile(store, profileId);
   const questionText = String(question || '').trim();
-  const answerText = String(answer || '').trim();
+  let answerText = String(answer || '').trim();
   if (!questionText) throw Object.assign(new Error('addAnswer requires a question'), { code: 'missing_question' });
-  if (!answerText) throw Object.assign(new Error('addAnswer requires an answer'), { code: 'missing_answer' });
   if (!ANSWER_SENSITIVITIES.includes(sensitivity)) {
     throw Object.assign(new Error(`Unsupported answer sensitivity: ${sensitivity}`), { code: 'invalid_sensitivity' });
   }
@@ -482,6 +481,17 @@ export function addAnswer(store, {
       { code: 'answer_proof_required' }
     );
   }
+  const selectedProofs = ids.map(proofId => requireProofOwned(store, proofId, profileId));
+  const canonicalDraft = selectedProofs.map(proof => proof.summary).join('\n');
+  const normalized = value => String(value || '').toLowerCase().replace(/[^a-z0-9$%]+/g, ' ').trim();
+  if (answerText && normalized(answerText) !== normalized(canonicalDraft)
+      && !selectedProofs.some(proof => normalized(answerText) === normalized(proof.summary))) {
+    throw Object.assign(
+      new Error('Answer text is not an exact stored proof summary. Omit answer to generate from the selected proofPointIds, or use the stored proof wording exactly.'),
+      { code: 'answer_not_grounded' }
+    );
+  }
+  answerText = answerText || canonicalDraft;
   const answers = ensure(store, 'answers');
   const answerId = id('answer', `${profileId}:${questionText}`);
   const nowIso = now();

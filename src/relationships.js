@@ -547,10 +547,15 @@ export function draftInterviewStory(dataDir, args = {}) {
       f,
       { origin: 'agent', actor: 'agent', source: 'mcp_draft', sourceRef: proofPointIds.length ? proofPointIds.join(',') : null },
     ]));
-    story.grounded = proofPointIds.length > 0;
-    story.groundingStatus = proofPointIds.length
-      ? 'proof_linked_needs_human_verification'
-      : 'user_supplied_unverified';
+    const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9$%]+/g, ' ').trim();
+    const proofTexts = proofPointIds.map(proofId => normalize(store.proofPoints[proofId]?.summary));
+    const factualFields = ['situation', 'task', 'action', 'result'].map(fieldName => normalize(story[fieldName]));
+    story.grounded = proofTexts.length > 0 && factualFields.every(value => proofTexts.some(proof => proof.includes(value)));
+    story.groundingStatus = story.grounded
+      ? 'exact_proof_text_needs_human_verification'
+      : proofPointIds.length
+        ? 'proof_linked_unverified'
+        : 'user_supplied_unverified';
     stories[story.id] = story;
     outcome = { storyId: story.id, id: story.id, story, created: true };
     return store;

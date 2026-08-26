@@ -512,6 +512,18 @@ from the profile, persist through `review_queue` after MCP restart, and
 must not claim submit/send/apply/approval or invent metrics absent from
 the resume/proofs.
 
+`save_answer` is part of the same materials contract. It must require at
+least one profile-owned `proofPointId`, generate the stored answer text
+directly from the selected owned proof summaries when `answer` is omitted,
+and accept a supplied `answer` only when it is the exact selected proof
+wording. Arbitrary, paraphrased, or invented claims — including metrics
+absent from the selected proofs, even when an unrelated proof id is
+attached — must fail with `answer_not_grounded` and must not persist.
+Omitted or exact proof wording that is accepted must survive MCP restart
+via `list_answers`. Materials drafts and reusable answers must describe
+stored proofs as unverified proof candidates that require human
+verification; they must not label those candidates as already verified.
+
 ### B22 — Restart-persistent pipeline, tasks, networking, and interview prep
 
 After pursue, a real subprocess must persist at least one `list_tasks`
@@ -584,7 +596,7 @@ files. B1–B13 hashes above are unchanged.
 ```
 7cacf15e8e6f1e6060ed20e07482e77538aaa8f012e45e7dbf11a51e0d391e82  tests/jobsss-persistence.test.mjs
 ed13b3147f2e8bd8a5614fb71f1c244feb27675ebbe7daf42198746939b268ff  tests/jobsss-discovery.test.mjs
-21c23c737d7193641033d31039f429799f999ece40e2e8662a8b59de4b478b1c  tests/jobsss-workflows.test.mjs
+a8fb3bd6075acf815769c9541bab67c5e9e986d723d27c3b2052375a482bee78  tests/jobsss-workflows.test.mjs
 a5871dfac9fc0a99607e5c1798f21f4497dabf54758a66d942de27f8cc237161  tests/helpers/jobsss-live-mcp.mjs
 491bd2087db788c0c03128fc6a5d614c00166447ca2527291fefac59e9b94012  tests/fixtures/legacy-store-v1.json
 0e414582d38f96811682bad733353b3817198d3810d1e635ff2d086c23767dc8  tests/fixtures/ats-board.json
@@ -634,3 +646,20 @@ a5871dfac9fc0a99607e5c1798f21f4497dabf54758a66d942de27f8cc237161  tests/helpers/
   real-MCP tests/helpers/fixtures; recorded today's failing baseline
   (`# tests 27` `# pass 15` `# fail 12`, exit `1`) against the committed
   standalone runtime before freeze. Not done to make tests green.
+- 2026-08-26T08:06:11Z — **B21 reusable-answer grounding**. Reason: genuine
+  benchmark defect / documented contract omission. B21 already forbids
+  inventing metrics absent from resume/proofs, but named only
+  `tailor_resume` / `draft_cover_letter`. An independent auditor, and a
+  reviewer live MCP probe against committed HEAD, showed `save_answer`
+  accepted and persisted `I grew revenue by $10M and increased conversion
+  400%.` when linked only to the unrelated fixture 30% proof
+  (`proof_e5b40e9e7e6a019e`). The existing B21 test's `$10M|400%` assertion
+  covered resume/cover only, so that hole stayed green. Change: appended the
+  reusable-answer grounding contract and candidate-not-verified language to
+  B21; strengthened `tests/jobsss-workflows.test.mjs` with a real-MCP
+  fabrication/omit/exact/restart probe; updated only that file's frozen
+  hash. Recorded the new assertions failing against committed HEAD (exit `1`,
+  `save_answer schema must require owned proofPointIds`) before the
+  uncommitted product correction. Did not delete, rewrite, or weaken B1–B20
+  or B22–B25, nor the original B21 resume/cover requirements. Not done to
+  make tests green.

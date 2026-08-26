@@ -13,12 +13,14 @@ import {
   claimText,
   initializeRequest,
   isolate,
+  isRejected,
   jobFixture,
   listToolsRequest,
   mcp,
   parseToolValue,
   pickId,
   readStore,
+  rejectionBlob,
   requireOk,
   requireToolListed,
   resumeFixture
@@ -34,13 +36,29 @@ test('B21 materials are proof-grounded and persist across restart', async t => {
     callRequest(3, 'start', {}),
     callRequest(4, 'create_profile', { name: 'Materials Profile', resumePath, path: resumePath })
   ]);
-  const names = setup.frames.find(frame => frame.id === 2)?.result?.tools?.map(tool => tool.name) || [];
+  const listedTools = setup.frames.find(frame => frame.id === 2)?.result?.tools || [];
+  const names = listedTools.map(tool => tool.name);
   requireToolListed(names, 'tailor_resume');
   requireToolListed(names, 'draft_cover_letter');
+  requireToolListed(names, 'save_answer');
+  const saveAnswerTool = listedTools.find(tool => tool.name === 'save_answer');
+  const saveRequired = saveAnswerTool?.inputSchema?.required || [];
+  assert.ok(saveRequired.includes('profileId'), 'save_answer schema must require profileId');
+  assert.ok(saveRequired.includes('question'), 'save_answer schema must require question');
+  assert.ok(saveRequired.includes('proofPointIds'), 'save_answer schema must require owned proofPointIds');
+  assert.equal(
+    saveRequired.includes('answer'),
+    false,
+    'save_answer must allow omitting answer so the runtime can generate from selected proof summaries'
+  );
   requireOk(setup, 3, 'start');
   const created = requireOk(setup, 4, 'create_profile');
   const profileId = pickId(created, ['profileId', 'id']);
   const proofIds = (created.proofPoints || []).map(proof => proof.id).filter(Boolean);
+  const thirtyProof = (created.proofPoints || []).find(proof =>
+    String(proof.summary || '').includes('30%') || (proof.metrics || []).some(metric => String(metric).includes('30'))
+  );
+  assert.ok(thirtyProof?.id && thirtyProof.summary, `fixture resume must extract the 30% proof: ${JSON.stringify(created.proofPoints).slice(0, 800)}`);
   const imported = await mcp(ctx, [
     initializeRequest(1),
     callRequest(2, 'import_job', { profileId, path: jobPath, filePath: jobPath })
@@ -67,13 +85,93 @@ test('B21 materials are proof-grounded and persist across restart', async t => {
   assert.doesNotMatch(claimText(resume), /\b(submitted|sent|applied|approved)\b/);
   assert.doesNotMatch(claimText(cover), /\b(submitted|sent|applied|approved)\b/);
   assert.doesNotMatch(resumeBlob + coverBlob, /400%|\$10M|invented metric/i);
+  assert.doesNotMatch(
+    resumeBlob + coverBlob,
+    /verified experience|verified from the stored|verified proof/i,
+    'materials must not label unverified stored proof candidates as already verified'
+  );
+  assert.match(
+    resumeBlob + coverBlob,
+    /human verification required/i,
+    'materials must require human verification of stored proof candidates'
+  );
+
+  const fabricated = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'save_answer', {
+      profileId,
+      question: 'What is your biggest quantified win?',
+      answer: 'I grew revenue by $10M and increased conversion 400%.',
+      proofPointIds: [thirtyProof.id]
+    })
+  ]);
+  const fabFrame = fabricated.frames.find(frame => frame.id === 2);
+  const fabValue = parseToolValue(fabFrame);
+  assert.ok(isRejected(fabFrame, fabValue), `save_answer must reject fabricated metrics linked to an unrelated proof: ${JSON.stringify(fabFrame)}`);
+  assert.match(
+    rejectionBlob(fabFrame, fabValue),
+    /answer_not_grounded/,
+    `fabrication rejection must name answer_not_grounded: ${rejectionBlob(fabFrame, fabValue)}`
+  );
+  const storeAfterFab = readStore(ctx.dataDir);
+  const persistedAnswers = Object.values(storeAfterFab.answers || {});
+  assert.equal(
+    persistedAnswers.some(item => /\$10M|400%/.test(JSON.stringify(item))),
+    false,
+    `fabricated $10M/400% answer must not persist: ${JSON.stringify(persistedAnswers).slice(0, 800)}`
+  );
+
+  const paraphrased = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'save_answer', {
+      profileId,
+      question: 'Paraphrase the 30 percent win.',
+      answer: 'I roughly cut review work by about a third and also scaled revenue 400%.',
+      proofPointIds: [thirtyProof.id]
+    })
+  ]);
+  const paraFrame = paraphrased.frames.find(frame => frame.id === 2);
+  const paraValue = parseToolValue(paraFrame);
+  assert.ok(isRejected(paraFrame, paraValue), `save_answer must reject paraphrased claims: ${JSON.stringify(paraFrame)}`);
+  assert.match(rejectionBlob(paraFrame, paraValue), /answer_not_grounded/);
+
+  const omitted = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'save_answer', {
+      profileId,
+      question: 'Describe a time you reduced manual review.',
+      proofPointIds: [thirtyProof.id]
+    })
+  ]);
+  const omitValue = requireOk(omitted, 2, 'save_answer omitted answer generates from selected proofs');
+  assert.match(JSON.stringify(omitValue), new RegExp(thirtyProof.summary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(JSON.stringify(omitValue), /400%|\$10M/);
+
+  const exact = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'save_answer', {
+      profileId,
+      question: 'Give an example of a measurable result.',
+      answer: thirtyProof.summary,
+      proofPointIds: [thirtyProof.id]
+    })
+  ]);
+  const exactValue = requireOk(exact, 2, 'save_answer exact proof wording');
+  assert.match(JSON.stringify(exactValue), new RegExp(thirtyProof.summary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
   const restarted = await mcp(ctx, [
     initializeRequest(1),
-    callRequest(2, 'review_queue', { profileId })
+    callRequest(2, 'review_queue', { profileId }),
+    callRequest(3, 'list_answers', { profileId })
   ]);
   const queue = requireOk(restarted, 2, 'review_queue after materials');
   assert.match(JSON.stringify(queue), /resume|cover|artifact|draft/i);
+  const answers = requireOk(restarted, 3, 'list_answers after restart');
+  const answerBlob = JSON.stringify(answers);
+  assert.match(answerBlob, /Describe a time you reduced manual review/);
+  assert.match(answerBlob, /Give an example of a measurable result/);
+  assert.match(answerBlob, new RegExp(thirtyProof.summary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(answerBlob, /400%|\$10M/);
   assertNoJobosUse(ctx.trap, ctx.pluginBefore, ctx.jobAppBefore);
 });
 

@@ -257,8 +257,8 @@ export function deriveProjectionTargets(store) {
 
 /**
  * Redact environment secrets, sk- tokens, and private key material from any
- * derived, human-readable output. Canonical store.json is excluded from this
- * (it may retain resume text for scoring), but projections are secret-safe.
+ * durable or derived output. Ordinary resume/job text remains available for
+ * local scoring, while credential-shaped values are redacted everywhere.
  */
 export function redactSecrets(text) {
   let out = String(text);
@@ -634,7 +634,7 @@ export function commitStore(dataDir, { expectedRevision = null } = {}, mutate = 
         content: redactSecrets(JSON.stringify(target.value, null, 2)),
       })),
       // Canonical store is the last file renamed: it is the logical commit point.
-      { segments: [], abs: p, content: JSON.stringify(result, null, 2) },
+      { segments: [], abs: p, content: redactSecrets(JSON.stringify(result, null, 2)) },
     ];
     commitFilesTransaction(dir, writes);
     return { store: result, revision: result.revision, storePath: p };

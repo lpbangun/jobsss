@@ -331,10 +331,15 @@ export function applicationsPlan(dataDir, args = {}) {
   const fit = store.scores?.[jobId] || null;
   const application = store.applications?.[jobId] || { id: jobId, jobId, profileId, status: 'not_pursued', localOnly: true };
   const tasks = Object.values(store.tasks || {}).filter(task => task.profileId === profileId && task.jobId === jobId && task.status === 'open');
+  const terminal = new Set(['skipped', 'archived', 'withdrawn', 'rejected', 'ghosted']);
+  const isTerminal = terminal.has(application.status);
+  const nextActions = isTerminal
+    ? []
+    : [...new Set(tasks.map(task => task.text).concat(['human review', 'verify proof-grounded materials']))];
   return { ok: true, jobId, profileId, application,
-    plan: { jobId, profileId, status: application.status, readiness: fit ? 'ready_for_review' : 'needs_score',
+    plan: { jobId, profileId, status: application.status, readiness: isTerminal ? 'closed' : fit ? 'ready_for_review' : 'needs_score',
       score: fit ? { overall: fit.overall, scoreStatus: fit.scoreStatus } : null,
-      nextActions: tasks.map(task => task.text).concat(['human review', 'verify proof-grounded materials']) },
+      nextActions },
     blockers: [], warnings: [], message: 'Local pipeline plan; no external action was performed.' };
 }
 
@@ -344,7 +349,9 @@ export function reviewQueue(dataDir, args = {}) {
   requireProfile(store, profileId);
   const artifacts = listReviewArtifacts(store, { profileId }).artifacts;
   const jobs = Object.values(store.jobs).filter(job => job.profileId === profileId);
-  const fallback = jobs.filter(job => store.applications?.[job.id] || store.scores?.[job.id]).map(job => ({
+  const terminal = new Set(['skipped', 'archived', 'withdrawn', 'rejected', 'ghosted']);
+  const fallback = jobs.filter(job => (store.applications?.[job.id] || store.scores?.[job.id])
+      && !terminal.has(store.applications?.[job.id]?.status)).map(job => ({
     id: job.id, jobId: job.id, profileId, title: job.title, kind: 'job_review', status: 'needs_review',
   }));
   const queue = artifacts.length ? artifacts : fallback;

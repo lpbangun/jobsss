@@ -18,7 +18,10 @@ are preserved. B5 is corrected to the confirmed standalone launch contract.
 B6–B13 are the standalone live proofs. B14–B25 extend that bar for the
 confirmed JobSSS port round and must not delete, rewrite, or weaken B1–B13.
 B26–B29 extend that bar for the independent-auditor omissions and must not
-delete, rewrite, or weaken B1–B25.
+delete, rewrite, or weaken B1–B25. B26 and B27 are additionally strengthened
+for terminal skipped/archived `applications_plan` next actions and canonical
+`store.json` secret redaction without deleting, rewriting, or weakening
+B1–B25 or B28–B29.
 
 ---
 
@@ -192,6 +195,18 @@ B27 `save_job` follows `jobs/<id>` symlink and writes `job.json` outside
 `PLUGIN_DATA`; B28 marks `$10M`/`400%` title/reflection `grounded=true`
 when STAR text matches a proof; B29 `tailor_resume` copies every proof and
 returns no extracted requirements.
+
+### Iteration-2 strengthening baseline recorded 2026-08-28 against committed HEAD `bc5c86c`
+
+B1–B25 and B28–B29 pass on the committed plugin. Strengthened B26/B27
+assertions fail against that same runtime using real `PLUGIN_DATA` stores and
+real `./bin/jobsss` MCP subprocesses. Missing product behavior, not benchmark
+defects. Combined frozen command: `# tests 31` `# pass 29` `# fail 2`, exit
+`1`. Observed failures: B26 `applications_plan` for a skipped job returns
+nextActions `human review` and `verify proof-grounded materials` after tasks
+were cancelled; B27 `import_job` of `sk-ingestedcanonicalsecretvalue99` plus
+the environment secret persists both tokens in canonical `store.json` while
+ordinary resume/job content remains.
 
 ---
 
@@ -591,7 +606,11 @@ application to archived without marking the job saved. `pursue_job` must keep
 `job.saved=true`, record a pursued application, and persist tasks. A restarted
 MCP process against the same `PLUGIN_DATA` still lists those job, application,
 and task facts via `list_jobs` / `list_tasks` / `applications_plan`. No call
-may claim submitted/sent/applied/approved.
+may claim submitted/sent/applied/approved. `applications_plan` for a terminal
+skipped or archived record must expose no active preparation next actions
+(human-review, material tailoring or verification, or other open pipeline
+prep). Cancelled tasks must not reappear as next actions. Pursued jobs may
+still list local next actions.
 
 ### B27 — Serialized, atomic, redacted projection writes reject symlink escapes
 
@@ -608,6 +627,12 @@ The rejected write must not bump `store.json` revision, must not persist
 `jobs/<id>/job.json` or `applications/<id>/application.json`. After a
 successful `save_job`, those two projection files exist as regular files inside
 `PLUGIN_DATA`. B20 still forbids job/application folders for unsaved discovery.
+Every durable write, including canonical `store.json`, must redact environment
+secret values and `sk-` tokens. A synthetic `sk-` or environment secret ingested
+into canonical job or profile content must not appear in `store.json`. Ordinary
+resume and job content must remain usable for scoring. Canonical `store.json`
+may still retain resume text (B17). Projection secret-safety, atomicity, lock,
+and symlink-escape rules above remain required.
 
 ### B28 — Interview-story grounding includes title and reflection
 
@@ -679,7 +704,7 @@ SHA-256 of reviewer-owned auditor-omission files. Implementers must not
 change these files. B1–B25 hashes above are unchanged.
 
 ```
-278b1773eb55e4be89d82da2727c934959efca2c0b7c19818ef4e0ec57006d04  tests/jobsss-integrity.test.mjs
+b47dd8c003decfb58f7874819e696ea6e8e1c72d5c4243910defc98bb6605b88  tests/jobsss-integrity.test.mjs
 ```
 
 ## Correction log
@@ -758,3 +783,22 @@ change these files. B1–B25 hashes above are unchanged.
   recorded today's failing baseline (`# tests 31` `# pass 27` `# fail 4`,
   exit `1`) against committed HEAD before any product correction. Not done to
   make tests green.
+- 2026-08-28T04:14:19Z — **B26/B27 iteration-2 strengthening**. Reason:
+  genuine documented contract omissions against committed HEAD `bc5c86c`.
+  An independent completion audit, and a reviewer live MCP probe, showed:
+  (1) `skip_job`/`archive_job` cancel open tasks, but `applications_plan`
+  still concatenates active `human review` / `verify proof-grounded materials`
+  next actions for those terminal records; (2) `commitStore` redacts
+  projections but writes canonical `store.json` via raw `JSON.stringify`, so
+  a synthetic `sk-` / environment secret ingested into job content persists
+  in `store.json` while ordinary resume/job content remains. B1–B25 and
+  B28–B29 stayed green. Change: preserved B1–B25, B28–B29, and every existing
+  B26/B27 requirement; appended terminal skipped/archived next-action
+  coherence to B26 and every-durable-write secret redaction of `store.json`
+  to B27; strengthened `tests/jobsss-integrity.test.mjs`; updated only that
+  file's frozen hash from
+  `278b1773eb55e4be89d82da2727c934959efca2c0b7c19818ef4e0ec57006d04` to
+  `b47dd8c003decfb58f7874819e696ea6e8e1c72d5c4243910defc98bb6605b88`.
+  Recorded today's failing baseline (`# tests 31` `# pass 29` `# fail 2`,
+  exit `1`) against committed HEAD before any product correction. Not done
+  to make tests green.

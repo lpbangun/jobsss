@@ -145,6 +145,18 @@ function writeJobLifecycle(store, job, { status, saved, savedAt = null, skippedA
   return job;
 }
 
+function retireJobArtifacts(store, { jobId, profileId, reason }) {
+  const retiredAt = now();
+  for (const artifact of Object.values(ensure(store, 'artifacts'))) {
+    if (artifact.jobId === jobId && artifact.profileId === profileId && !artifact.retiredAt) {
+      artifact.status = `retired_${reason}`;
+      artifact.retiredAt = retiredAt;
+      artifact.retiredReason = reason;
+      artifact.updatedAt = retiredAt;
+    }
+  }
+}
+
 const LOCAL_NOTE = 'Recorded locally under PLUGIN_DATA. No submission, sending, or other external action was performed; human review is required before any outside step.';
 
 /**
@@ -249,6 +261,7 @@ export function skipJob(store, { jobId, profileId }) {
   const application = writeApplication(store, jobId, profileId, { status: 'skipped', skippedAt: at });
   writeJobLifecycle(store, job, { status: 'skipped', saved: false, skippedAt: at, updatedAt: at });
   syncTasksForApplication(store, { jobId, profileId, status: 'skipped' });
+  retireJobArtifacts(store, { jobId, profileId, reason: 'skipped' });
   return {
     ok: true,
     jobId,
@@ -267,6 +280,7 @@ export function archiveJob(store, { jobId, profileId }) {
   const application = writeApplication(store, jobId, profileId, { status: 'archived', archivedAt: at });
   writeJobLifecycle(store, job, { status: 'archived', saved: false, archivedAt: at, updatedAt: at });
   syncTasksForApplication(store, { jobId, profileId, status: 'archived' });
+  retireJobArtifacts(store, { jobId, profileId, reason: 'archived' });
   return {
     ok: true,
     jobId,
@@ -334,6 +348,7 @@ export function updateApplicationStatus(store, { jobId, applicationId, profileId
   });
   writeJobLifecycle(store, job, { status: value, saved: !NOT_SAVED_LOCAL_STATUSES.has(value) });
   syncTasksForApplication(store, { jobId, profileId, status: value });
+  if (NOT_SAVED_LOCAL_STATUSES.has(value)) retireJobArtifacts(store, { jobId, profileId, reason: value });
   return {
     ok: true,
     jobId,
@@ -726,7 +741,7 @@ export function createArtifact(store, { jobId, profileId, kind = 'note', title, 
 export function listReviewArtifacts(store, { profileId }) {
   requireProfile(store, profileId);
   const artifacts = Object.values(ensure(store, 'artifacts'))
-    .filter(artifact => artifact.profileId === profileId)
+    .filter(artifact => artifact.profileId === profileId && !artifact.retiredAt)
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   return { ok: true, profileId, artifacts, items: artifacts, queue: artifacts, count: artifacts.length };
 }

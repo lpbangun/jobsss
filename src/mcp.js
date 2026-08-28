@@ -2,7 +2,7 @@
 // Framing/lifecycle concepts are attributed to JobOS src/mcp.js and are
 // reimplemented here for the standalone PLUGIN_DATA runtime.
 import * as domain from './domain.js';
-import { ensureDataDir } from './store.js';
+import { ensureDataDir, redactSecrets } from './store.js';
 
 const schema = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: true });
 const string = { type: 'string' };
@@ -77,7 +77,7 @@ const HANDLERS = Object.freeze({
   interview_debrief_handoff: domain.interviewDebriefHandoff, preview_sync: domain.previewSync,
 });
 
-function result(value) { return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] }; }
+function result(value) { return { content: [{ type: 'text', text: redactSecrets(JSON.stringify(value, null, 2)) }] }; }
 function parseDataDir(argv) {
   const idx = argv.indexOf('--data');
   if (idx !== -1 && argv[idx + 1]) return argv[idx + 1];

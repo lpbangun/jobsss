@@ -89,6 +89,42 @@ function draftContent(value) {
   ].filter(item => typeof item === 'string').join('\n');
 }
 
+function planNextActions(value) {
+  const buckets = [
+    value?.plan?.nextActions,
+    value?.nextActions,
+    value?.plan?.actions,
+    value?.actions,
+    value?.plan?.next_actions
+  ];
+  const actions = [];
+  for (const raw of buckets) {
+    if (Array.isArray(raw)) actions.push(...raw);
+    else if (typeof raw === 'string' && raw.trim()) actions.push(raw);
+  }
+  return actions;
+}
+
+function nextActionBlob(actions) {
+  return actions.map(item => {
+    if (typeof item === 'string') return item;
+    if (!item || typeof item !== 'object') return String(item);
+    return [item.task, item.text, item.action, item.kind, item.message].filter(Boolean).join(' ');
+  }).join('\n');
+}
+
+const ACTIVE_PREPARATION_NEXT = /human review|verify proof-grounded materials|tailor resume|cover letter|prepare materials|next human step|proof point cited/i;
+
+function assertTerminalPlanHasNoActivePrep(plan, label) {
+  const actions = planNextActions(plan);
+  const blob = nextActionBlob(actions);
+  assert.doesNotMatch(
+    blob,
+    ACTIVE_PREPARATION_NEXT,
+    `${label} must expose no active preparation next actions: ${blob.slice(0, 800) || JSON.stringify(plan).slice(0, 800)}`
+  );
+}
+
 async function startProfile(ctx, name, extraCalls = []) {
   const resumePath = resumeFixture();
   const setup = await mcp(ctx, [
@@ -181,7 +217,8 @@ test('B26 save/skip/archive/pursue update job.saved/job.status plus application/
   const restarted = await mcp(ctx, [
     initializeRequest(1),
     callRequest(2, 'list_jobs', { profileId }),
-    callRequest(3, 'list_tasks', { profileId })
+    callRequest(3, 'list_tasks', { profileId }),
+    callRequest(4, 'applications_plan', { jobId: jobB, profileId })
   ]);
   const listed = asList(requireOk(restarted, 2, 'list_jobs after save/skip'));
   const listedA = listed.find(job => pickId(job, ['jobId', 'id']) === jobA);
@@ -191,6 +228,9 @@ test('B26 save/skip/archive/pursue update job.saved/job.status plus application/
   assert.match(String(listedB?.status || ''), /archived|skipped/i, `skip must survive restart: ${JSON.stringify(listedB)}`);
   const saveTasks = asList(requireOk(restarted, 3, 'list_tasks after save')).filter(task => JSON.stringify(task).includes(jobA));
   assert.ok(saveTasks.length >= 1, `save_job must persist at least one task for the saved job: ${JSON.stringify(saveTasks)}`);
+  const skippedPlan = requireOk(restarted, 4, 'applications_plan after skip');
+  assert.match(String(skippedPlan.application?.status || skippedPlan.plan?.status || ''), /skipped|archived/i, `skipped applications_plan status: ${JSON.stringify(skippedPlan).slice(0, 400)}`);
+  assertTerminalPlanHasNoActivePrep(skippedPlan, 'skipped applications_plan');
 
   const later = await mcp(ctx, [
     initializeRequest(1),
@@ -215,7 +255,8 @@ test('B26 save/skip/archive/pursue update job.saved/job.status plus application/
     initializeRequest(1),
     callRequest(2, 'list_jobs', { profileId }),
     callRequest(3, 'list_tasks', { profileId }),
-    callRequest(4, 'applications_plan', { jobId: jobA, profileId })
+    callRequest(4, 'applications_plan', { jobId: jobA, profileId }),
+    callRequest(5, 'applications_plan', { jobId: jobB, profileId })
   ]);
   const relisted = asList(requireOk(finalRestart, 2, 'list_jobs after archive/pursue'));
   const relistedA = relisted.find(job => pickId(job, ['jobId', 'id']) === jobA);
@@ -227,6 +268,10 @@ test('B26 save/skip/archive/pursue update job.saved/job.status plus application/
   const plan = requireOk(finalRestart, 4, 'applications_plan after pursue');
   assert.match(JSON.stringify(plan), /pursued/i);
   assert.doesNotMatch(claimText(plan), /\b(submitted|sent|applied|approved)\b/);
+  const archivedPlan = requireOk(finalRestart, 5, 'applications_plan after archive');
+  assert.match(String(archivedPlan.application?.status || archivedPlan.plan?.status || ''), /archived/i, `archived applications_plan status: ${JSON.stringify(archivedPlan).slice(0, 400)}`);
+  assertTerminalPlanHasNoActivePrep(archivedPlan, 'archived applications_plan');
+  assert.doesNotMatch(claimText(archivedPlan), /\b(submitted|sent|applied|approved)\b/);
   assertNoJobosUse(ctx.trap, ctx.pluginBefore, ctx.jobAppBefore);
 });
 
@@ -335,6 +380,47 @@ test('B27 projection writes are serialized, atomic, redacted, and reject nested 
   assert.doesNotMatch(leaked, /"resumeText"\s*:/);
   const tmpLeftovers = listRelFiles(ctx.dataDir).filter(rel => /\.tmp\./.test(rel) || rel.endsWith('.tmp'));
   assert.deepEqual(tmpLeftovers, [], `atomic projection writes must not leave tmp leftovers: ${tmpLeftovers.join(', ')}`);
+
+  const INGESTED_SK = 'sk-ingestedcanonicalsecretvalue99';
+  const envSecret = 'sk-live-jobsss-integrity-secret';
+  const ingestedText = [
+    '# Staff Product Manager',
+    'Company: Example Learning Co',
+    'Location: Remote',
+    '',
+    'Lead discovery, roadmap, and stakeholder product management.',
+    `Internal token ${INGESTED_SK}`,
+    `Provider ${envSecret}`
+  ].join('\n');
+  const ingested = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'import_job', { profileId, text: ingestedText, content: ingestedText })
+  ]);
+  const ingestedJob = requireOk(ingested, 2, 'import_job must ingest ordinary job content plus a synthetic secret');
+  const ingestedJobId = pickId(ingestedJob, ['jobId', 'id']);
+  assert.ok(ingestedJobId, `import_job must return a job id: ${JSON.stringify(ingestedJob).slice(0, 400)}`);
+  const storeAbs = path.join(ctx.dataDir, 'store.json');
+  assert.equal(existsSync(storeAbs), true, 'canonical store.json must exist after ingest');
+  const storeText = readFileSync(storeAbs, 'utf8');
+  const storeObj = JSON.parse(storeText);
+  assert.doesNotMatch(storeText, /sk-ingestedcanonicalsecretvalue99/);
+  assert.doesNotMatch(storeText, /sk-live-jobsss-integrity-secret/);
+  assert.doesNotMatch(storeText, /sk-[A-Za-z0-9]{8,}/);
+  assert.match(storeText, /Staff Product Manager/);
+  assert.match(storeText, /Example Learning Co/);
+  assert.match(storeText, /discovery/);
+  const ingestedRecord = storeJob(storeObj, ingestedJobId);
+  assert.ok(ingestedRecord, 'ingested job must remain in canonical store.json');
+  assert.match(
+    `${ingestedRecord.title || ''}\n${ingestedRecord.company || ''}\n${ingestedRecord.description || ''}`,
+    /Staff Product Manager|Example Learning Co|discovery/i,
+    'ordinary job content must remain usable in store.json'
+  );
+  const profiles = Object.values(storeObj.profiles || {});
+  assert.ok(
+    profiles.some(profile => /Jordan Example|30%|Product Manager/i.test(JSON.stringify(profile))),
+    'ordinary resume/profile content must remain usable in store.json'
+  );
   assertNoJobosUse(ctx.trap, ctx.pluginBefore, ctx.jobAppBefore);
 });
 

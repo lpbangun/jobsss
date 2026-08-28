@@ -17,6 +17,8 @@ This lock supersedes the 2026-08-24 JobOS-on-PATH foundation bar. B1–B4
 are preserved. B5 is corrected to the confirmed standalone launch contract.
 B6–B13 are the standalone live proofs. B14–B25 extend that bar for the
 confirmed JobSSS port round and must not delete, rewrite, or weaken B1–B13.
+B26–B29 extend that bar for the independent-auditor omissions and must not
+delete, rewrite, or weaken B1–B25.
 
 ---
 
@@ -31,6 +33,7 @@ confirmed JobSSS port round and must not delete, rewrite, or weaken B1–B13.
 | `tests/jobsss-persistence.test.mjs` | reviewer | reviewer only |
 | `tests/jobsss-discovery.test.mjs` | reviewer | reviewer only |
 | `tests/jobsss-workflows.test.mjs` | reviewer | reviewer only |
+| `tests/jobsss-integrity.test.mjs` | reviewer | reviewer only |
 | `tests/helpers/jobsss-live-mcp.mjs` | reviewer | reviewer only |
 | `tests/fixtures/profile-resume.md` | reviewer | reviewer only |
 | `tests/fixtures/job-posting.md` | reviewer | reviewer only |
@@ -130,7 +133,8 @@ node --test --test-concurrency=1 \
   tests/jobsss-journey.test.mjs \
   tests/jobsss-persistence.test.mjs \
   tests/jobsss-discovery.test.mjs \
-  tests/jobsss-workflows.test.mjs
+  tests/jobsss-workflows.test.mjs \
+  tests/jobsss-integrity.test.mjs
 ```
 
 ### Expected exit code
@@ -139,12 +143,12 @@ node --test --test-concurrency=1 \
 
 ### What pass means
 
-Exit `0` is necessary and not sufficient. Every check B1–B25 below must hold
+Exit `0` is necessary and not sufficient. Every check B1–B29 below must hold
 on the real files and on a real bundled MCP subprocess. Invented output,
 mocks of the runtime, skipped required checks, or touching real user JobOS
 state are a fail.
 
-No allowed skip. B10–B12 and B14–B24 are required even when `jobos` is absent.
+No allowed skip. B10–B12 and B14–B29 are required even when `jobos` is absent.
 
 ### Gate 0 baseline recorded against today's committed foundation
 
@@ -175,6 +179,19 @@ are run (`# tests 15` `# pass 15` `# fail 0`). B14–B25 are frozen failing
 against that same runtime using real `PLUGIN_DATA` stores and real
 `./bin/jobsss` MCP subprocesses. Missing product behavior, not benchmark
 defects. Exact new-file fail counts are recorded in the correction log.
+
+### Auditor-omission baseline recorded 2026-08-28 against committed HEAD `a7dea90`
+
+B1–B25 pass on the committed plugin (`# tests 27` `# pass 27` `# fail 0`).
+B26–B29 are frozen failing against that same runtime using real
+`PLUGIN_DATA` stores and real `./bin/jobsss` MCP subprocesses. Missing
+product behavior, not benchmark defects. Combined frozen command:
+`# tests 31` `# pass 27` `# fail 4`, exit `1`. Observed failures:
+B26 `save_job` leaves discovered `job.saved=false` / `job.status=new`;
+B27 `save_job` follows `jobs/<id>` symlink and writes `job.json` outside
+`PLUGIN_DATA`; B28 marks `$10M`/`400%` title/reflection `grounded=true`
+when STAR text matches a proof; B29 `tailor_resume` copies every proof and
+returns no extracted requirements.
 
 ---
 
@@ -561,11 +578,66 @@ slash sub-intents `/jobsss network`, `/jobsss interview`, or `/jobsss schedule`
 may claim those domains. B6 blocked-language for network/interview/
 scheduling/browser remains required.
 
+### B26 — Coherent save/skip/archive/pursue job, application, and task state
+
+A real bundled MCP subprocess with JobOS absent from `PATH` must keep
+`save_job`, `skip_job`, `archive_job`, and `pursue_job` coherent. Discovered
+jobs start unsaved (`job.saved=false`). `save_job` must set `job.saved=true`
+and `job.status=saved`, persist a profile-owned application in a saved local
+status, and persist at least one task. `skip_job` must not leave the job
+saved and must set `job.status` to `archived` or `skipped` with a matching
+application record. `archive_job` must set `job.status=archived` and the
+application to archived without marking the job saved. `pursue_job` must keep
+`job.saved=true`, record a pursued application, and persist tasks. A restarted
+MCP process against the same `PLUGIN_DATA` still lists those job, application,
+and task facts via `list_jobs` / `list_tasks` / `applications_plan`. No call
+may claim submitted/sent/applied/approved.
+
+### B27 — Serialized, atomic, redacted projection writes reject symlink escapes
+
+Every aggregate (`PLUGIN_DATA/projections/`), job (`PLUGIN_DATA/jobs/<id>/`),
+and application (`PLUGIN_DATA/applications/<id>/`) projection write must occur
+under the same exclusive `jobsss.lock` serialization as the canonical store,
+persist atomically (no `.tmp` leftovers), and stay secret-safe: no `resumeText`
+dumps, no env secret values, no `sk-` tokens. Nested symlink escapes from
+`projections/`, `jobs/`, or `applications/` that resolve outside `PLUGIN_DATA`
+must be rejected with an explicit symlink/escape/unsafe/forbidden/path error.
+The rejected write must not bump `store.json` revision, must not persist
+`job.saved`, and must not create files in the symlink target. A live
+`PLUGIN_DATA/jobsss.lock` must likewise fail mutating tools without emitting
+`jobs/<id>/job.json` or `applications/<id>/application.json`. After a
+successful `save_job`, those two projection files exist as regular files inside
+`PLUGIN_DATA`. B20 still forbids job/application folders for unsaved discovery.
+
+### B28 — Interview-story grounding includes title and reflection
+
+`draft_interview_story` must account truthfully for every content field:
+`title`, `situation`, `task`, `action`, `result`, and `reflection`. A draft
+whose STAR fields copy owned proof text but whose `title` or `reflection`
+fabricate metrics (`$10M`, `400%`) must not be marked `grounded=true` and must
+not claim exact/full grounding. Partial fabricated STAR text must not be marked
+grounded. Exact owned-proof wording on every content field may be grounded
+pending human verification and must survive `list_interview_stories` after MCP
+restart. Fabricated fields that persist must remain ungrounded after restart.
+
+### B29 — Tailoring extracts requirements, selects relevant proof, reports gaps
+
+`tailor_resume` and `draft_cover_letter` must extract job requirements from the
+posting, rank and select relevant profile-owned proof rather than copy every
+proof, organize that evidence in the draft, and report coverage gaps. An
+unrelated owned proof (commercial fishing / salmon tonnage) must not be selected
+or copied into the draft body. Extracted requirements must reflect the posting
+(discovery, roadmap, stakeholder, product management, or equivalent). Coverage
+gaps must be non-empty when the resume does not cover every requirement. Drafts
+must not invent metrics absent from owned proofs (`400%`, `$10M`) and must not
+claim submit/send/apply/approval. B21 resume/cover proof-citation and
+reusable-answer grounding remain required.
+
 ---
 
 ## Verdict
 
-**Pass** only if the frozen validation command exits `0` and B1–B25 hold on
+**Pass** only if the frozen validation command exits `0` and B1–B29 hold on
 inspected files and subprocess output.
 
 **Fail** if any required file is missing, any check mismatches, any command
@@ -601,6 +673,13 @@ a5871dfac9fc0a99607e5c1798f21f4497dabf54758a66d942de27f8cc237161  tests/helpers/
 491bd2087db788c0c03128fc6a5d614c00166447ca2527291fefac59e9b94012  tests/fixtures/legacy-store-v1.json
 0e414582d38f96811682bad733353b3817198d3810d1e635ff2d086c23767dc8  tests/fixtures/ats-board.json
 5c33f1cdd8cc28d07eec4365593782ce5212f576d359a8caf51e8f3e8f82b070  tests/fixtures/contact-card.md
+```
+
+SHA-256 of reviewer-owned auditor-omission files. Implementers must not
+change these files. B1–B25 hashes above are unchanged.
+
+```
+278b1773eb55e4be89d82da2727c934959efca2c0b7c19818ef4e0ec57006d04  tests/jobsss-integrity.test.mjs
 ```
 
 ## Correction log
@@ -662,4 +741,20 @@ a5871dfac9fc0a99607e5c1798f21f4497dabf54758a66d942de27f8cc237161  tests/helpers/
   `save_answer schema must require owned proofPointIds`) before the
   uncommitted product correction. Did not delete, rewrite, or weaken B1–B20
   or B22–B25, nor the original B21 resume/cover requirements. Not done to
+  make tests green.
+- 2026-08-28T03:43:00Z — **B26–B29 independent-auditor omissions**. Reason:
+  genuine documented contract omissions against committed HEAD `a7dea90`.
+  A reviewer live MCP probe showed: (1) `save_job`/`skip_job`/`archive_job`/
+  `pursue_job` update application/tasks but leave discovered `job.saved=false`
+  and `job.status=new`; (2) `jobs/<id>` and `applications/` projection writes
+  run after lock release, follow nested symlinks, and write `job.json` outside
+  `PLUGIN_DATA` while still persisting the store write; (3) `draft_interview_story`
+  marks `grounded=true` when STAR fields match a proof even if `title` is
+  `I grew revenue by $10M in one quarter.` and `reflection` claims `400%`;
+  (4) `tailor_resume`/`draft_cover_letter` copy every owned proof, including an
+  unrelated fishing-vessel proof, and return no extracted requirements or
+  coverage gaps. B1–B25 stayed green. Change: preserved B1–B25 and every
+  existing test/hash; appended B26–B29 and `tests/jobsss-integrity.test.mjs`;
+  recorded today's failing baseline (`# tests 31` `# pass 27` `# fail 4`,
+  exit `1`) against committed HEAD before any product correction. Not done to
   make tests green.

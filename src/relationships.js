@@ -543,14 +543,31 @@ export function draftInterviewStory(dataDir, args = {}) {
     const stories = ensureCollection(store, 'interviewStories');
     const story = makeInterviewStory(profileId, args);
     story.proofPointIds = proofPointIds;
-    story.fieldProvenance = Object.fromEntries(STORY_FIELDS.map(f => [
-      f,
-      { origin: 'agent', actor: 'agent', source: 'mcp_draft', sourceRef: proofPointIds.length ? proofPointIds.join(',') : null },
-    ]));
     const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9$%]+/g, ' ').trim();
-    const proofTexts = proofPointIds.map(proofId => normalize(store.proofPoints[proofId]?.summary));
-    const factualFields = ['situation', 'task', 'action', 'result'].map(fieldName => normalize(story[fieldName]));
-    story.grounded = proofTexts.length > 0 && factualFields.every(value => proofTexts.some(proof => proof.includes(value)));
+    const proofEntries = proofPointIds
+      .map(proofId => ({ proofId, text: normalize(store.proofPoints[proofId]?.summary) }))
+      .filter(entry => entry.text);
+    // Grounding evaluates every content field (title, situation, task, action,
+    // result, reflection). A field is grounded only when its normalized text is
+    // contained in a specific owned proof summary. Any fabricated or partial
+    // field stays unverified and cites no unrelated proof id.
+    story.fieldEvidence = Object.fromEntries(STORY_FIELDS.map(fieldName => {
+      const normalizedField = normalize(story[fieldName]);
+      const matching = normalizedField ? proofEntries.filter(entry => entry.text.includes(normalizedField)) : [];
+      return [fieldName, {
+        status: matching.length ? 'grounded' : 'unverified',
+        matchedProofPointIds: matching.map(entry => entry.proofId),
+        supportedByProofText: matching.length > 0,
+      }];
+    }));
+    story.fieldProvenance = Object.fromEntries(STORY_FIELDS.map(fieldName => {
+      const matched = story.fieldEvidence[fieldName].matchedProofPointIds;
+      return [fieldName, {
+        origin: 'agent', actor: 'agent', source: 'mcp_draft',
+        sourceRef: matched.length ? matched.join(',') : null,
+      }];
+    }));
+    story.grounded = proofEntries.length > 0 && STORY_FIELDS.every(fieldName => story.fieldEvidence[fieldName].supportedByProofText);
     story.groundingStatus = story.grounded
       ? 'exact_proof_text_needs_human_verification'
       : proofPointIds.length

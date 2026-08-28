@@ -152,16 +152,107 @@ export function loadStore(dataDir) {
   return normalizeStore(readStoreFile(p));
 }
 
-function writeStoreAtomic(dir, store) {
-  const p = path.join(dir, 'store.json');
-  const tmp = `${p}.tmp.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
-  fs.writeFileSync(tmp, JSON.stringify(store, null, 2), 'utf8');
-  fs.renameSync(tmp, p);
-  return p;
+/**
+ * Atomic temp+rename file write. The temp file lives next to the target so the
+ * rename stays on the same filesystem. On any failure the temp file is removed
+ * (best effort) so a failed projection never leaves partial/tmp artifacts.
+ */
+export function writeFileAtomic(filePath, content) {
+  const tmp = `${filePath}.tmp.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+  try {
+    fs.writeFileSync(tmp, content, 'utf8');
+    fs.renameSync(tmp, filePath);
+  } catch (error) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* best effort cleanup */ }
+    throw error;
+  }
+  return filePath;
 }
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * B27 — projection path confinement (BENCHMARK.md B27).
+ *
+ * Every projection is written beneath the real (non-symlinked) PLUGIN_DATA
+ * directory while the store lock is held. Before any canonical mutation is
+ * persisted, each directory segment of every projection target is checked
+ * with lstat (no follow): an existing symlink/junction, a non-directory
+ * component, or a component whose realpath escapes PLUGIN_DATA rejects the
+ * whole transaction, so a rejected escape never bumps `revision` or changes
+ * state. Missing components are safe to create fresh (their validated parent
+ * is confined and we hold the exclusive write lock). The leaf file itself is
+ * written with temp+rename (see `assertProjectionTargetSafe`).
+ */
+function assertProjectionPathSafe(dir, segments) {
+  let current = dir;
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    let stat;
+    try {
+      stat = fs.lstatSync(current);
+    } catch (error) {
+      if (error.code === 'ENOENT') continue; // fresh path under a validated parent
+      throw error;
+    }
+    if (stat.isSymbolicLink()) {
+      throw Object.assign(
+        new Error(`Projection path ${current} is a symlink; refusing to write outside PLUGIN_DATA.`),
+        { code: 'unsafe_projection_path', details: { path: current } }
+      );
+    }
+    if (!stat.isDirectory()) {
+      throw Object.assign(
+        new Error(`Projection path ${current} is not a directory; refusing to write a projection there.`),
+        { code: 'unsafe_projection_path', details: { path: current } }
+      );
+    }
+    const real = fs.realpathSync(current);
+    if (real !== dir && !real.startsWith(`${dir}${path.sep}`)) {
+      throw Object.assign(
+        new Error(`Projection path ${current} resolves outside PLUGIN_DATA.`),
+        { code: 'unsafe_projection_path', details: { path: current, real } }
+      );
+    }
+  }
+}
+
+const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Derive the indexed (non-aggregate) projection targets from a committed store.
+ * - `jobs/<id>/job.json` for every job that was explicitly acted on: an
+ *   untracked discovery (`saved:false` with no application record) never gets
+ *   a folder (B20); any saved/pursued/imported job or any job with a local
+ *   application record does.
+ * - `applications/<jobId>/application.json` for every local application record.
+ *
+ * Exported so the parent layer can rely on this one transaction owning every
+ * durable and derived write.
+ */
+export function deriveProjectionTargets(store) {
+  const targets = [];
+  const applications = store.applications || {};
+  for (const job of Object.values(store.jobs || {})) {
+    if (!job || !job.id) continue;
+    if (!SAFE_SEGMENT.test(String(job.id))) {
+      throw Object.assign(new Error(`Unsafe job projection segment: ${job.id}`), { code: 'unsafe_projection_path', details: { path: job.id } });
+    }
+    const explicit = job.saved === true || Boolean(applications[job.id]);
+    if (explicit) targets.push({ segments: ['jobs', String(job.id), 'job.json'], value: job });
+  }
+  for (const app of Object.values(applications)) {
+    if (!app) continue;
+    const jobId = app.jobId || app.id;
+    if (!jobId) continue;
+    if (!SAFE_SEGMENT.test(String(jobId))) {
+      throw Object.assign(new Error(`Unsafe application projection segment: ${jobId}`), { code: 'unsafe_projection_path', details: { path: jobId } });
+    }
+    targets.push({ segments: ['applications', String(jobId), 'application.json'], value: app });
+  }
+  return targets;
 }
 
 /**
@@ -172,7 +263,7 @@ function escapeRegExp(value) {
 export function redactSecrets(text) {
   let out = String(text);
   for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value !== 'string' || !value) continue;
+    if (typeof value !== 'string' || value.length < 8) continue;
     if (/(?:secret|token|api[_-]?key|passwd|password|auth|private)/i.test(key)) {
       out = out.replace(new RegExp(escapeRegExp(value), 'g'), '[redacted]');
     }
@@ -188,9 +279,12 @@ function safeProfile(profile) {
   return Object.fromEntries(Object.entries(profile).filter(([key]) => key !== 'resumeText'));
 }
 
-function writeProjections(dir, store) {
-  const projDir = path.join(dir, 'projections');
-  fs.mkdirSync(projDir, { recursive: true });
+/**
+ * Build the aggregate projection payloads (`projections/*` including the
+ * audit trail) as write descriptors. Nothing touches disk here; the staged
+ * multi-file transaction performs all writes under the store lock.
+ */
+function buildAggregateProjectionWrites(store) {
   const counts = {};
   for (const name of COLLECTIONS) {
     counts[name] = Object.keys(store[name] || {}).length;
@@ -221,11 +315,10 @@ function writeProjections(dir, store) {
       preparation: Object.values(store.interviewPrep || {}),
     },
   };
+  const writes = [];
   for (const [name, value] of Object.entries(projections)) {
-    const file = path.join(projDir, name);
-    fs.writeFileSync(file, redactSecrets(JSON.stringify(value, null, 2)), 'utf8');
+    writes.push({ segments: ['projections', name], content: redactSecrets(JSON.stringify(value, null, 2)) });
   }
-  // Human-readable audit/migration trail.
   const trail = (store.audit || []).map(entry =>
     `- ${entry.createdAt} ${entry.event}${entry.fromVersion != null ? ` from v${entry.fromVersion}` : ''}`
   );
@@ -236,7 +329,8 @@ function writeProjections(dir, store) {
     `Updated: ${store.updatedAt}\n\n` +
     `${trail.join('\n')}\n`
   );
-  fs.writeFileSync(path.join(projDir, 'audit.md'), auditMd, 'utf8');
+  writes.push({ segments: ['projections', 'audit.md'], content: auditMd });
+  return writes;
 }
 
 function bumpMeta(store) {
@@ -252,27 +346,37 @@ function incrementRevision(store) {
 }
 
 /**
- * Backward-compatible raw writer. Loads via commitStore() for serialized,
- * lock-checked, stale-safe writes; this variant simply stamps schema/revision
- * and persists atomically under PLUGIN_DATA. Kept for existing callers.
+ * Backward-compatible snapshot writer. Persists a caller-supplied store
+ * through the serialized, locked, stale-safe transaction.
  *
- * Accepts optional { expectedRevision } to reject stale updates.
+ * Accepts optional `expectedRevision`; when omitted, it defaults to the
+ * snapshot's own integer `revision` so that a stale snapshot (an object
+ * loaded or derived earlier than the current on-disk revision) is rejected
+ * instead of silently overwriting newer state. A snapshot without an integer
+ * revision is treated as no expected revision (fresh/legacy callers).
  */
 export function saveStore(dataDir, store, opts = {}) {
-  const dir = ensureDataDir(dataDir);
-  const expectedRevision = opts && opts.expectedRevision != null ? Number(opts.expectedRevision) : null;
-  const currentRevision = Number.isInteger(store.revision) ? store.revision : 0;
-  if (expectedRevision != null && expectedRevision !== currentRevision) {
-    throw Object.assign(
-      new Error(`Stale write rejected: expectedRevision ${expectedRevision} does not match current revision ${currentRevision}`),
-      { code: 'stale_revision' }
-    );
-  }
-  bumpMeta(store);
-  incrementRevision(store);
-  const p = writeStoreAtomic(dir, store);
-  writeProjections(dir, store);
-  return p;
+  const explicit = opts && opts.expectedRevision != null ? Number(opts.expectedRevision) : null;
+  const snapshotRevision = store && Number.isInteger(store.revision) ? store.revision : null;
+  const expectedRevision = explicit != null ? explicit : snapshotRevision;
+  return commitStore(dataDir, { expectedRevision }, () => store).storePath;
+}
+
+/**
+ * Validate the aggregate projection roots (projections/, jobs/, applications/)
+ * on every commit: any durable/derived write may land beneath them.
+ */
+function assertProjectionTargetSafe(dir, target) {
+  // Only directory components are confinement-checked. The file itself is
+  // written with temp+rename, which atomically replaces any existing symlink
+  // at that path instead of following it, so the leaf cannot redirect a write
+  // outside PLUGIN_DATA.
+  assertProjectionPathSafe(dir, target.segments.slice(0, -1));
+}
+function assertProjectionRootsSafe(dir) {
+  assertProjectionPathSafe(dir, ['projections']);
+  assertProjectionPathSafe(dir, ['jobs']);
+  assertProjectionPathSafe(dir, ['applications']);
 }
 
 function isLivePid(pid) {
@@ -319,16 +423,183 @@ function releaseLock(lock) {
   try { fs.unlinkSync(lock.path); } catch { /* already gone */ }
 }
 
+function pathExists(abs) {
+  try {
+    fs.lstatSync(abs);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function unsafeProjectionError(abs, reason) {
+  const detail = reason ? ` (${reason})` : '';
+  return Object.assign(
+    new Error(`Projection path ${abs}${detail} is unsafe; refusing to write outside PLUGIN_DATA.`),
+    { code: 'unsafe_projection_path', details: { path: String(abs), ...(reason ? { reason } : {}) } }
+  );
+}
+
+/**
+ * Validate one already-existing directory entry in a projection chain.
+ * Rejects symlinks/junctions, non-directories, and any component whose
+ * realpath escapes the real PLUGIN_DATA directory (no follow).
+ */
+function validateProjectionDirectory(stat, abs, dir) {
+  if (stat.isSymbolicLink()) throw unsafeProjectionError(abs, 'symlink');
+  if (!stat.isDirectory()) throw unsafeProjectionError(abs, 'not a directory');
+  let real;
+  try { real = fs.realpathSync(abs); }
+  catch (error) { throw unsafeProjectionError(abs, 'realpath failed'); }
+  if (real !== dir && !real.startsWith(`${dir}${path.sep}`)) {
+    throw unsafeProjectionError(abs, `escapes PLUGIN_DATA (${real})`);
+  }
+}
+
+/**
+ * Ensure an ordered directory chain exists beneath `dir`, creating missing
+ * components one level at a time and lstat-validating each immediately after
+ * creation, then re-validating the whole chain. This narrows the symlink
+ * TOCTOU window around mkdir so a symlink introduced at any point (or a
+ * component that already exists as a symlink/non-directory) rejects the
+ * transaction before any file is written.
+ */
+function ensureSafeDirectoryChain(dir, segments) {
+  let current = dir;
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    let stat;
+    try {
+      stat = fs.lstatSync(current);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw unsafeProjectionError(current, String(error.code));
+      try { fs.mkdirSync(current); }
+      catch (mkdirError) {
+        if (mkdirError.code !== 'EEXIST') throw unsafeProjectionError(current, String(mkdirError.code));
+      }
+      try { stat = fs.lstatSync(current); }
+      catch { throw unsafeProjectionError(current, 're-stat failed'); }
+    }
+    validateProjectionDirectory(stat, current, dir);
+  }
+  // Re-validate the complete chain after creation with the same no-follow lens.
+  assertProjectionPathSafe(dir, segments);
+}
+
+/**
+ * Multi-file transaction over one or more write descriptors (canonical store
+ * plus every aggregate and indexed projection). Holds the exclusive store
+ * lock for its whole duration.
+ *
+ * Phase 1 (stage): every parent directory chain is ensured + revalidated
+ * immediately before the temp payload is written next to its target, so each
+ * leaf write stays temp+rename atomic on the same filesystem while the
+ * directory confinement is re-checked right before the actual write.
+ *
+ * Phase 2 (commit): the chains are revalidated again immediately before the
+ * renames begin. Each existing target is first moved to a unique backup path
+ * (a rename moves the entry itself, so a malicious leaf symlink is never
+ * followed), then the staged temp is renamed into place.
+ *
+ * Phase 3 (rollback): if any step throws, previously committed entries are
+ * restored in reverse order (backup rename-back for pre-existing files,
+ * removal for freshly created ones) and every temp/backup file is removed,
+ * so an exception leaves the canonical store and all projections exactly as
+ * they were, with no tmp/backup leftovers.
+ *
+ * Phase 4 (cleanup): on success every backup and any stray temp file is
+ * removed.
+ *
+ * Crash atomicity is NOT claimed: a hard kill between renames can still leave
+ * a mix of old/new files (that is impossible to make atomic across files with
+ * plain POSIX renames). The guarantee here is accurate exception rollback and
+ * leftover cleanup while the lock is held.
+ */
+function commitFilesTransaction(dir, writes) {
+  const staged = [];
+  const committed = [];
+  try {
+    for (const write of writes) {
+      const parentSegments = write.segments.slice(0, -1);
+      ensureSafeDirectoryChain(dir, parentSegments);
+      assertProjectionPathSafe(dir, parentSegments);
+      const existed = pathExists(write.abs);
+      if (existed) {
+        const leaf = fs.lstatSync(write.abs);
+        if (leaf.isDirectory() || (!leaf.isFile() && !leaf.isSymbolicLink())) {
+          throw unsafeProjectionError(write.abs, 'leaf is not a regular file');
+        }
+      }
+      const tmp = `${write.abs}.tmp.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+      fs.writeFileSync(tmp, write.content, 'utf8');
+      staged.push({ abs: write.abs, tmp, backup: null, existed });
+    }
+    // Narrow the TOCTOU window: revalidate every chain immediately before the
+    // renames are issued.
+    for (const write of writes) {
+      assertProjectionPathSafe(dir, write.segments.slice(0, -1));
+    }
+    for (const item of staged) {
+      if (item.existed) {
+        item.backup = `${item.abs}.bak.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
+        fs.renameSync(item.abs, item.backup);
+      }
+      committed.push(item);
+      fs.renameSync(item.tmp, item.abs);
+    }
+  } catch (error) {
+    rollbackTransaction(staged, committed);
+    throw error;
+  }
+  cleanupTransaction(staged);
+}
+
+function rollbackTransaction(staged, committed) {
+  for (const item of [...committed].reverse()) {
+    try {
+      if (item.backup) {
+        fs.renameSync(item.backup, item.abs);
+        item.backup = null;
+      } else if (pathExists(item.abs)) fs.rmSync(item.abs, { force: true });
+    } catch { /* leave an unrestored backup in place rather than deleting evidence/state */ }
+  }
+  for (const item of staged) {
+    try { fs.rmSync(item.tmp, { force: true }); } catch { /* best effort */ }
+  }
+}
+
+function cleanupTransaction(staged) {
+  for (const item of staged) {
+    try { if (item.backup) fs.rmSync(item.backup, { force: true }); } catch { /* already gone */ }
+    try { fs.rmSync(item.tmp, { force: true }); } catch { /* already renamed away */ }
+  }
+}
+
 /**
  * Serialized read-modify-write transaction.
  *
  * Acquires an exclusive `jobsss.lock` (rejecting a concurrent live holder),
  * loads the current canonical store (migrating a legacy v1 store in memory),
  * optionally rejects a stale `expectedRevision`, runs `mutate(store)` (in
- * place or returning a new store), stamps the next integer revision, persists
- * atomically under PLUGIN_DATA, writes post-commit projections, then releases
- * the lock. Any thrown error (including a rejected stale write) leaves the
- * store untouched.
+ * place or returning a new store), stamps the next integer revision, then
+ * commits ALL durable and derived writes through one staged multi-file
+ * transaction while the lock is still held: aggregate `projections/*` files,
+ * the derived indexed projections (`jobs/<id>/job.json`,
+ * `applications/<id>/application.json`), and finally the canonical
+ * `store.json` (the last file renamed, acting as the logical commit point).
+ *
+ * Every projection write is temp+rename atomic, redacted, and confined
+ * beneath real non-symlinked PLUGIN_DATA paths; a symlink/junction/
+ * non-directory/escape target rejects the whole transaction BEFORE any file
+ * is staged or renamed, so a rejected path never bumps `revision` or changes
+ * state. An exception mid-commit rolls the transaction back (restoring every
+ * previously committed file and removing all temp/backup files), so the
+ * canonical store and projections are left exactly as they were.
+ *
+ * Cross-file crash atomicity is not claimed (plain POSIX renames cannot make
+ * multiple files atomic); the guarantee is accurate exception rollback and
+ * leftover cleanup while the lock is held.
  *
  * Returns `{ store, revision, storePath }` on success.
  */
@@ -346,10 +617,26 @@ export function commitStore(dataDir, { expectedRevision = null } = {}, mutate = 
       );
     }
     const result = mutate(store) || store;
+    // B27: reject symlink/junction/non-directory projection targets BEFORE any
+    // write is staged or persisted. A rejected escape throws here, so the
+    // on-disk store, revision, and state remain untouched and no file is
+    // written outside PLUGIN_DATA.
+    assertProjectionRootsSafe(dir);
+    const targets = deriveProjectionTargets(result);
+    for (const target of targets) assertProjectionTargetSafe(dir, target);
     bumpMeta(result);
     incrementRevision(result);
-    writeStoreAtomic(dir, result);
-    writeProjections(dir, result);
+    const writes = [
+      ...buildAggregateProjectionWrites(result).map(write => ({ ...write, abs: path.join(dir, ...write.segments) })),
+      ...targets.map(target => ({
+        segments: target.segments,
+        abs: path.join(dir, ...target.segments),
+        content: redactSecrets(JSON.stringify(target.value, null, 2)),
+      })),
+      // Canonical store is the last file renamed: it is the logical commit point.
+      { segments: [], abs: p, content: JSON.stringify(result, null, 2) },
+    ];
+    commitFilesTransaction(dir, writes);
     return { store: result, revision: result.revision, storePath: p };
   } finally {
     releaseLock(lock);

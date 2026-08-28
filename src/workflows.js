@@ -121,6 +121,30 @@ function writeApplication(store, jobId, profileId, patch) {
   return app;
 }
 
+/**
+ * Coherent local lifecycle write: keep the owned job's durable `saved` and
+ * `status` fields (plus a named timestamp and updatedAt) in lock step with the
+ * application record so list_jobs never reports a leftover stale state.
+ * Local-only; never attests an external action.
+ */
+const NOT_SAVED_LOCAL_STATUSES = new Set(['skipped', 'archived', 'withdrawn', 'rejected', 'ghosted']);
+
+function writeJobLifecycle(store, job, { status, saved, savedAt = null, skippedAt = null, archivedAt = null, pursuedAt = null, updatedAt = null }) {
+  const at = updatedAt || now();
+  const next = {
+    status: String(status),
+    saved: Boolean(saved),
+    localOnly: true,
+    updatedAt: at,
+  };
+  if (savedAt) next.savedAt = savedAt;
+  if (skippedAt) next.skippedAt = skippedAt;
+  if (archivedAt) next.archivedAt = archivedAt;
+  if (pursuedAt) next.pursuedAt = pursuedAt;
+  Object.assign(job, next);
+  return job;
+}
+
 const LOCAL_NOTE = 'Recorded locally under PLUGIN_DATA. No submission, sending, or other external action was performed; human review is required before any outside step.';
 
 /**
@@ -130,6 +154,18 @@ const LOCAL_NOTE = 'Recorded locally under PLUGIN_DATA. No submission, sending, 
  */
 export function syncTasksForApplication(store, { jobId, profileId, status }) {
   const tasks = ensure(store, 'tasks');
+  if (NOT_SAVED_LOCAL_STATUSES.has(status)) {
+    const closedAt = now();
+    for (const task of Object.values(tasks)) {
+      if (task.profileId === profileId && task.jobId === jobId && task.status === 'open') {
+        task.status = 'cancelled';
+        task.closedReason = status;
+        task.closedAt = closedAt;
+        task.updatedAt = closedAt;
+      }
+    }
+    return tasks;
+  }
   const base = [
     {
       kind: 'action',
@@ -160,6 +196,11 @@ export function syncTasksForApplication(store, { jobId, profileId, status }) {
         createdAt: now(),
         updatedAt: now(),
       };
+    } else if (tasks[taskId].status === 'cancelled') {
+      tasks[taskId].status = 'open';
+      tasks[taskId].updatedAt = now();
+      delete tasks[taskId].closedReason;
+      delete tasks[taskId].closedAt;
     }
   }
   return tasks;
@@ -186,13 +227,16 @@ function requireUpdatableStatus(store, status) {
  */
 export function saveJob(store, { jobId, profileId }) {
   const job = requireJobOwned(store, jobId, profileId);
-  const application = writeApplication(store, jobId, profileId, { status: 'saved', savedAt: now() });
+  const at = now();
+  const application = writeApplication(store, jobId, profileId, { status: 'saved', savedAt: at });
+  writeJobLifecycle(store, job, { status: 'saved', saved: true, savedAt: at, updatedAt: at });
   syncTasksForApplication(store, { jobId, profileId, status: 'saved' });
   return {
     ok: true,
     jobId,
     profileId,
     status: application.status,
+    job: { id: job.id, saved: job.saved, status: job.status },
     application,
     message: 'Job saved locally. ' + LOCAL_NOTE,
   };
@@ -201,12 +245,16 @@ export function saveJob(store, { jobId, profileId }) {
 /** skipJob — explicit skip; local record only. */
 export function skipJob(store, { jobId, profileId }) {
   const job = requireJobOwned(store, jobId, profileId);
-  const application = writeApplication(store, jobId, profileId, { status: 'skipped', skippedAt: now() });
+  const at = now();
+  const application = writeApplication(store, jobId, profileId, { status: 'skipped', skippedAt: at });
+  writeJobLifecycle(store, job, { status: 'skipped', saved: false, skippedAt: at, updatedAt: at });
+  syncTasksForApplication(store, { jobId, profileId, status: 'skipped' });
   return {
     ok: true,
     jobId,
     profileId,
     status: application.status,
+    job: { id: job.id, saved: job.saved, status: job.status },
     application,
     message: 'Job skipped locally. ' + LOCAL_NOTE,
   };
@@ -215,12 +263,16 @@ export function skipJob(store, { jobId, profileId }) {
 /** archiveJob — explicit archive; local record only. */
 export function archiveJob(store, { jobId, profileId }) {
   const job = requireJobOwned(store, jobId, profileId);
-  const application = writeApplication(store, jobId, profileId, { status: 'archived', archivedAt: now() });
+  const at = now();
+  const application = writeApplication(store, jobId, profileId, { status: 'archived', archivedAt: at });
+  writeJobLifecycle(store, job, { status: 'archived', saved: false, archivedAt: at, updatedAt: at });
+  syncTasksForApplication(store, { jobId, profileId, status: 'archived' });
   return {
     ok: true,
     jobId,
     profileId,
     status: application.status,
+    job: { id: job.id, saved: job.saved, status: job.status },
     application,
     message: 'Job archived locally. ' + LOCAL_NOTE,
   };
@@ -229,7 +281,9 @@ export function archiveJob(store, { jobId, profileId }) {
 /** pursueJob — local pursuit handoff; never claims any external action. */
 export function pursueJob(store, { jobId, profileId }) {
   const job = requireJobOwned(store, jobId, profileId);
-  const application = writeApplication(store, jobId, profileId, { status: 'pursued', pursuedAt: now() });
+  const at = now();
+  const application = writeApplication(store, jobId, profileId, { status: 'pursued', pursuedAt: at });
+  writeJobLifecycle(store, job, { status: 'pursued', saved: true, pursuedAt: at, updatedAt: at });
   syncTasksForApplication(store, { jobId, profileId, status: 'pursued' });
   const artifactId = id('artifact', `${profileId}:${jobId}:application-readiness`);
   ensure(store, 'artifacts')[artifactId] = {
@@ -278,12 +332,14 @@ export function updateApplicationStatus(store, { jobId, applicationId, profileId
     status: value,
     ...(value === 'materials-ready' ? { materialsReadyAt: now() } : {}),
   });
+  writeJobLifecycle(store, job, { status: value, saved: !NOT_SAVED_LOCAL_STATUSES.has(value) });
   syncTasksForApplication(store, { jobId, profileId, status: value });
   return {
     ok: true,
     jobId,
     profileId,
     status: value,
+    job: { id: job.id, saved: job.saved, status: job.status },
     application,
     nextActions: nextActionsForApplication(store, jobId, profileId),
     message: 'Application status updated locally. ' + LOCAL_NOTE,
@@ -335,6 +391,188 @@ function profileSummary(profile) {
   return String(profile?.summary || '');
 }
 
+// ---------------------------------------------------------------------------
+// Job-specific requirement extraction and proof selection.
+// Attributed port: deterministic inventory/coverage concepts from JobOS
+// src/requirements.js (extractRequirementInventory, buildRequirementCoverage)
+// reimplemented here as pure store-object helpers (no external providers).
+// ---------------------------------------------------------------------------
+
+const REQUIREMENT_SKILL_PHRASES = Object.freeze([
+  'user research', 'product management', 'project management', 'data analysis',
+  'machine learning', 'artificial intelligence', 'cross-functional',
+  'stakeholder management', 'software development', 'product strategy', 'roadmap',
+  'discovery', 'activation', 'sql', 'python', 'javascript', 'react', 'figma',
+]);
+
+const REQUIREMENT_STOP = new Set([
+  'must', 'have', 'with', 'years', 'year', 'experience', 'required', 'preferred',
+  'qualification', 'qualifications', 'responsibilities', 'responsibility',
+  'ability', 'strong', 'excellent', 'including', 'role', 'work', 'working',
+  'and', 'for', 'the', 'of', 'to', 'a', 'an', 'in', 'on', 'at', 'or', 'is',
+  'will', 'you', 'your', 'this', 'that', 'are', 'be', 'as', 'by', 'with', 'from',
+]);
+
+function cleanLineValue(value) {
+  return String(value || '').trim()
+    .replace(/^[-*•]\s*/, '')
+    .replace(/^\d+[.)]\s*/, '')
+    .trim();
+}
+
+function requirementSectionHeading(line) {
+  const value = cleanLineValue(String(line).replace(/^#{1,6}\s*/, '')).replace(/:$/, '').toLowerCase();
+  if (/^(what you.ll do|responsibilities|the role|you will|duties)$/.test(value)) return 'responsibilities';
+  if (/^(minimum|required|basic|preferred|desired|nice to have)?\s*(qualifications?|requirements?)$/.test(value)) {
+    return value.includes('preferred') || value.includes('desired') || value.includes('nice') ? 'preferred' : 'requirements';
+  }
+  if (/^(preferred|nice to have|bonus)$/.test(value)) return 'preferred';
+  return '';
+}
+
+function requirementPriorityFor(sourceText, section) {
+  if (section === 'preferred' || /\b(preferred|nice to have|bonus|ideally|a plus)\b/i.test(sourceText)) return 'preferred';
+  return 'must_have';
+}
+
+function requirementCategoryFor(sourceText, section) {
+  const value = String(sourceText || '').toLowerCase();
+  if (requirementPriorityFor(sourceText, section) === 'preferred') return 'preferred_qualification';
+  if (/\b(certif|license|degree|bachelor|master|phd|mba|credential)\b/.test(value)) return 'credential';
+  if (/\b(remote|hybrid|on[- ]site|travel|timezone|relocat)\b/.test(value)) return 'work_model';
+  if (/\b(senior|lead|manager|director|executive|staff|principal)\b/.test(value)) return 'seniority';
+  if (/\b\d+\+?\s+years?\b/.test(value)) return 'experience';
+  if (/\b(industry|domain|healthcare|education|edtech|fintech|saas|marketplace|enterprise)\b/.test(value)) return 'domain';
+  if (section === 'responsibilities' || /\b(lead|own|build|create|deliver|manage|develop|design|drive|conduct|collaborate|partner)\b/.test(value)) return 'responsibility';
+  return 'skill';
+}
+
+function requirementMatchTerms(sourceText) {
+  const lower = String(sourceText || '').toLowerCase();
+  const phrases = REQUIREMENT_SKILL_PHRASES.filter(term => lower.includes(term));
+  const words = tokenize(sourceText).filter(term => !REQUIREMENT_STOP.has(term) && !/^\d+$/.test(term));
+  const informative = words.filter(term => term.length >= 4).slice(0, 10);
+  return [...new Set([...phrases.flatMap(term => tokenize(term)), ...informative])].slice(0, 12);
+}
+
+function requirementLine(line, section) {
+  const trimmed = String(line || '').trim();
+  if (!trimmed || requirementSectionHeading(trimmed)) return false;
+  if (/^[-*•]\s+/.test(trimmed) || /^\d+[.)]\s+/.test(trimmed)) {
+    return Boolean(section) || /\b(must|required|preferred|experience|ability|responsib|proficien|knowledge|years)\b/i.test(trimmed);
+  }
+  return /\b(must|required|preferred|minimum of|years? of experience|responsible for|you will|ability to|proficien|knowledge of)\b/i.test(trimmed);
+}
+
+function extractRequirements(job = {}) {
+  const source = `${String(job.title || '')}\n${String(job.description || '')}`;
+  const requirements = [];
+  const seen = new Set();
+  let section = '';
+  const lines = source.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = lines[index];
+    const nextSection = requirementSectionHeading(raw);
+    if (nextSection) { section = nextSection; continue; }
+    if (!requirementLine(raw, section)) continue;
+    const sourceText = cleanLineValue(raw);
+    if (!sourceText || seen.has(sourceText.toLowerCase())) continue;
+    seen.add(sourceText.toLowerCase());
+    const normalizedTerms = requirementMatchTerms(sourceText);
+    requirements.push({
+      id: id('requirement', `${index}:${sourceText}`),
+      sourceText,
+      category: requirementCategoryFor(sourceText, section),
+      priority: requirementPriorityFor(sourceText, section),
+      normalizedTerms,
+      matchTerms: normalizedTerms,
+    });
+  }
+  if (!requirements.length && String(job.title || '').trim()) {
+    const title = job.title.trim();
+    const normalizedTerms = requirementMatchTerms(title);
+    requirements.push({
+      id: id('requirement', `title:${title}`),
+      sourceText: title,
+      category: 'responsibility',
+      priority: 'must_have',
+      normalizedTerms,
+      matchTerms: normalizedTerms,
+    });
+  }
+  return requirements.slice(0, 16);
+}
+
+function proofTermSet(proof) {
+  const skills = Array.isArray(proof.skills) ? proof.skills : [];
+  return new Set(tokenize(`${String(proof.summary || '')} ${skills.join(' ')}`));
+}
+
+function proofStrengthForRequirement(requirement, proof) {
+  const requirementTerms = new Set(requirement.matchTerms || []);
+  const terms = proofTermSet(proof);
+  const matchedTerms = [...requirementTerms].filter(term => terms.has(term));
+  return { matchedTerms, strength: matchedTerms.length };
+}
+
+const WEAK_MATCH_TERMS = new Set([
+  'team', 'teams', 'time', 'work', 'worked', 'working', 'managed', 'management',
+  'product', 'products', 'data', 'design', 'software', 'experience', 'years',
+  'related', 'strong', 'learning', 'outcomes', 'customer', 'customers',
+]);
+
+function meaningfulRequirementMatch(match) {
+  if (match.strength >= 2) return true;
+  return match.strength === 1 && !WEAK_MATCH_TERMS.has(match.matchedTerms[0]);
+}
+
+function selectRelevantProofs(store, profileId, requirements) {
+  const proofs = proofPointsFor(store, profileId);
+  const entries = [];
+  for (const proof of proofs) {
+    const matches = [];
+    let totalStrength = 0;
+    for (const requirement of requirements) {
+      const match = proofStrengthForRequirement(requirement, proof);
+      if (meaningfulRequirementMatch(match)) {
+        matches.push({ requirementId: requirement.id, matchedTerms: match.matchedTerms, strength: match.strength });
+        totalStrength += match.strength;
+      }
+    }
+    entries.push({ proof, matches, totalStrength });
+  }
+  const ranked = entries.sort((a, b) =>
+    b.totalStrength - a.totalStrength || String(a.proof.id).localeCompare(String(b.proof.id))
+  );
+  const selected = ranked.filter(entry => entry.totalStrength > 0).slice(0, 8);
+  return { ranked, selected };
+}
+
+function buildCoverage(requirements, selected) {
+  const items = requirements.map(requirement => {
+    const supporters = selected
+      .map(entry => ({ entry, match: entry.matches.find(match => match.requirementId === requirement.id) }))
+      .filter(item => item.match);
+    if (!supporters.length) {
+      return { requirementId: requirement.id, sourceText: requirement.sourceText, status: 'gap', proofPointIds: [], matchedTerms: [] };
+    }
+    supporters.sort((a, b) => b.match.strength - a.match.strength || String(a.entry.proof.id).localeCompare(String(b.entry.proof.id)));
+    const best = supporters[0];
+    return {
+      requirementId: requirement.id,
+      sourceText: requirement.sourceText,
+      status: best.match.strength >= 2 ? 'matched' : 'partial',
+      proofPointIds: [best.entry.proof.id],
+      matchedTerms: best.match.matchedTerms,
+    };
+  });
+  return {
+    items,
+    matches: items.filter(item => item.status !== 'gap'),
+    gaps: items.filter(item => item.status === 'gap'),
+  };
+}
+
 /**
  * buildMaterialDraft — proof-grounded, deterministic draft. Only text already
  * present in profile proof points may appear as achievements; no metrics are
@@ -350,17 +588,34 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
       { code: 'no_proofs' }
     );
   }
-  const proofIds = proofs.map(proof => proof.id);
-  const bullets = proofs.map(proof => {
-    const metricNote = Array.isArray(proof.metrics) && proof.metrics.length
-      ? ` Metrics shown are copied verbatim from the stored proof (${proof.metrics.slice(0, 3).join(', ')}).`
-      : ' No metric was added: this draft only restates the stored proof.';
-    return `- ${proof.summary} _(proof: ${proof.id}; human verification required)_.${metricNote}`;
-  }).join('\n');
+  const requirements = extractRequirements(job);
+  const ranked = selectRelevantProofs(store, profileId, requirements);
+  const selected = ranked.selected;
+  const selectedIds = selected.map(entry => entry.proof.id);
+  const coverage = buildCoverage(requirements, selected);
+  const selectedById = new Map(selected.map(entry => [entry.proof.id, entry.proof]));
+
+  const metricNote = proof => {
+    if (Array.isArray(proof.metrics) && proof.metrics.length) {
+      return ` Metrics shown are copied verbatim from the stored proof (${proof.metrics.slice(0, 3).join(', ')}).`;
+    }
+    return ' No metric was added: this draft only restates the stored proof.';
+  };
 
   const heading = kind === 'cover_letter'
     ? `Cover letter draft — ${job.title} at ${job.company}`
     : `Resume draft tailored toward ${job.title} at ${job.company}`;
+  const requirementLines = coverage.items.map(item =>
+    `- ${item.sourceText}${item.status === 'gap' ? ' _(no owned proof matches yet; evidence required)_' : ''}`
+  ).join('\n');
+  const matchedBlocks = coverage.matches.map(match => {
+    const proofLines = match.proofPointIds
+      .map(id => selectedById.get(id)).filter(Boolean)
+      .map(proof => `- ${proof.summary} _(proof: ${proof.id}; human verification required)_${metricNote(proof)}`)
+      .join('\n');
+    return [`### ${match.sourceText}`, '', proofLines].join('\n');
+  }).join('\n\n');
+  const gapLines = coverage.gaps.map(gap => `- ${gap.sourceText}`).join('\n');
   const body = [
     `# ${heading}`,
     '',
@@ -370,12 +625,20 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
       ? `This cover-letter draft for the ${job.title} role at ${job.company} uses only the stored proof candidates below.`
       : profileSummary(profile) || 'Professional summary draft from the stored profile; human verification is required.',
     '',
-    '## Proof-grounded highlights',
+    `## Requirements extracted from the posting (${coverage.items.length})`,
     '',
-    bullets,
+    requirementLines,
+    '',
+    `## Matched owned proof (${coverage.matches.length} requirement${coverage.matches.length === 1 ? '' : 's'})`,
+    '',
+    matchedBlocks || '_No owned proof matched any extracted requirement; evidence must be verified before use._',
+    '',
+    `## Coverage gaps (${coverage.gaps.length})`,
+    '',
+    gapLines || '_None._',
     '',
     'This draft cites only stored proof point ids and copies their summaries or metrics verbatim.',
-    'Every proof requires explicit human verification before this material may be shared with anyone.',
+    'Selected proof candidates require explicit human verification before this material may be shared with anyone.',
     'No submission, sending, or external action was performed.',
     '',
   ].join('\n');
@@ -389,7 +652,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     kind: kind === 'resume' ? 'resume_draft' : 'cover_letter_draft',
     title: kind === 'resume' ? `Resume draft: ${job.title}` : `Cover letter draft: ${job.title}`,
     status: 'draft_needs_human_review',
-    proofPointIds: proofIds,
+    proofPointIds: selectedIds,
     contentHash: hashText(body),
     format,
     content: body,
@@ -400,6 +663,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   const application = applicationFor(store, jobId, profileId);
   if (['new', 'researching', 'saved', 'pursued'].includes(application.status)) {
     writeApplication(store, jobId, profileId, { status: 'materials-ready', materialsReadyAt: nowIso });
+    writeJobLifecycle(store, job, { status: 'materials-ready', saved: true, updatedAt: nowIso });
   }
   return {
     ok: true,
@@ -407,11 +671,24 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     profileId,
     artifactId,
     artifact,
-    document: { content: body, format, kind, proofPointIds: proofIds, artifactId },
-    proofPointIds: proofIds,
+    requirements,
+    selectedProofPointIds: selectedIds,
+    selectedProofIds: selectedIds,
+    coverage: { matches: coverage.matches, gaps: coverage.gaps },
+    gaps: coverage.gaps,
+    document: {
+      content: body,
+      format,
+      kind,
+      proofPointIds: selectedIds,
+      selectedProofPointIds: selectedIds,
+      requirements,
+      gaps: coverage.gaps,
+    },
+    proofPointIds: selectedIds,
     format,
     message:
-      'Draft generated from stored proof points only. No invention of metrics, no submission, no sending; human verification required before any outside step.',
+      'Draft selected the owned proof candidates most relevant to the extracted posting requirements. No invention of metrics, no submission, no sending; human verification required before any outside step.',
   };
 }
 

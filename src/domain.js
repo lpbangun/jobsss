@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   slug, id, now, loadStore, commitStore, hashText, dedupeKeyForJob, tokenize,
-  ensureDataDir, redactSecrets, STORE_SCHEMA_VERSION,
+  ensureDataDir, STORE_SCHEMA_VERSION,
 } from './store.js';
 import { localScore } from './scoring.js';
 import {
@@ -261,7 +261,6 @@ export function importJob(dataDir, args = {}) {
     store.jobs[jobId] = job;
     return { jobId, id: jobId, job, created: true };
   });
-  if (resultValue.created && input.real) writeJobProjection(dataDir, resultValue.job);
   return resultValue;
 }
 
@@ -288,21 +287,6 @@ export async function importJobUrl(dataDir, args = {}) {
   });
 }
 
-function writeJobProjection(dataDir, job) {
-  const dir = path.join(ensureDataDir(dataDir), 'jobs', job.id);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'job.json'), redactSecrets(JSON.stringify(job, null, 2)));
-}
-
-function writeApplicationProjection(dataDir, jobId) {
-  const store = loadStore(dataDir);
-  const application = store.applications?.[jobId];
-  if (!application) return;
-  const dir = path.join(ensureDataDir(dataDir), 'applications', jobId);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'application.json'), redactSecrets(JSON.stringify(application, null, 2)));
-}
-
 export function listJobs(dataDir, args = {}) {
   const profileId = String(args.profileId || '').trim();
   const store = loadStore(dataDir);
@@ -326,25 +310,17 @@ export function scoreJob(dataDir, args = {}) {
 }
 
 export function pursueJob(dataDir, args = {}) {
-  const output = mutate(dataDir, args, store => pursueLocal(store, { jobId: String(args.jobId || args.id || ''), profileId: String(args.profileId || '') }));
-  writeJobProjection(dataDir, loadStore(dataDir).jobs[output.jobId]);
-  writeApplicationProjection(dataDir, output.jobId);
-  return output;
+  return mutate(dataDir, args, store => pursueLocal(store, { jobId: String(args.jobId || args.id || ''), profileId: String(args.profileId || '') }));
 }
 
 export function saveJob(dataDir, args = {}) {
-  const output = mutate(dataDir, args, store => saveLocal(store, args));
-  writeJobProjection(dataDir, loadStore(dataDir).jobs[output.jobId]);
-  writeApplicationProjection(dataDir, output.jobId);
-  return output;
+  return mutate(dataDir, args, store => saveLocal(store, args));
 }
 
 export function skipJob(dataDir, args = {}) { return mutate(dataDir, args, store => skipLocal(store, args)); }
 export function archiveJob(dataDir, args = {}) { return mutate(dataDir, args, store => archiveLocal(store, args)); }
 export function updateApplicationStatus(dataDir, args = {}) {
-  const output = mutate(dataDir, args, store => updateLocalStatus(store, args));
-  writeApplicationProjection(dataDir, output.jobId);
-  return output;
+  return mutate(dataDir, args, store => updateLocalStatus(store, args));
 }
 
 export function applicationsPlan(dataDir, args = {}) {

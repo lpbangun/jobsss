@@ -21,7 +21,9 @@ B26–B29 extend that bar for the independent-auditor omissions and must not
 delete, rewrite, or weaken B1–B25. B26 and B27 are additionally strengthened
 for terminal skipped/archived `applications_plan` next actions and canonical
 `store.json` secret redaction without deleting, rewriting, or weakening
-B1–B25 or B28–B29.
+B1–B25 or B28–B29. B28 is additionally strengthened for substring-only
+interview-story grounding and exact `fieldEvidence` quotes without deleting,
+rewriting, or weakening B1–B27 or B29.
 
 ---
 
@@ -207,6 +209,19 @@ nextActions `human review` and `verify proof-grounded materials` after tasks
 were cancelled; B27 `import_job` of `sk-ingestedcanonicalsecretvalue99` plus
 the environment secret persists both tokens in canonical `store.json` while
 ordinary resume/job content remains.
+
+### Iteration-3 strengthening baseline recorded 2026-08-28 against committed HEAD `30047e4`
+
+B1–B27 and B29 pass on the committed plugin. Strengthened B28 assertions fail
+against that same runtime using real `PLUGIN_DATA` stores and real
+`./bin/jobsss` MCP subprocesses. Missing product behavior, not benchmark
+defects. Combined frozen command: `# tests 31` `# pass 30` `# fail 1`, exit
+`1`. Observed failures: B28 `draft_interview_story` marks `grounded=true` /
+`exact_proof_text_needs_human_verification` when every content field is only
+the substring `30%` (or title `Led discovery`) of owned proof `Led discovery
+with educators and operations teams to prioritize an AI-assisted learning
+workflow that reduced manual review time by 30%.`; `fieldEvidence` records
+`matchedProofPointIds` but no verbatim proof summary/quote.
 
 ---
 
@@ -644,6 +659,14 @@ not claim exact/full grounding. Partial fabricated STAR text must not be marked
 grounded. Exact owned-proof wording on every content field may be grounded
 pending human verification and must survive `list_interview_stories` after MCP
 restart. Fabricated fields that persist must remain ungrounded after restart.
+A short substring or fragment of an owned proof (`30%`, `Led discovery`) must
+not be marked `grounded=true` and must not claim exact/full grounding. Only
+normalized equality to the complete owned proof wording may ground a field.
+Every grounded field must record exact supporting evidence including the
+matching `proofPointId` and the verbatim proof summary/quote. Unsupported
+fields must cite none: no `proofPointId` and no supporting quote.
+Substring-only drafts that persist must remain ungrounded after restart and
+must cite none on the fragment fields.
 
 ### B29 — Tailoring extracts requirements, selects relevant proof, reports gaps
 
@@ -704,7 +727,7 @@ SHA-256 of reviewer-owned auditor-omission files. Implementers must not
 change these files. B1–B25 hashes above are unchanged.
 
 ```
-b47dd8c003decfb58f7874819e696ea6e8e1c72d5c4243910defc98bb6605b88  tests/jobsss-integrity.test.mjs
+cbad53a2de4fbb9a47b16a463cd578be84e4d1c11ff381658a7ccf6dfe08c57b  tests/jobsss-integrity.test.mjs
 ```
 
 ## Correction log
@@ -802,3 +825,45 @@ b47dd8c003decfb58f7874819e696ea6e8e1c72d5c4243910defc98bb6605b88  tests/jobsss-i
   Recorded today's failing baseline (`# tests 31` `# pass 29` `# fail 2`,
   exit `1`) against committed HEAD before any product correction. Not done
   to make tests green.
+- 2026-08-28T04:27:49Z — **B28 iteration-3 strengthening**. Reason: genuine
+  documented contract omission against committed HEAD `30047e4`. An independent
+  completion audit, and a reviewer live MCP probe, showed `draft_interview_story`
+  grounds fields by normalized substring inclusion (`entry.text.includes(normalizedField)`)
+  and `fieldEvidence` stores only `matchedProofPointIds` with no verbatim proof
+  summary/quote. Sending every STAR field as `30%`, or title `Led discovery` with
+  the rest exact, returned `grounded=true` and
+  `groundingStatus=exact_proof_text_needs_human_verification` for proof
+  `Led discovery with educators and operations teams to prioritize an AI-assisted
+  learning workflow that reduced manual review time by 30%.`. Existing B28
+  covered fabricated `$10M`/`400%` title/reflection and partial invented STAR
+  text, so that hole stayed green (integrity file `# tests 4` `# pass 4`,
+  B28 passed, before this strengthening). Change: preserved B1–B27, B29, and every existing B28
+  requirement; appended substring-only rejection, normalized equality to complete
+  owned proof wording, exact `fieldEvidence` quotes, and cite-none for unsupported
+  fields; strengthened `tests/jobsss-integrity.test.mjs`; updated only that file's
+  frozen hash from
+  `b47dd8c003decfb58f7874819e696ea6e8e1c72d5c4243910defc98bb6605b88` to
+  `5e465de4f6eb134780c17da09c259cb270605f5f3b4c421276253892a26bd750`.
+  Recorded today's failing baseline (`# tests 31` `# pass 30` `# fail 1`,
+  exit `1`) against committed HEAD before any product correction. Not done
+  to make tests green.
+- 2026-08-28T04:34:10Z — **B28 restart field-targeting correction**. Reason:
+  genuine new-test defect, not missing product behavior. After product
+  implemented normalized equality and exact `fieldEvidence` quotes, running
+  integrity failed at restart because the loop selected any story whose blob
+  contains `$10M`/`400%`, including the partial-action story whose
+  title/reflection are exact owned-proof wording, then unconditionally demanded
+  title/reflection cite none. That contradicts B28: unsupported/fabricated
+  fields cite none; exact fields record exact evidence. Evidence before this
+  correction: `node --test --test-concurrency=1 tests/jobsss-integrity.test.mjs`
+  exit `1`, `# tests 4` `# pass 3` `# fail 1`, assertion `restart fabricated
+  title must cite no proofPointId` on a grounded exact title quote of the 30%
+  proof. Change: preserved B1–B27, B29, substring checks, and every existing
+  B28 requirement; retargeted only the restart `$10M`/`400%` assertions so the
+  fabricated title/reflection story checks title/reflection, the partial-action
+  story checks action, and exact fields retain exact evidence; updated only
+  `tests/jobsss-integrity.test.mjs` frozen hash from
+  `5e465de4f6eb134780c17da09c259cb270605f5f3b4c421276253892a26bd750` to
+  `cbad53a2de4fbb9a47b16a463cd578be84e4d1c11ff381658a7ccf6dfe08c57b`. After
+  correction, integrity `# tests 4` `# pass 4` and frozen command `# tests 31`
+  `# pass 31`, exit `0`. Not done to make tests green by weakening B28.

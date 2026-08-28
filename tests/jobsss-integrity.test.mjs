@@ -37,6 +37,9 @@ const UNRELATED_PROOF =
   'Operated a commercial fishing vessel in Alaska and processed 400 tons of salmon with a 12-person crew.';
 const FABRICATED_TITLE = 'I grew revenue by $10M in one quarter.';
 const FABRICATED_REFLECTION = 'This story proves I increased conversion 400%.';
+const STORY_FIELDS = Object.freeze(['title', 'situation', 'task', 'action', 'result', 'reflection']);
+const PROOF_FRAGMENT = '30%';
+const PROOF_SUBSTRING_TITLE = 'Led discovery';
 
 function storeJob(store, jobId) {
   return store.jobs?.[jobId] || Object.values(store.jobs || {}).find(job => job.id === jobId || job.jobId === jobId) || null;
@@ -57,6 +60,78 @@ function listedNames(session, id = 2) {
 function storyRecord(value) {
   if (!value || typeof value !== 'object') return null;
   return value.story || value.interviewStory || value.item || value;
+}
+
+function normalizeProofText(value) {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function fieldEvidenceMap(story) {
+  if (!story || typeof story !== 'object') return {};
+  return story.fieldEvidence && typeof story.fieldEvidence === 'object' ? story.fieldEvidence : {};
+}
+
+function evidenceItems(entry) {
+  if (entry == null) return [];
+  if (Array.isArray(entry)) return entry;
+  if (Array.isArray(entry.evidence)) return entry.evidence;
+  if (Array.isArray(entry.items)) return entry.items;
+  return [entry];
+}
+
+function evidenceProofIds(entry) {
+  const ids = [];
+  for (const item of evidenceItems(entry)) {
+    if (typeof item === 'string' && item.trim()) ids.push(item);
+    else if (item && typeof item === 'object') {
+      if (typeof item.proofPointId === 'string') ids.push(item.proofPointId);
+      if (Array.isArray(item.matchedProofPointIds)) ids.push(...item.matchedProofPointIds);
+      if (typeof item.proofSnapshot?.id === 'string') ids.push(item.proofSnapshot.id);
+    }
+  }
+  return ids.map(String).filter(Boolean);
+}
+
+function evidenceQuotes(entry) {
+  const quotes = [];
+  for (const item of evidenceItems(entry)) {
+    if (!item || typeof item !== 'object') continue;
+    for (const key of ['quote', 'summary', 'proofSummary', 'verbatim', 'proofQuote', 'supportingQuote', 'exactQuote']) {
+      if (typeof item[key] === 'string' && item[key].trim()) quotes.push(item[key]);
+    }
+    if (typeof item.proofSnapshot?.summary === 'string' && item.proofSnapshot.summary.trim()) {
+      quotes.push(item.proofSnapshot.summary);
+    }
+  }
+  return quotes;
+}
+
+function assertFieldCitesNone(entry, label) {
+  assert.deepEqual(
+    evidenceProofIds(entry),
+    [],
+    `${label} must cite no proofPointId: ${JSON.stringify(entry)}`
+  );
+  assert.equal(
+    evidenceQuotes(entry).length,
+    0,
+    `${label} must cite no supporting quote: ${JSON.stringify(entry)}`
+  );
+  assert.notEqual(entry?.supportedByProofText, true, `${label} must not claim supportedByProofText`);
+  assert.notEqual(String(entry?.status || ''), 'grounded', `${label} must not be status=grounded`);
+}
+
+function assertFieldExactEvidence(entry, proof, label) {
+  assert.ok(entry, `${label} missing fieldEvidence`);
+  assert.ok(
+    evidenceProofIds(entry).includes(proof.id),
+    `${label} must record proofPointId ${proof.id}: ${JSON.stringify(entry)}`
+  );
+  const expected = normalizeProofText(proof.summary);
+  assert.ok(
+    evidenceQuotes(entry).some(quote => normalizeProofText(quote) === expected),
+    `${label} must record verbatim complete proof summary/quote: ${JSON.stringify(entry)}`
+  );
 }
 
 function selectedProofIds(value) {
@@ -464,6 +539,9 @@ test('B28 interview-story grounding covers title and reflection and never marks 
       /title|reflection/i,
       'grounding result must account for title and reflection'
     );
+    const fabEvidence = fieldEvidenceMap(story);
+    assertFieldCitesNone(fabEvidence.title, 'fabricated title');
+    assertFieldCitesNone(fabEvidence.reflection, 'fabricated reflection');
   } else {
     assert.match(
       rejectionBlob(fabFrame, fabValue),
@@ -478,6 +556,9 @@ test('B28 interview-story grounding covers title and reflection and never marks 
     const blob = JSON.stringify(story);
     if (/\$10M|400%/.test(blob)) {
       assert.notEqual(story.grounded, true, `persisted fabricated title/reflection must not be grounded: ${blob.slice(0, 800)}`);
+      const evidence = fieldEvidenceMap(story);
+      assertFieldCitesNone(evidence.title, 'persisted fabricated title');
+      assertFieldCitesNone(evidence.reflection, 'persisted fabricated reflection');
     }
   }
 
@@ -503,6 +584,71 @@ test('B28 interview-story grounding covers title and reflection and never marks 
       true,
       `partial STAR fabrication must not be marked grounded: ${JSON.stringify(partialValue).slice(0, 800)}`
     );
+    assertFieldCitesNone(fieldEvidenceMap(story).action, 'partial fabricated action');
+  }
+
+  const fragment = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'draft_interview_story', {
+      profileId,
+      title: PROOF_FRAGMENT,
+      situation: PROOF_FRAGMENT,
+      task: PROOF_FRAGMENT,
+      action: PROOF_FRAGMENT,
+      result: PROOF_FRAGMENT,
+      reflection: PROOF_FRAGMENT,
+      proofPointIds: [thirtyProof.id]
+    })
+  ]);
+  const fragmentFrame = fragment.frames.find(frame => frame.id === 2);
+  const fragmentValue = parseToolValue(fragmentFrame);
+  if (!isRejected(fragmentFrame, fragmentValue)) {
+    const story = storyRecord(fragmentValue);
+    assert.notEqual(
+      story?.grounded,
+      true,
+      `short substring/fragment of a proof must not be marked grounded: ${JSON.stringify(fragmentValue).slice(0, 800)}`
+    );
+    assert.doesNotMatch(
+      String(story?.groundingStatus || ''),
+      /exact_proof|fully_grounded|^grounded$/i,
+      `groundingStatus must not claim exact/full grounding for substring fields: ${story?.groundingStatus}`
+    );
+    const evidence = fieldEvidenceMap(story);
+    for (const fieldName of STORY_FIELDS) {
+      assertFieldCitesNone(evidence[fieldName], `substring field ${fieldName}`);
+    }
+  } else {
+    assert.match(
+      rejectionBlob(fragmentFrame, fragmentValue),
+      /ground|substring|fragment|exact|not_grounded|proof/i,
+      `rejection of substring-only fields must name grounding: ${rejectionBlob(fragmentFrame, fragmentValue)}`
+    );
+  }
+
+  const substringTitle = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'draft_interview_story', {
+      profileId,
+      title: PROOF_SUBSTRING_TITLE,
+      situation: thirtyProof.summary,
+      task: thirtyProof.summary,
+      action: thirtyProof.summary,
+      result: thirtyProof.summary,
+      reflection: thirtyProof.summary,
+      proofPointIds: [thirtyProof.id]
+    })
+  ]);
+  const subTitleFrame = substringTitle.frames.find(frame => frame.id === 2);
+  const subTitleValue = parseToolValue(subTitleFrame);
+  if (!isRejected(subTitleFrame, subTitleValue)) {
+    const story = storyRecord(subTitleValue);
+    assert.notEqual(
+      story?.grounded,
+      true,
+      `title that is only a proof fragment must not ground the story: ${JSON.stringify(subTitleValue).slice(0, 800)}`
+    );
+    assertFieldCitesNone(fieldEvidenceMap(story).title, 'substring title');
   }
 
   const truthful = await mcp(ctx, [
@@ -525,6 +671,14 @@ test('B28 interview-story grounding covers title and reflection and never marks 
     true,
     `exact title/situation/task/action/result/reflection from owned proof may be grounded pending human verification: ${JSON.stringify(truthfulValue).slice(0, 800)}`
   );
+  const truthfulEvidence = fieldEvidenceMap(truthfulStory);
+  for (const fieldName of STORY_FIELDS) {
+    assertFieldExactEvidence(
+      truthfulEvidence[fieldName],
+      thirtyProof,
+      `truthful ${fieldName}`
+    );
+  }
 
   const restarted = await mcp(ctx, [
     initializeRequest(1),
@@ -539,9 +693,56 @@ test('B28 interview-story grounding covers title and reflection and never marks 
   );
   assert.ok(exact, `exact-proof story must survive restart: ${JSON.stringify(stories).slice(0, 800)}`);
   assert.equal(exact.grounded, true);
+  const exactEvidence = fieldEvidenceMap(exact);
+  for (const fieldName of STORY_FIELDS) {
+    assertFieldExactEvidence(exactEvidence[fieldName], thirtyProof, `restart truthful ${fieldName}`);
+  }
   const fabricatedPersisted = stories.filter(story => /\$10M|400%/.test(JSON.stringify(story)));
   for (const story of fabricatedPersisted) {
     assert.notEqual(story.grounded, true, `restart must not report fabricated story fields as grounded: ${JSON.stringify(story).slice(0, 500)}`);
+    const evidence = fieldEvidenceMap(story);
+    const titleFabricated = /\$10M|400%/.test(String(story.title || ''));
+    const reflectionFabricated = /\$10M|400%/.test(String(story.reflection || ''));
+    const actionFabricated = /\$10M|400%/.test(String(story.action || ''));
+    if (titleFabricated) {
+      assertFieldCitesNone(evidence.title, 'restart fabricated title');
+    }
+    if (reflectionFabricated) {
+      assertFieldCitesNone(evidence.reflection, 'restart fabricated reflection');
+    }
+    if (actionFabricated) {
+      assertFieldCitesNone(evidence.action, 'restart fabricated action');
+    }
+    for (const fieldName of STORY_FIELDS) {
+      if (/\$10M|400%/.test(String(story[fieldName] || ''))) continue;
+      if (story[fieldName] === thirtyProof.summary) {
+        assertFieldExactEvidence(
+          evidence[fieldName],
+          thirtyProof,
+          `restart exact ${fieldName} on mixed fabrication`
+        );
+      }
+    }
+  }
+  const fragmentPersisted = stories.filter(story =>
+    story.title === PROOF_FRAGMENT
+    || story.title === PROOF_SUBSTRING_TITLE
+    || STORY_FIELDS.every(fieldName => story[fieldName] === PROOF_FRAGMENT)
+  );
+  for (const story of fragmentPersisted) {
+    assert.notEqual(
+      story.grounded,
+      true,
+      `restart must not report substring-only story fields as grounded: ${JSON.stringify(story).slice(0, 500)}`
+    );
+    const evidence = fieldEvidenceMap(story);
+    if (story.title === PROOF_FRAGMENT || STORY_FIELDS.every(fieldName => story[fieldName] === PROOF_FRAGMENT)) {
+      for (const fieldName of STORY_FIELDS) {
+        assertFieldCitesNone(evidence[fieldName], `restart substring field ${fieldName}`);
+      }
+    } else {
+      assertFieldCitesNone(evidence.title, 'restart substring title');
+    }
   }
   assertNoJobosUse(ctx.trap, ctx.pluginBefore, ctx.jobAppBefore);
 });

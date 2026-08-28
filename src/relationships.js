@@ -545,18 +545,24 @@ export function draftInterviewStory(dataDir, args = {}) {
     story.proofPointIds = proofPointIds;
     const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9$%]+/g, ' ').trim();
     const proofEntries = proofPointIds
-      .map(proofId => ({ proofId, text: normalize(store.proofPoints[proofId]?.summary) }))
+      .map(proofId => ({
+        proofId,
+        quote: String(store.proofPoints[proofId]?.summary || '').trim(),
+        text: normalize(store.proofPoints[proofId]?.summary),
+      }))
       .filter(entry => entry.text);
     // Grounding evaluates every content field (title, situation, task, action,
     // result, reflection). A field is grounded only when its normalized text is
-    // contained in a specific owned proof summary. Any fabricated or partial
-    // field stays unverified and cites no unrelated proof id.
+    // exactly equal to a complete owned proof summary after normalization.
+    // Any fabricated, paraphrased, or fragmentary field stays unverified and
+    // cites no unrelated proof id or evidence quote.
     story.fieldEvidence = Object.fromEntries(STORY_FIELDS.map(fieldName => {
       const normalizedField = normalize(story[fieldName]);
-      const matching = normalizedField ? proofEntries.filter(entry => entry.text.includes(normalizedField)) : [];
+      const matching = normalizedField ? proofEntries.filter(entry => entry.text === normalizedField) : [];
       return [fieldName, {
         status: matching.length ? 'grounded' : 'unverified',
         matchedProofPointIds: matching.map(entry => entry.proofId),
+        evidence: matching.map(entry => ({ proofPointId: entry.proofId, quote: entry.quote })),
         supportedByProofText: matching.length > 0,
       }];
     }));

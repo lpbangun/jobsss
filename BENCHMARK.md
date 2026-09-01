@@ -23,7 +23,13 @@ for terminal skipped/archived `applications_plan` next actions and canonical
 `store.json` secret redaction without deleting, rewriting, or weakening
 B1–B25 or B28–B29. B28 is additionally strengthened for substring-only
 interview-story grounding and exact `fieldEvidence` quotes without deleting,
-rewriting, or weakening B1–B27 or B29.
+rewriting, or weakening B1–B27 or B29. B30–B41 extend that bar for the
+confirmed JobSSS productization round and must not delete, rewrite, or
+weaken B1–B29. B30 is additionally strengthened for complete-release
+determinism of both `release-manifest.json` copies, portable/relative
+evidence, no build-user/home/workspace/source/scratch/output paths, and
+no released-runtime dependency on the build checkout or `tests/fixtures`
+without deleting, rewriting, or weakening B1–B29 or B31–B41.
 
 ---
 
@@ -39,7 +45,11 @@ rewriting, or weakening B1–B27 or B29.
 | `tests/jobsss-discovery.test.mjs` | reviewer | reviewer only |
 | `tests/jobsss-workflows.test.mjs` | reviewer | reviewer only |
 | `tests/jobsss-integrity.test.mjs` | reviewer | reviewer only |
+| `tests/jobsss-release.test.mjs` | reviewer | reviewer only |
+| `tests/jobsss-adapters.test.mjs` | reviewer | reviewer only |
+| `tests/jobsss-authority.test.mjs` | reviewer | reviewer only |
 | `tests/helpers/jobsss-live-mcp.mjs` | reviewer | reviewer only |
+| `tests/helpers/jobsss-productization.mjs` | reviewer | reviewer only |
 | `tests/fixtures/profile-resume.md` | reviewer | reviewer only |
 | `tests/fixtures/job-posting.md` | reviewer | reviewer only |
 | `tests/fixtures/legacy-store-v1.json` | reviewer | reviewer only |
@@ -139,7 +149,10 @@ node --test --test-concurrency=1 \
   tests/jobsss-persistence.test.mjs \
   tests/jobsss-discovery.test.mjs \
   tests/jobsss-workflows.test.mjs \
-  tests/jobsss-integrity.test.mjs
+  tests/jobsss-integrity.test.mjs \
+  tests/jobsss-release.test.mjs \
+  tests/jobsss-adapters.test.mjs \
+  tests/jobsss-authority.test.mjs
 ```
 
 ### Expected exit code
@@ -148,12 +161,15 @@ node --test --test-concurrency=1 \
 
 ### What pass means
 
-Exit `0` is necessary and not sufficient. Every check B1–B29 below must hold
-on the real files and on a real bundled MCP subprocess. Invented output,
-mocks of the runtime, skipped required checks, or touching real user JobOS
-state are a fail.
+Exit `0` is necessary and not sufficient. Every check B1–B41 below must hold
+on the real files, on a real bundled MCP subprocess, and on the current-host
+release artifact where those checks require it. Invented output, mocks of the
+runtime, skipped required checks, or touching real user JobOS or client
+profiles are a fail.
 
-No allowed skip. B10–B12 and B14–B29 are required even when `jobos` is absent.
+No allowed skip. B10–B12 and B14–B41 are required even when `jobos` is absent.
+There is no allowed skip for missing Node on PATH for B31–B32: the released
+`bin/jobsss` must start without resolving `node` or `jobos` from PATH.
 
 ### Gate 0 baseline recorded against today's committed foundation
 
@@ -222,6 +238,54 @@ the substring `30%` (or title `Led discovery`) of owned proof `Led discovery
 with educators and operations teams to prioritize an AI-assisted learning
 workflow that reduced manual review time by 30%.`; `fieldEvidence` records
 `matchedProofPointIds` but no verbatim proof summary/quote.
+
+### Productization baseline recorded 2026-08-31 against committed HEAD `c47c557`
+
+B1–B29 pass on the committed plugin (`# tests 31` `# pass 31` `# fail 0`,
+exit `0` for the previous seven-file command). B30–B41 are frozen failing
+against that same runtime using real subprocesses, temporary `PLUGIN_DATA`,
+and actual `./bin/jobsss` invocations. Missing product behavior, not
+benchmark defects. Combined frozen command: `# tests 43` `# pass 31`
+`# fail 12`, exit `1`. Observed failures:
+
+| Check | Result today | Observed failure |
+| --- | --- | --- |
+| B1–B29 | pass | preserved on HEAD `c47c557` |
+| B30 | fail | `./bin/jobsss release --out` exits `1` with `unknown command: release`; in-repo `bin/jobsss` is still a Node shebang launcher |
+| B31 | fail | no current-host release artifact; same `unknown command: release` |
+| B32 | fail | no current-host release artifact; same `unknown command: release` |
+| B33 | fail | missing required product file `compat/matrix.json` |
+| B34 | fail | missing required product file `compat/matrix.json` |
+| B35 | fail | missing required product file `compat/matrix.json` |
+| B36 | fail | `tools/list` missing handoff tool `list_decision_handoffs` |
+| B37 | fail | `./bin/jobsss decide --list` exits `1` with `unknown command: decide` |
+| B38 | fail | `./bin/jobsss decide --list` exits `1` with `unknown command: decide` |
+| B39 | fail | MCP must expose handoff tool `list_decision_handoffs` without granting authority |
+| B40 | fail | `./bin/jobsss decide --list` exits `1` with `unknown command: decide` |
+| B41 | fail | docs must name the trusted local surface `./bin/jobsss decide` |
+
+### Iteration-6 B30 strengthening baseline recorded 2026-09-01 against today's worktree (HEAD `c47c557` plus uncommitted productization)
+
+The original four-file B30 identity still passes on today's current-host
+release (`plugin.json`, `mcp.json`, `SKILL.md`, and `bin/jobsss`
+byte-identical across `.tmp/jobsss-productization/out-a` and `out-b`).
+Strengthened complete-release checks fail against that same artifact.
+Missing portable deterministic-complete-release behavior, not a product
+workaround and not a four-file hash defect. Focused command:
+
+`node --test --test-concurrency=1 --test-name-pattern='B30 deterministic portable current-host release layout' tests/jobsss-release.test.mjs`
+
+exit `1`, `# tests 1` `# pass 0` `# fail 1`, `duration_ms 2976.112161`.
+First assertion: `bin/jobsss` and both `release-manifest.json` copies
+contain `/home/logani/projects/jobsss`, `/home/logani/.hermes/node/bin/node`,
+`.tmp/jobsss-productization`, output `--out` paths, and `tests/fixtures`.
+Independent helper probe against `out-a`/`out-b` also failed complete-tree
+determinism (manifest SHA-256
+`56b49a1832d8e46aa132abb55033322dba6c3570f0ae2829baf216360ec44497` vs
+`25a71a248b2b6eaf58cb59cbf3e6e78467da3f218a5cafd558babffa801d108d` because
+`generatedAt` and absolute paths differ), portable evidence (`nodeBinary` /
+`entryPath` / `command` are absolute), and truthful `linux-x64` `verified`
+with `artifactSha256: null`.
 
 ---
 
@@ -681,12 +745,167 @@ must not invent metrics absent from owned proofs (`400%`, `$10M`) and must not
 claim submit/send/apply/approval. B21 resume/cover proof-citation and
 reusable-answer grounding remain required.
 
+### B30 — Deterministic portable current-host release layout
+
+`./bin/jobsss release --out <absdir> --target current-host` must exit `0` and
+write a portable plugin tree for the current host containing `plugin.json`,
+`mcp.json`, `skills/jobsss/SKILL.md`, `skills/jobsss/references/`, and
+`bin/jobsss`. The tree may live at `<out>/current-host/` or `<out>/` if those
+files are present together. `mcp.json` in the release must keep the frozen
+stdio `jobsss` contract. Release `bin/jobsss` must be a regular executable
+file, not a symlink, and not a `#!/usr/bin/env node` launcher. A
+`release-manifest.json` in the output must list every intended target
+`current-host`, `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
+and `win-x64` with status `verified`, `built`, `intended`, or `unverified`.
+Only a target actually exercised on this host may be `verified`. Two
+consecutive clean current-host releases must be byte-identical for
+`plugin.json`, `mcp.json`, `skills/jobsss/SKILL.md`, and `bin/jobsss`.
+The complete `--out` tree, including both `release-manifest.json` copies
+(output root and current-host plugin tree), must also be byte-identical
+across those clean builds. Wall-clock `generatedAt` and build-absolute
+paths are not justified unavoidable metadata; prefer none. No release
+file and no printable string inside released `bin/jobsss` may contain
+build-user home, workspace, source-checkout, scratch, or output paths,
+including `tests/fixtures` and `.tmp/jobsss-productization`. The released
+runtime must not depend on the build checkout or `tests/fixtures`.
+Manifest evidence fields must be portable or relative. A `verified` or
+`built` target must record a real SHA-256 of the artifact it claims;
+`null` hashes and absolute Node, scratch, or `--out` paths are untruthful.
+Justified metadata (LICENSE, README, NOTICE, release-manifest, thin compat
+files) may exist. Secrets, `.env`, `node_modules`, and `.git` must not.
+
+### B31 — Released `bin/jobsss` starts generic stdio MCP with Node and JobOS absent
+
+Spawn the current-host released `bin/jobsss mcp --data <temp PLUGIN_DATA>`
+with a restricted PATH that contains `node` and `jobos` traps plus `/usr/bin`
+and `/bin` only. A real initialize, `tools/list`, `doctor`, and `start`
+exchange must succeed. Journey tools `doctor`, `start`, `create_profile`,
+`import_job`, and `list_jobs` must be listed. The node trap and jobos trap
+must not run. The release plugin tree must not be written.
+
+### B32 — Released MCP persists only under temp PLUGIN_DATA and survives restart
+
+Using the same Node-free released binary, `start` → `create_profile` from
+`tests/fixtures/profile-resume.md` → `import_job` from
+`tests/fixtures/job-posting.md` must persist `PLUGIN_DATA/store.json`. A
+restarted released MCP process against the same directory must still list
+the imported job. No user state may be written into the release tree. The
+runtime must not claim submitted/sent/applied/approved.
+
+### B33 — Canonical skill/tool equivalence across generated and native adapters
+
+`compat/matrix.json` must exist at the plugin root and list clients `pi`,
+`omp`, `codex`, `hermes`, and `claude`. A real in-repo MCP `tools/list` must
+include every frozen journey tool, every frozen extended tool, and the
+handoff tools `list_decision_handoffs` and `create_decision_handoff`.
+Canonical `SKILL.md` plus references must name those tools and
+`./bin/jobsss decide`. Generated adapter files, if present, must be identical
+canonical skill copies or pointers to `skills/jobsss/SKILL.md` /
+`./bin/jobsss`. An adapter that enumerates tools must enumerate the same
+canonical set.
+
+### B34 — Isolated available-client launch paths and truthful unverified reporting
+
+`./bin/jobsss compat-probe --client <pi|omp|codex|hermes|claude> --config-dir
+<temp> --plugin-root <plugin>` must exit `0` and print JSON with
+`status` `verified` or `unverified`. `compat/matrix.json` status for that
+client must match the probe. `verified` probes must name the JobSSS runtime
+and must not launch `jobos mcp`. Probes must use isolated temporary
+configuration only and must not mutate real client profiles under the host
+home (`.claude`, `.codex`, `.hermes`, `.omp`, `.pi`, `.cursor`, and matching
+XDG config trees). Unavailable or unproven clients must be labeled
+`unverified`, never `verified`.
+
+### B35 — Adapters contain no business logic
+
+Generated adapter code under `compat/` must not implement store writes,
+scoring, proof extraction, tailoring, interview-story drafting, JobOS
+spawns, SQL schemas, or a `HUMAN_ONLY_DOMAIN_TOOLS` policy replica.
+Native-loading clients may have no adapter files. A matrix entry that
+claims a generated adapter must ship those files.
+
+### B36 — Trusted-local-only enumerated human decisions
+
+MCP `tools/list` must include `list_decision_handoffs` and
+`create_decision_handoff` and must not include the trusted actions.
+`./bin/jobsss decide --data <PLUGIN_DATA> --list` must print JSON pending
+items after a real local journey that created proofs, artifacts, contacts,
+stories, outreach, debrief, and an application. Each pending item must
+expose entity id, integer revision, and lowercase SHA-256 `contentHash`.
+The trusted local CLI must complete all of:
+
+- `proof.verify`
+- `artifact.approve` / `artifact.reject`
+- `contact.approve` / `contact.suppress`
+- `story.verify` / `story.retire`
+- `debrief.record` / `debrief.correct`
+- `outreach.sent` / `outreach.outcome`
+- `application.observe_status`
+
+Exact invocation:
+
+`./bin/jobsss decide --data <dir> --action <action> --id <id> --revision <n> --content-hash <sha256>`
+
+Human observation of an external application status is allowed only on this
+trusted local surface and must record a human/trusted-local actor. Product
+language must not claim JobSSS sent, submitted, or applied. MCP
+`update_application_status` remains forbidden from attesting
+`applied`/`submitted` (B23).
+
+### B37 — Exact entity ID, revision, and content-hash binding
+
+A trusted decision without `--content-hash`, without `--revision`, or with
+an unknown `--id` must fail and must not persist. The same pending item
+accepted with the exact listed id, revision, and content hash must succeed.
+
+### B38 — Typed stale conflict
+
+A trusted decision whose `--revision` does not match the current entity
+revision, or whose `--content-hash` does not match the current content
+hash, must fail with a typed `stale_conflict` / `stale_revision` /
+`content_hash_mismatch` error and must not persist the rejected write.
+The pending item must remain.
+
+### B39 — MCP authority forgery rejection
+
+MCP callers may create and list decision handoffs. They must not complete
+or forge human authority via tool names, arguments (`approved`,
+`humanApproved`, `authority=human`, `verifyProofs`), labels, or environment
+variables (`JOBSSS_AUTHORITY`, `JOBSSS_HUMAN_APPROVE`, `JOBSSS_APPROVE`).
+Calling frozen human-only names, `decide`, `trusted_decide`, or
+`proof.verify` over MCP must error as not available / human-only / blocked.
+Proof candidates and artifacts must remain unverified/unapproved. MCP must
+still reject `applied` even when approval flags are supplied.
+
+### B40 — Audit history and projections agree after trusted-local action
+
+After a successful `./bin/jobsss decide` action, canonical `store.json`
+audit (or equivalent) plus `PLUGIN_DATA` projections must mention the
+entity id, the action, and a trusted-local/human actor. They must not claim
+JobSSS sent/submitted/applied. A restarted MCP process listing
+`list_decision_handoffs` and `review_queue` must still agree on that entity
+id.
+
+### B41 — Documentation verified/unverified distinction
+
+Canonical skill, references, README, and `compat/matrix.json` must name
+`./bin/jobsss decide`, keep `/jobsss review`, and route review to pending
+decisions plus trusted-local instructions. Clients `pi`, `omp`, `codex`,
+`hermes`, and `claude` and intended platforms/targets must be labeled
+`verified`, `built`, `intended`, or `unverified`. Unproven paths must use
+`unverified`. Docs must distinguish local preparation, human observation,
+and unsupported/blocked behavior. They must not tell the agent to install
+JobOS, route to a JobOS TUI this plugin does not ship, claim JobSSS
+sent/submitted/interviewed/applied, or add `/jobsss network`,
+`/jobsss interview`, or `/jobsss schedule` sub-intents. B6/B7/B25
+human-only naming remains required.
+
 ---
 
 ## Verdict
 
-**Pass** only if the frozen validation command exits `0` and B1–B29 hold on
-inspected files and subprocess output.
+**Pass** only if the frozen validation command exits `0` and B1–B41 hold on
+inspected files, subprocess output, and the current-host release artifact.
 
 **Fail** if any required file is missing, any check mismatches, any command
 hangs, any mock replaces the bundled runtime, any `jobos` executable is
@@ -728,6 +947,16 @@ change these files. B1–B25 hashes above are unchanged.
 
 ```
 cbad53a2de4fbb9a47b16a463cd578be84e4d1c11ff381658a7ccf6dfe08c57b  tests/jobsss-integrity.test.mjs
+```
+
+SHA-256 of reviewer-owned productization files. Implementers must not
+change these files. B1–B29 hashes above are unchanged.
+
+```
+cf1a56d7d652448d5d78c624b73f362e5a242aadbbe92cf5af2b72fdb76243b9  tests/jobsss-release.test.mjs
+501130f7722f697d4d90ec0ff5ea46e40fd9eb293d35d04c9603cf552af0255c  tests/jobsss-adapters.test.mjs
+4f30ba40ccd86ad6fc7548fabffb63cb1267b4ac6dc01595ef34944588953179  tests/jobsss-authority.test.mjs
+fa7453057e9c9573d3de22a2855951b97957c73016083fcce89f1bb6d773c3e6  tests/helpers/jobsss-productization.mjs
 ```
 
 ## Correction log
@@ -867,3 +1096,90 @@ cbad53a2de4fbb9a47b16a463cd578be84e4d1c11ff381658a7ccf6dfe08c57b  tests/jobsss-i
   `cbad53a2de4fbb9a47b16a463cd578be84e4d1c11ff381658a7ccf6dfe08c57b`. After
   correction, integrity `# tests 4` `# pass 4` and frozen command `# tests 31`
   `# pass 31`, exit `0`. Not done to make tests green by weakening B28.
+
+- 2026-08-31T19:49:15Z — **B30–B41 productization Gate 0 extension**. Reason:
+  the confirmed JobSSS productization goal requires a deterministic portable
+  release, current-host standalone MCP with Node and JobOS absent from PATH,
+  PLUGIN_DATA restart persistence from that artifact, canonical skill/tool
+  equivalence across native/generated adapters, isolated client probes with
+  truthful unverified reporting, adapters without business logic, trusted
+  local human decisions (proof verify; artifact approve/reject; contact
+  approve/suppress; story verify/retire; debrief record/correct; outreach
+  sent/outcome; externally observed application status), exact
+  id/revision/content-hash binding, typed stale conflict, MCP authority
+  forgery rejection, audit/projection agreement, and verified/unverified
+  documentation. None of B1–B29 freeze those contracts. Change: preserved
+  B1–B29 and every existing test/hash; appended B30–B41 plus
+  `tests/jobsss-release.test.mjs`, `tests/jobsss-adapters.test.mjs`,
+  `tests/jobsss-authority.test.mjs`, and
+  `tests/helpers/jobsss-productization.mjs`; recorded today's failing
+  baseline (`# tests 43` `# pass 31` `# fail 12`, exit `1`) against
+  committed HEAD `c47c557` before any product correction. Not done to make
+  tests green.
+- 2026-08-31T21:44:35Z — **B34 snapshot retarget**. Reason: genuine
+  test-vs-prose defect, not missing product behavior. B34 prose requires
+  isolated compat-probes not to mutate real client profiles under the host
+  home. The frozen helper snapshotted directory `mtimeMs` of whole install
+  trees including `~/.hermes`. On this host the ambient Hermes gateway cron
+  rewrites `~/.hermes/profiles/coder/cron/jobs.json` about every 2.5s with
+  zero JobSSS activity, so the whole-directory mtime assertion cannot pass
+  regardless of probe isolation. Independent evidence before this
+  correction: frozen command `# tests 43` `# pass 42` `# fail 1`, exit `1`,
+  assertion `real client state changed: /home/logani/.hermes` with size
+  unchanged at 4096; passive control 3/3 intervals changed `~/.hermes`
+  mtime with no JobSSS; `strace -f` of `./bin/jobsss compat-probe --client
+  hermes` recorded 0 write-mode opens on real `~/.hermes`, 0 `shallow.lock`
+  ops, 0 `git fetch` execs, and a read-only `git ls-remote` path. Change:
+  preserved B1–B33, B35–B41, B34 prose, adapter tests, and every existing
+  honesty/isolation requirement; retargeted only
+  `snapshotClientState` / `assertClientStateUnchanged` to content-hash
+  probe-touchable profile/config files (`config.yaml` / `config.toml` /
+  `mcp.json` / `settings.json` and the same under `agent/` plus
+  `profiles/<id>/`) instead of ambient install-tree directory mtime;
+  updated only `tests/helpers/jobsss-productization.mjs` frozen hash from
+  `3b71c3c7704ff7f0901a7a5473ad123a6e3a3ae876bd2287b6dca616531213f9` to
+  `590226460efdb2fabeb0cd4e05f5ce510e9156535320ccdf1b44bcad77cb122e`. Not
+  done to make tests green by deleting or weakening B34.
+- 2026-09-01T05:52:56Z — **B30 iteration-6 complete-release strengthening**.
+  Reason: genuine documented benchmark omission, not missing product
+  behavior to be papered over. Default-agent final-artifact inspection
+  found `.tmp/jobsss-productization/out-a/current-host/bin/jobsss` contains
+  `/home/logani/projects/jobsss` (12 printable hits) and `tests/fixtures`
+  source-checkout strings (`FROZEN_FIXTURES` realpath of
+  `tests/fixtures/profile-resume.md` and `tests/fixtures/job-posting.md`,
+  plus `__srcDir: "/home/logani/projects/jobsss/src"` and embedded
+  `sea-entry.cjs` scratch path). Both `release-manifest.json` copies
+  (output root and current-host tree) contain absolute workspace, `--out`,
+  Node binary (`/home/logani/.hermes/node/bin/node`), and scratch
+  `entryPath` values. Repeated-manifest SHA-256 differs
+  (`56b49a1832d8e46aa132abb55033322dba6c3570f0ae2829baf216360ec44497` vs
+  `25a71a248b2b6eaf58cb59cbf3e6e78467da3f218a5cafd558babffa801d108d`)
+  because `generatedAt` (`2026-08-31T20:44:13.429Z` vs
+  `2026-08-31T20:48:12.365Z`) and those paths differ. `linux-x64` is
+  labeled `verified` with `artifactSha256: null`. Old B30 compared only
+  four core files, so that hole stayed green. Independent helper probe
+  against today's `out-a`/`out-b` before freeze: four-file identity PASS;
+  no-build-path-leakage FAIL; no-checkout-dependency FAIL;
+  portable-evidence FAIL; complete-determinism FAIL. Focused command
+  after strengthening, against today's product, before any product
+  correction: `node --test --test-concurrency=1 --test-name-pattern='B30
+  deterministic portable current-host release layout'
+  tests/jobsss-release.test.mjs` exit `1`, `# tests 1` `# pass 0`
+  `# fail 1`, `duration_ms 2976.112161`, assertion `no release file or
+  printable binary string may contain build-user/home/workspace/source/scratch/output paths`
+  on `current-host/bin/jobsss` (`/home/logani/projects/jobsss`,
+  `tests/fixtures`, `.tmp/jobsss-productization`) and both manifest
+  copies (absolute `--out` and `entryPath`). Change: preserved B1–B29,
+  B31–B41, every existing B30 assertion (including four-file identity),
+  adapter/authority tests, and every existing test/hash except the two
+  files below; appended complete-tree identity of both manifest copies,
+  portable/relative evidence, truthful verified artifact hashes, and
+  no-checkout/`tests/fixtures` runtime dependency to B30 prose and
+  `tests/jobsss-release.test.mjs` / `tests/helpers/jobsss-productization.mjs`;
+  updated those frozen hashes from
+  `d697f787acb0015f4605f11527ab0a79e220fe331ebf3dc7f9edd649752e2016` to
+  `cf1a56d7d652448d5d78c624b73f362e5a242aadbbe92cf5af2b72fdb76243b9`
+  (release) and from
+  `590226460efdb2fabeb0cd4e05f5ce510e9156535320ccdf1b44bcad77cb122e` to
+  `fa7453057e9c9573d3de22a2855951b97957c73016083fcce89f1bb6d773c3e6`
+  (helper). Not done to make tests green.

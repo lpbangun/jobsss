@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "jobsss": {
+      "type": "stdio",
+      "command": "__JOBSSS_LAUNCHER__",
+      "args": ["mcp", "--data", "__JOBSSS_DATA_DIR__"]
+    }
+  }
+}

@@ -17,6 +17,23 @@ execution or authority. Do not claim, invent, fabricate, or pretend that a job,
 score, proof, send, submission, approval, or applied attestation succeeded. Never
 claim submission, sending, approval, or deferred/future capability.
 
+Recommended next action: on a fresh workspace, run `/jobsss start` to
+initialize durable state under `PLUGIN_DATA`; then follow the core journey
+below in order. Recommend exactly one next action at a time and confirm it with
+the real bundled MCP result before proposing the next step.
+
+What JobSSS does, and what it never claims:
+- local preparation — every MCP tool below prepares, drafts, plans, or records
+  state locally under `PLUGIN_DATA`; none sends, submits, applies, approves, or
+  attests externally;
+- human observation — only a human records an externally observed application
+  status (or an outreach outcome) on the trusted local surface
+  `./bin/jobsss decide`, and that record is attributed to the human, never to
+  JobSSS;
+- unsupported / deferred — external sending, application submission, interview
+  scheduling or attestation, packet freezing, and browser automation are
+  blocked, out of scope, and never claimed.
+
 ## Core journey (offline, local, no API key)
 
 | Invocation | Route |
@@ -24,12 +41,12 @@ claim submission, sending, approval, or deferred/future capability.
 | `/jobsss` | base — Help / next-action menu. Never fabricate execution or authority. |
 | `/jobsss doctor` | MCP `doctor` — diagnose the bundled `./bin/jobsss` launcher and `PLUGIN_DATA` readability/writability. No JobOS on PATH is required. |
 | `/jobsss start` | MCP `start` — initialize durable state under `PLUGIN_DATA`. Creates the local store if absent. |
-| `/jobsss profile` or `create_profile` | MCP `create_profile` — create or import a local profile/resume (`name` plus optional `resumePath`/`path`/`filePath`), extracting proof-point candidates for human verification. Returns `profileId`. |
-| `/jobsss find` or `import_job` | MCP `import_job` and `list_jobs` — import a local job fixture (`profileId` plus `path`/`filePath`) and list imported jobs. Offline fixture import; re-import deduplicates to a single job id. |
+| `/jobsss profile` or `create_profile` | MCP `create_profile` — create or import a local profile/resume (`name` plus optional resume text or a path under `PLUGIN_DATA`), extracting proof-point candidates for human verification. Returns `profileId`. |
+| `/jobsss find` or `import_job` | MCP `import_job` and `list_jobs` — import job content inline (`text`/`content`) or from a path under `PLUGIN_DATA`, then list imported jobs. Re-importing the same job deduplicates to a single job id. |
 | `/jobsss score` or `score_job` | MCP `score_job` (`jobId`, `profileId`) — deterministic local scoring returning `overall` and/or `scoreStatus`. No API key required. |
 | `/jobsss pursue` | MCP `pursue_job` (`jobId`, `profileId`) — record local pursuit and prepare a basic readiness artifact for review; never submits, sends, or applies. |
 | `/jobsss pipeline` | MCP `applications_plan` and `list_jobs` — local pipeline/readiness for a job; never claims submitted/sent/applied. |
-| `/jobsss review` | MCP `review_queue` (`profileId`) — local review state for the profile. |
+| `/jobsss review` | MCP `review_queue` (`profileId`) plus `list_decision_handoffs` — show local review state and pending decision handoffs, then route the human to the trusted local surface `./bin/jobsss decide --data ${PLUGIN_DATA} --list` for completion (see references/client-compatibility.md). |
 
 Required MCP tools for this journey (all operate under `PLUGIN_DATA` via
 `./bin/jobsss mcp --data ${PLUGIN_DATA}`): `doctor`, `start`,
@@ -40,6 +57,14 @@ for argument shapes and persistence details.
 For human-only operations, follow [Human-only handoffs](references/human-only-handoffs.md).
 Those tools are not available to MCP and must not be reported as done. Approval,
 send, submit, and packet-freeze language is handoff-only via trusted CLI/TUI.
+
+MCP callers may create and list non-authoritative decision requests via
+`list_decision_handoffs` and `create_decision_handoff`; they cannot complete or
+forge a human decision. Only the trusted local surface `./bin/jobsss decide
+--data ${PLUGIN_DATA}` completes proof verification, artifact approve/reject,
+contact approve/suppress, story verify/retire, debrief record/correct,
+outreach sent/outcome, and externally observed application status (see
+references/client-compatibility.md).
 
 ## Extended local workflows (all offline, all under PLUGIN_DATA)
 
@@ -54,7 +79,7 @@ and browser actions stay blocked or human-only.
 | Secure intake | `import_job` (inline `text`/`content` or a path under `PLUGIN_DATA`), `import_job_url` (fetches public HTTP(S), rejects `file:`/private URLs), `import_contact` (inline card or `PLUGIN_DATA` path), `list_contacts` | No arbitrary absolute filesystem paths are read. Re-importing the same job deduplicates to one id. |
 | Migration & state | `start` | A legacy `store.json` migrates losslessly into versioned persistence with an audit trail; never drop or rewrite ids. |
 | Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `add_proof_point` | Versioned structured resumes, preferences, and proof candidates remain profile-owned and require human verification. |
-| Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`, `save_job`, `skip_job`, `archive_job`, `list_jobs` | Fetch public Greenhouse ATS boards by `boardToken`, or use a fixture under `PLUGIN_DATA` for offline operation; no API keys. Discoveries stay database-only until saved/pursued. |
+| Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`, `save_job`, `skip_job`, `archive_job`, `list_jobs` | Fetch public Greenhouse ATS boards by `boardToken`, or run against staged offline search data under `PLUGIN_DATA`; no API keys. Discoveries stay database-only until saved/pursued. |
 | Scoring | `score_job` | Offline deterministic multidimensional fit (`jobos.fit-score.v1`) with all seven weighted dimensions; no API key. |
 | Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` — it cannot attest submission. |
 | Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Tailoring extracts posting requirements, selects relevant owned proof, and reports coverage gaps. Answers use exact owned proof wording; never arbitrary claims, invented metrics, auto-fill, or send. |
@@ -80,9 +105,9 @@ human-only catalog.
 For `/jobsss doctor`, diagnose whether `./bin/jobsss` is present and executable
 and whether `PLUGIN_DATA` is set, absolute, and writable. If state is missing,
 advise running `./bin/jobsss mcp --data ${PLUGIN_DATA}` and then `doctor` →
-`start`. Do not send the agent to install JobOS onto `PATH` and do not invent
-or claim success, jobs, scores, proofs, sends, or submissions while diagnosing.
-Do not claim, invent, or fabricate success.
+`start`. JobOS is not required and must not be installed or placed on `PATH`;
+do not invent or claim success, jobs, scores, proofs, sends, or submissions
+while diagnosing. Do not claim, invent, or fabricate success.
 
 ## Out of scope — blocked or handed off
 

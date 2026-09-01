@@ -319,9 +319,16 @@ function buildAggregateProjectionWrites(store) {
   for (const [name, value] of Object.entries(projections)) {
     writes.push({ segments: ['projections', name], content: redactSecrets(JSON.stringify(value, null, 2)) });
   }
-  const trail = (store.audit || []).map(entry =>
-    `- ${entry.createdAt} ${entry.event}${entry.fromVersion != null ? ` from v${entry.fromVersion}` : ''}`
-  );
+  const trail = (store.audit || []).map(entry => {
+    const parts = [`- ${entry.createdAt} ${entry.event}`];
+    if (entry.action) parts.push(entry.action);
+    if (entry.entityId) parts.push(entry.entityId);
+    if (entry.entityType) parts.push(`(${entry.entityType})`);
+    if (entry.actor) parts.push(`[${entry.actor}]`);
+    if (entry.handoffId) parts.push(entry.handoffId);
+    if (entry.fromVersion != null) parts.push(`from v${entry.fromVersion}`);
+    return parts.join(' ');
+  });
   const auditMd = redactSecrets(
     `# JobSSS audit trail\n\n` +
     `Schema version: ${store.version}\n` +

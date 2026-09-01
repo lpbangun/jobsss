@@ -1,0 +1,74 @@
+{
+  "$schema": "jobsss-compat-matrix/v1",
+  "plugin": "jobsss",
+  "sourceOfTruth": "portable Agent Plugin at the repository root (plugin.json, mcp.json, skills/jobsss/SKILL.md, bin/jobsss). Adapters are generated pointers to that canonical source; they contain no duplicated policy, tools, or business logic.",
+  "clients": {
+    "pi": {
+      "id": "pi",
+      "status": "unverified",
+      "loading": "native-skills",
+      "version": "0.84.3",
+      "probe": "./bin/jobsss compat-probe --client pi --config-dir <temp> --plugin-root <plugin>",
+      "notes": "stock Pi core exposes native skill loading but no documented native stdio MCP host; proving the JobSSS runtime would require a custom extension tool bridge plus a model-authorized session, so this client is unverified and never claimed as verified."
+    },
+    "omp": {
+      "id": "omp",
+      "status": "unverified",
+      "loading": "unknown",
+      "version": "18.0.4",
+      "probe": "./bin/jobsss compat-probe --client omp --config-dir <temp> --plugin-root <plugin>",
+      "notes": "this build exposes no mcp/plugin subcommand and no documented native Agent Plugins loader was established; unverified until a real isolated launch proves the JobSSS runtime."
+    },
+    "codex": {
+      "id": "codex",
+      "status": "unverified",
+      "loading": "native",
+      "version": "0.147.0",
+      "adapter": "compat/codex/config.toml.template",
+      "probe": "./bin/jobsss compat-probe --client codex --config-dir <temp> --plugin-root <plugin>",
+      "notes": "isolated temporary CODEX_HOME registration is accepted for the JobSSS runtime, but a live JobSSS tool exchange could not be proven without provider authentication (probe keys are blank by design); labeled unverified until an authenticated isolated session proves the launch."
+    },
+    "hermes": {
+      "id": "hermes",
+      "status": "verified",
+      "loading": "native",
+      "version": "0.18.2",
+      "adapter": "compat/hermes/config.yaml.template",
+      "probe": "./bin/jobsss compat-probe --client hermes --config-dir <temp> --plugin-root <plugin>",
+      "verifiedBy": "real isolated launch: hermes mcp test jobsss connected to the bundled runtime in a temporary HERMES_HOME and discovered its tools",
+      "notes": "verified by the compat-probe isolated launch; unverified clients and platforms are never claimed as verified."
+    },
+    "claude": {
+      "id": "claude",
+      "status": "verified",
+      "loading": "native",
+      "version": "2.1.222",
+      "adapter": "compat/claude/mcp.json.template",
+      "probe": "./bin/jobsss compat-probe --client claude --config-dir <temp> --plugin-root <plugin>",
+      "verifiedBy": "real isolated launch: claude mcp list reported the jobsss stdio server as Connected under a temporary CLAUDE_CONFIG_DIR",
+      "notes": "verified by the compat-probe isolated launch; unverified clients and platforms are never claimed as verified."
+    }
+  },
+  "targets": {
+    "current-host": {
+      "id": "current-host",
+      "status": "built",
+      "platform": "linux",
+      "arch": "x64",
+      "notes": "current-host artifact built and exercised by the packaging slice (B30-B32): standalone bin/jobsss runs generic stdio MCP with node and jobos absent from PATH."
+    },
+    "linux-x64": { "id": "linux-x64", "status": "intended", "platform": "linux", "arch": "x64", "notes": "reproducible definition exists (same bundler/injection pipeline); not exercised on this host, therefore intended, never verified." },
+    "linux-arm64": { "id": "linux-arm64", "status": "intended", "platform": "linux", "arch": "arm64", "notes": "reproducible definition exists; not exercised on this host, therefore intended, never verified." },
+    "darwin-x64": { "id": "darwin-x64", "status": "intended", "platform": "darwin", "arch": "x64", "notes": "reproducible definition exists; not exercised on this host, therefore intended, never verified." },
+    "darwin-arm64": { "id": "darwin-arm64", "status": "intended", "platform": "darwin", "arch": "arm64", "notes": "reproducible definition exists; not exercised on this host, therefore intended, never verified." },
+    "win-x64": { "id": "win-x64", "status": "intended", "platform": "win32", "arch": "x64", "notes": "reproducible definition exists but needs the PE resource injection variant; not exercised on this host, therefore intended, never verified." }
+  },
+  "verification": {
+    "method": "isolated temporary configuration only: real client binaries are launched per client with temporary HOME, XDG, and per-client home/state overrides under --config-dir; real client profiles are never read or written.",
+    "statuses": ["verified", "built", "intended", "unverified"],
+    "trustedLocal": "pending decisions are completed only on the trusted local surface ./bin/jobsss decide --data ${PLUGIN_DATA} --list; MCP handoff tools list_decision_handoffs / create_decision_handoff create non-authoritative requests only.",
+    "language": "local preparation and local drafts stay local; an externally observed application status is human observation recorded via the trusted local surface and attributed to the human, never to JobSSS; unsupported behavior (external sending, submission, scheduling, browser automation) is blocked or unavailable and never claimed.",
+    "never": "unproven clients and platforms are labeled unverified; nothing implies this plugin performed an external send, submission, or application action."
+  },
+  "updated": "2026-08-31T22:20:00Z"
+}

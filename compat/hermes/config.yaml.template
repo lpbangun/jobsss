@@ -1,0 +1,8 @@
+# JobSSS -> Hermes thin adapter (rendered by ./bin/jobsss compat-probe into a
+# temporary HERMES_HOME; placeholders are replaced with absolute paths).
+# References the canonical skill (skills/jobsss/SKILL.md) and bundled runtime
+# (./bin/jobsss). Contains no job-search policy or tools.
+mcp_servers:
+  jobsss:
+    command: __JOBSSS_LAUNCHER__
+    args: [mcp, --data, __JOBSSS_DATA_DIR__]

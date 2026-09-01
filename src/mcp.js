@@ -3,6 +3,7 @@
 // reimplemented here for the standalone PLUGIN_DATA runtime.
 import * as domain from './domain.js';
 import { ensureDataDir, redactSecrets } from './store.js';
+import { listDecisionHandoffs, createDecisionHandoff } from './authority.js';
 
 const schema = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: true });
 const string = { type: 'string' };
@@ -54,6 +55,8 @@ const TOOLS = [
   tool('get_interview_prep', 'Read persisted interview preparation.', schema({ ...profile, jobId: string }, ['profileId'])),
   tool('interview_debrief_handoff', 'Return the trusted human-only debrief handoff without attesting an outcome.', schema(profile, ['profileId'])),
   tool('preview_sync', 'Return a secret-safe local sync/export preview; transmits nothing.', schema(profile, ['profileId'])),
+  tool('list_decision_handoffs', 'List pending non-authoritative decision handoffs for a profile. Completion requires the trusted local CLI ./bin/jobsss decide; MCP never completes or forges human decisions.', schema(profile, ['profileId'])),
+  tool('create_decision_handoff', 'Create a non-authoritative local handoff marker for human review. Grants no authority, performs no action, and never completes a human decision.', schema({ ...profile, kind: string, note: string }, ['profileId'])),
 ];
 
 const HANDLERS = Object.freeze({
@@ -75,6 +78,8 @@ const HANDLERS = Object.freeze({
   draft_interview_story: domain.draftInterviewStory, list_interview_stories: domain.listInterviewStories,
   interview_prep: domain.interviewPrep, get_interview_prep: domain.getInterviewPrep,
   interview_debrief_handoff: domain.interviewDebriefHandoff, preview_sync: domain.previewSync,
+  list_decision_handoffs: listDecisionHandoffs,
+  create_decision_handoff: createDecisionHandoff,
 });
 
 function result(value) { return { content: [{ type: 'text', text: redactSecrets(JSON.stringify(value, null, 2)) }] }; }

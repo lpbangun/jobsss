@@ -1,0 +1,7 @@
+{
+  "name": "jobsss",
+  "description": "Thin Claude Code plugin wrapper for JobSSS that points at the canonical skill (skills/jobsss/SKILL.md) and bundled runtime (./bin/jobsss); no policy, tools, or business logic are duplicated here.",
+  "version": "0.1.0",
+  "author": "jobsss",
+  "license": "MIT"
+}

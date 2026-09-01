@@ -23,15 +23,15 @@ All tools operate locally under `PLUGIN_DATA` via the bundled runtime.
 | --- | --- | --- |
 | `doctor` | none | Diagnoses bundled `./bin/jobsss` and `PLUGIN_DATA`; succeeds without credentials. Do not claim, invent, or fabricate jobs/scores. |
 | `start` | none | Initializes durable state under `PLUGIN_DATA`. |
-| `create_profile` | `name`, optional `resumePath`/`path`/`filePath` | Creates a profile and extracts proof-point candidates marked for human verification; returns `profileId` or `id`. |
-| `import_job` | `profileId` plus local `path`/`filePath` | Imports a local job fixture (e.g. `tests/fixtures/job-posting.md`); returns `jobId`. Offline; re-import deduplicates to a single id. |
+| `create_profile` | `name`, optional resume text or a path under `PLUGIN_DATA` | Creates a profile and extracts proof-point candidates marked for human verification; returns `profileId` or `id`. No arbitrary filesystem paths are read. |
+| `import_job` | `profileId` plus inline `text`/`content` or a path under `PLUGIN_DATA` | Imports job content locally; returns `jobId`. Offline; re-importing the same job deduplicates to a single id. |
 | `list_jobs` | `profileId` | Lists imported jobs for that profile. |
 | `score_job` | `jobId`, `profileId` | Local deterministic scoring; returns `overall` number and/or `scoreStatus`. No API key. |
 | `pursue_job` | `jobId`, `profileId` | Records local pursuit and prepares a basic readiness artifact in draft review state; never claims submitted/sent/applied/approved. |
 | `applications_plan` | `jobId`, `profileId` | Local pipeline/readiness; never claims submitted/sent/applied. |
-| `review_queue` | `profileId` | Local review state. |
+| `review_queue` | `profileId` | Local review state. Pending decisions are also listed by MCP `list_decision_handoffs` and completed by a human only on the trusted local CLI `./bin/jobsss decide --data ${PLUGIN_DATA} --list` (see `client-compatibility.md`). |
 
-Re-importing the same local job fixture for one profile must deduplicate to the
+Re-importing the same job for one profile must deduplicate to the
 same job id.
 
 ## Extended local workflows (offline, no JobOS, no API keys)
@@ -47,7 +47,7 @@ sub-intents for networking, interview planning, or scheduling.
 | Secure intake | `import_contact`, `list_contacts` | Inline contact card (`name`, `email`, `company`) or a `PLUGIN_DATA` path; never arbitrary paths. |
 | Migration & state | `start` | Migrates a legacy `store.json` losslessly into versioned persistence with an audit trail under `PLUGIN_DATA`; ids are preserved. |
 | Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `add_proof_point` | Profile preferences, structured resume revisions, and proof candidates remain profile-owned and need human verification. |
-| Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery` | Fetches public Greenhouse boards by `boardToken`, with a staged `PLUGIN_DATA` fixture as the offline path; no keys. Discoveries stay database-only until saved/pursued. |
+| Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery` | Fetches public Greenhouse boards by `boardToken`, with staged offline search data under `PLUGIN_DATA` as the offline path; no keys. Discoveries stay database-only until saved/pursued. |
 | Save / skip / archive | `save_job`, `skip_job`, `archive_job`, `list_jobs` | Explicit local decisions; unsaved discoveries create no application folder. |
 | Scoring | `score_job` | Offline deterministic `jobos.fit-score.v1` with all seven weighted dimensions; `deterministic-degraded` mode; no provider. |
 | Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` (cannot attest). |
@@ -59,8 +59,8 @@ sub-intents for networking, interview planning, or scheduling.
 ## Blocked / human-only boundary
 
 These must not appear on `tools/list` and are not MCP-attestable — hand off to
-trusted CLI/TUI instead and never report as done. See `human-only-handoffs.md`
-for the complete frozen catalog:
+the trusted local CLI `./bin/jobsss decide` instead and never report as done.
+See `human-only-handoffs.md` for the complete frozen catalog:
 
 `approve_artifact`, `reject_artifact`, `approve_contact`, `answers_add`,
 `create_application_packet`, `attest_application_submitted`,

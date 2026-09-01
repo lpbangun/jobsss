@@ -36,12 +36,13 @@ restarted MCP process. No user state is written into the plugin directory.
 → prepare proof-grounded materials, reusable answers, and persistent tasks
 → map local network paths and draft outreach without sending
 → prepare interview stories, coverage gaps, and a human debrief handoff
-→ /jobsss pipeline (applications_plan) and /jobsss review (review_queue)
+→ /jobsss pipeline (applications_plan) and /jobsss review (review_queue plus
+    pending decision handoffs; a human completes them on ./bin/jobsss decide)
 ```
 
 All steps run locally under `PLUGIN_DATA`. Resume imports extract proof-point
 candidates for human verification, and pursuit prepares a basic readiness
-artifact for the review queue. Re-importing the same fixture deduplicates to one
+artifact for the review queue. Re-importing the same job deduplicates to one
 job id. Scoring and pursuit do not require credentials and never claim
 submitted/sent/applied/approved.
 
@@ -55,7 +56,15 @@ debrief confirmation, automatic email/calendar actions, scheduling, and browser
 automation (including `inspect_application_form` / `assist_application_form` /
 `submit_application_form`) are blocked or handed off to a trusted human CLI/TUI.
 Human-only operations listed in `skills/jobsss/references/human-only-handoffs.md`
-are not MCP-attestable.
+are not MCP-attestable: a human completes each one on the trusted local CLI
+`./bin/jobsss decide --data ${PLUGIN_DATA} --list` with the exact entity id,
+revision, and content hash. MCP callers can only list and create non-authoritative
+decision handoffs (`list_decision_handoffs`, `create_decision_handoff`).
+
+Client compatibility: Pi/OMP, Codex, Hermes, and Claude load the same canonical
+skill and bundled runtime through thin pointers recorded in `compat/matrix.json`.
+A client or platform is labeled `verified` only after a real isolated launch
+proved it; everything unproven is labeled `unverified`. See `compat/README.md`.
 
 JobSSS never claims submission, sending, approval, or deferred capability and
 never invents jobs, scores, or proofs.

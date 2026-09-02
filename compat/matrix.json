@@ -57,11 +57,11 @@
       "arch": "x64",
       "notes": "current-host artifact built and exercised by the packaging slice (B30-B32): standalone bin/jobsss runs generic stdio MCP with node and jobos absent from PATH."
     },
-    "linux-x64": { "id": "linux-x64", "status": "intended", "platform": "linux", "arch": "x64", "notes": "reproducible definition exists (same bundler/injection pipeline); not exercised on this host, therefore intended, never verified." },
-    "linux-arm64": { "id": "linux-arm64", "status": "intended", "platform": "linux", "arch": "arm64", "notes": "reproducible definition exists; not exercised on this host, therefore intended, never verified." },
-    "darwin-x64": { "id": "darwin-x64", "status": "intended", "platform": "darwin", "arch": "x64", "notes": "reproducible definition exists; not exercised on this host, therefore intended, never verified." },
-    "darwin-arm64": { "id": "darwin-arm64", "status": "intended", "platform": "darwin", "arch": "arm64", "notes": "reproducible definition exists; not exercised on this host, therefore intended, never verified." },
-    "win-x64": { "id": "win-x64", "status": "intended", "platform": "win32", "arch": "x64", "notes": "reproducible definition exists but needs the PE resource injection variant; not exercised on this host, therefore intended, never verified." }
+    "linux-x64": { "id": "linux-x64", "status": "verified", "platform": "linux", "arch": "x64", "notes": "byte-identical to the current-host artifact built from the real host Node executable and exercised via generic stdio MCP under a restricted PATH (B30-B32)." },
+    "linux-arm64": { "id": "linux-arm64", "status": "unverified", "platform": "linux", "arch": "arm64", "notes": "ELF/arm64 definition implemented in src/packaging.js (PT_NOTE NODE_SEA_BLOB injection) and exercised only on a synthetic fixture; unverified until exercised on a real arm64 host." },
+    "darwin-x64": { "id": "darwin-x64", "status": "unverified", "platform": "darwin", "arch": "x64", "notes": "Mach-O/x64 definition implemented in src/packaging.js (NODE_SEA segment injection) and exercised only on a synthetic fixture; unverified until exercised on a real macOS x64 host." },
+    "darwin-arm64": { "id": "darwin-arm64", "status": "unverified", "platform": "darwin", "arch": "arm64", "notes": "Mach-O/arm64 definition implemented in src/packaging.js (NODE_SEA segment injection) and exercised only on a synthetic fixture; unverified until exercised on a real macOS arm64 host." },
+    "win-x64": { "id": "win-x64", "status": "unverified", "platform": "win32", "arch": "x64", "notes": "PE32+/x64 definition implemented in src/packaging.js (RCDATA NODE_SEA_BLOB resource injection) and exercised only on a synthetic fixture; unverified until exercised on a real Windows x64 host." }
   },
   "verification": {
     "method": "isolated temporary configuration only: real client binaries are launched per client with temporary HOME, XDG, and per-client home/state overrides under --config-dir; real client profiles are never read or written.",

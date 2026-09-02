@@ -41,13 +41,13 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TARGETS, identifyExecutable, injectSeaPayload } from './packaging.js';
 
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 // Assembled from fragments so the contiguous scratch slug never appears in
 // the bundle text (the standalone binary must not contain build-scratch
 // paths). `path.join` still yields the runtime path on every platform.
 export const SEA_BUILD_REL = path.join('.tmp', 'jobsss' + '-productization', 'sea-build');
-export const SEA_FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
 
 const MODULES = Object.freeze([
   'store.js',
@@ -57,6 +57,7 @@ const MODULES = Object.freeze([
   'discovery.js',
   'domain.js',
   'authority.js',
+  'packaging.js',
   'mcp.js',
   'sea-build.js',
   'release.js',
@@ -401,144 +402,22 @@ export function generateSeaBlob({ repoRoot, nodeBinary }) {
 }
 
 // ---------------------------------------------------------------------------
-// ELF injection of the NODE_SEA_BLOB note (replicates LIEF/postject output
-// format that Node's postject_find_resource() consumes on Linux).
-// ---------------------------------------------------------------------------
-
-function readU16(buf, offset) { return buf.readUInt16LE(offset); }
-function readU32(buf, offset) { return buf.readUInt32LE(offset); }
-function readU64(buf, offset) { return Number(buf.readBigUInt64LE(offset)); }
-function writeU16(buf, offset, value) { buf.writeUInt16LE(value, offset); }
-function writeU32(buf, offset, value) { buf.writeUInt32LE(value, offset); }
-function writeU64(buf, offset, value) { buf.writeBigUInt64LE(BigInt(value), offset); }
-function alignUp(value, alignment) { return Math.ceil(value / alignment) * alignment; }
-
-export function injectSeaNote(execBytes, blobBytes) {
-  const ELF = Buffer.from(execBytes);
-  assert(ELF.length > 64 && ELF.toString('utf8', 0, 4) === '\x7fELF', 'base executable is not an ELF binary');
-  assert(ELF[4] === 2, 'only 64-bit ELF base executables are supported for current-host builds');
-  assert(ELF[5] === 1, 'only little-endian ELF base executables are supported on this code path');
-  const e_phoff = readU64(ELF, 0x20);
-  const e_phentsize = readU16(ELF, 0x36);
-  const e_phnum = readU16(ELF, 0x38);
-  assert(e_phentsize >= 56, `unexpected ELF program header size ${e_phentsize}`);
-
-  let maxLoadEnd = 0;
-  let phdrEntry = null;
-  const phdrs = [];
-  for (let i = 0; i < e_phnum; i += 1) {
-    const offset = e_phoff + i * e_phentsize;
-    const entry = {
-      type: readU32(ELF, offset),
-      flags: readU32(ELF, offset + 4),
-      offset: readU64(ELF, offset + 8),
-      vaddr: readU64(ELF, offset + 16),
-      paddr: readU64(ELF, offset + 24),
-      filesz: readU64(ELF, offset + 32),
-      memsz: readU64(ELF, offset + 40),
-      align: readU64(ELF, offset + 48),
-      tableOffset: offset,
-    };
-    phdrs.push(entry);
-    if (entry.type === 1) {
-      const end = entry.vaddr + entry.memsz;
-      if (end > maxLoadEnd) maxLoadEnd = end;
-    }
-    if (entry.type === 6) phdrEntry = entry; // PT_PHDR
-  }
-  assert(phdrEntry, 'base executable has no PT_PHDR entry');
-  assert(maxLoadEnd > 0, 'base executable has no loadable segments');
-
-  const newVaddr = alignUp(maxLoadEnd, 0x1000);
-  const NAME = 'NODE_SEA_BLOB';
-  const nhdrSize = 12;
-  const namePadded = alignUp(NAME.length + 1, 4); // name + NUL, 4-byte aligned
-  const noteLen = nhdrSize + namePadded + blobBytes.length;
-  const noteOffset = alignUp(ELF.length, 0x1000);
-
-  const newTableCount = e_phnum + 2;
-  const newTableSize = newTableCount * e_phentsize;
-  const tableOffset = alignUp(noteOffset + noteLen, 8);
-  const mappedEnd = alignUp(tableOffset + newTableSize, 0x1000);
-
-  const loadPhdr = {
-    type: 1,
-    flags: 4,
-    offset: noteOffset,
-    vaddr: newVaddr,
-    paddr: newVaddr,
-    filesz: mappedEnd - noteOffset,
-    memsz: mappedEnd - noteOffset,
-    align: 0x1000,
-  };
-  const notePhdr = {
-    type: 4,
-    flags: 4,
-    offset: noteOffset,
-    vaddr: newVaddr,
-    paddr: newVaddr,
-    filesz: noteLen,
-    memsz: noteLen,
-    align: 4,
-  };
-
-  const out = Buffer.alloc(mappedEnd);
-  ELF.copy(out, 0, 0, ELF.length);
-  const note = Buffer.alloc(noteLen);
-  writeU32(note, 0, NAME.length + 1);
-  writeU32(note, 4, blobBytes.length);
-  writeU32(note, 8, 0);
-  note.write(NAME, 12, 'utf8');
-  blobBytes.copy(note, nhdrSize + namePadded);
-
-  // Relocated program header table: original entries + PT_LOAD + PT_NOTE.
-  const table = Buffer.alloc(newTableSize);
-  for (let i = 0; i < e_phnum; i += 1) {
-    const src = phdrs[i].tableOffset;
-    const dst = i * e_phentsize;
-    ELF.copy(table, dst, src, src + e_phentsize);
-  }
-  const entries = [loadPhdr, notePhdr];
-  for (let i = 0; i < entries.length; i += 1) {
-    const dst = (e_phnum + i) * e_phentsize;
-    writeU32(table, dst, entries[i].type);
-    writeU32(table, dst + 4, entries[i].flags);
-    writeU64(table, dst + 8, entries[i].offset);
-    writeU64(table, dst + 16, entries[i].vaddr);
-    writeU64(table, dst + 24, entries[i].paddr);
-    writeU64(table, dst + 32, entries[i].filesz);
-    writeU64(table, dst + 40, entries[i].memsz);
-    writeU64(table, dst + 48, entries[i].align);
-  }
-  // Keep PT_PHDR coherent with the relocated table (AT_PHDR / dl_iterate_phdr).
-  writeU64(table, (phdrEntry.tableOffset - e_phoff), 8, tableOffset);   // p_offset
-  writeU64(table, (phdrEntry.tableOffset - e_phoff), 16, newVaddr + (tableOffset - noteOffset)); // p_vaddr
-  writeU64(table, (phdrEntry.tableOffset - e_phoff), 24, newVaddr + (tableOffset - noteOffset)); // p_paddr
-  writeU64(table, (phdrEntry.tableOffset - e_phoff), 32, newTableSize); // p_filesz
-  writeU64(table, (phdrEntry.tableOffset - e_phoff), 40, newTableSize); // p_memsz
-
-  note.copy(out, noteOffset);
-  table.copy(out, tableOffset);
-
-  // e_phoff points at the relocated table; e_phnum grows.
-  writeU64(out, 0x20, tableOffset);
-  writeU16(out, 0x38, newTableCount);
-
-  // Flip the SEA sentinel fuse :0 -> :1 so IsSingleExecutable() is true.
-  const fuseIndex = out.indexOf(SEA_FUSE);
-  assert(fuseIndex !== -1, 'base executable does not embed the SEA sentinel fuse');
-  const flagIndex = fuseIndex + SEA_FUSE.length + 1;
-  assert(out[flagIndex] === 0x30 /* '0' */, `unexpected SEA fuse value at ${flagIndex}`);
-  out[flagIndex] = 0x31; // '1'
-  return out;
-}
-
-// ---------------------------------------------------------------------------
-// Orchestration: build the standalone current-host bin/jobsss.
+// Orchestration: build a standalone bin/jobsss for a target definition.
+// The native container mechanics (ELF PT_NOTE, Mach-O NODE_SEA segment,
+// PE RCDATA resource) live in src/packaging.js; this module only prepares
+// the deterministic SEA blob and hands both to the target's definition.
 // ---------------------------------------------------------------------------
 
 export function nodeBinary() {
   return fs.realpathSync(process.execPath);
+}
+
+export function hostTargetId() {
+  const target = TARGETS.find(entry => entry.platform === process.platform && entry.arch === process.arch) || null;
+  if (!target) {
+    throw new Error(`unsupported host executable: ${process.platform}/${process.arch}`);
+  }
+  return target.id;
 }
 
 export function buildStandaloneLauncher({ repoRoot, outFile, nodeBinaryPath = nodeBinary() }) {
@@ -546,7 +425,12 @@ export function buildStandaloneLauncher({ repoRoot, outFile, nodeBinaryPath = no
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   const { blob } = generateSeaBlob({ repoRoot, nodeBinary: nodeBinaryPath });
   const base = fs.readFileSync(nodeBinaryPath);
-  const injected = injectSeaNote(base, blob);
+  const ident = identifyExecutable(base);
+  const target = TARGETS.find(entry => entry.platform === process.platform && entry.arch === process.arch) || null;
+  if (!target) {
+    throw new Error(`unsupported host executable: ${ident.format}/${ident.arch} on ${process.platform}/${process.arch}`);
+  }
+  const injected = injectSeaPayload({ target: target.id, executable: base, blob });
   fs.writeFileSync(outFile, injected);
   fs.chmodSync(outFile, 0o755);
   const binSha = crypto.createHash('sha256').update(injected).digest('hex');

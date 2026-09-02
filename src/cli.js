@@ -33,8 +33,11 @@ Usage:
   jobsss mcp --data <dir>     Start MCP stdio server with PLUGIN_DATA
   jobsss doctor --data <dir>  Diagnose bundled runtime
   jobsss start --data <dir>   Initialize PLUGIN_DATA
-  jobsss release --out <dir> --target current-host
-                              Build a deterministic portable standalone release
+  jobsss release --out <dir> --target <id> [--node-binary <path>]
+                              Build a deterministic standalone release
+                              (targets: current-host linux-x64 linux-arm64
+                              darwin-x64 darwin-arm64 win-x64; non-host
+                              fixture builds stay unverified)
   jobsss compat-probe --client <pi|omp|codex|hermes|claude> --config-dir <temp> --plugin-root <plugin>
                               Probe one client in an isolated temporary config
 

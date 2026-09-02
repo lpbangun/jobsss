@@ -22,8 +22,26 @@ restarted MCP process. No user state is written into the plugin directory.
 - `mcp.json` — `jobsss` stdio server (`./bin/jobsss mcp --data ${PLUGIN_DATA}`)
 - `skills/jobsss/SKILL.md` — `/jobsss` routing for the standalone journey
 - `skills/jobsss/references/` — journey and human-only handoff guidance
-- `bin/jobsss` + `src/` — bundled runtime (offline core plus safe public intake; no JobOS dependency)
+- `bin/jobsss` + `src/` — bundled runtime (offline core plus safe public intake; no JobOS dependency); `src/packaging.js` holds the separated ELF/Mach-O/PE platform definitions
 - `tests/` — reviewer-owned acceptance checks plus fixtures
+
+## Release builds
+
+```
+./bin/jobsss release --out <absdir> --target current-host
+```
+
+builds the deterministic standalone current-host release: a regular
+`bin/jobsss` executable (no Node or JobOS on PATH needed at runtime) plus the
+portable plugin core, with repeated clean builds byte-identical. Intended
+cross-platform targets (`linux-x64`, `linux-arm64`, `darwin-x64`,
+`darwin-arm64`, `win-x64`) are defined in `src/packaging.js` and selected
+with `--target`, optionally with `--node-binary <path>` naming a base Node
+executable of the matching native format/architecture. A target is labeled
+`verified` only after real execution on a matching host; builds from
+synthetic native-format fixtures remain `unverified` (they validate the
+definition, never the platform runtime). Full release evidence and deferred
+capabilities are recorded in `RELEASE_REPORT.md`.
 
 ## Core journey
 

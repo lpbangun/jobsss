@@ -29,7 +29,9 @@ weaken B1–B29. B30 is additionally strengthened for complete-release
 determinism of both `release-manifest.json` copies, portable/relative
 evidence, no build-user/home/workspace/source/scratch/output paths, and
 no released-runtime dependency on the build checkout or `tests/fixtures`
-without deleting, rewriting, or weakening B1–B29 or B31–B41.
+without deleting, rewriting, or weakening B1–B29 or B31–B41. B42–B47
+extend that bar for the confirmed cross-platform remediation round and
+must not delete, rewrite, or weaken B1–B41.
 
 ---
 
@@ -50,6 +52,8 @@ without deleting, rewriting, or weakening B1–B29 or B31–B41.
 | `tests/jobsss-authority.test.mjs` | reviewer | reviewer only |
 | `tests/helpers/jobsss-live-mcp.mjs` | reviewer | reviewer only |
 | `tests/helpers/jobsss-productization.mjs` | reviewer | reviewer only |
+| `tests/jobsss-cross-platform.test.mjs` | reviewer | reviewer only |
+| `tests/helpers/jobsss-cross-platform.mjs` | reviewer | reviewer only |
 | `tests/fixtures/profile-resume.md` | reviewer | reviewer only |
 | `tests/fixtures/job-posting.md` | reviewer | reviewer only |
 | `tests/fixtures/legacy-store-v1.json` | reviewer | reviewer only |
@@ -152,7 +156,8 @@ node --test --test-concurrency=1 \
   tests/jobsss-integrity.test.mjs \
   tests/jobsss-release.test.mjs \
   tests/jobsss-adapters.test.mjs \
-  tests/jobsss-authority.test.mjs
+  tests/jobsss-authority.test.mjs \
+  tests/jobsss-cross-platform.test.mjs
 ```
 
 ### Expected exit code
@@ -161,13 +166,13 @@ node --test --test-concurrency=1 \
 
 ### What pass means
 
-Exit `0` is necessary and not sufficient. Every check B1–B41 below must hold
+Exit `0` is necessary and not sufficient. Every check B1–B47 below must hold
 on the real files, on a real bundled MCP subprocess, and on the current-host
 release artifact where those checks require it. Invented output, mocks of the
 runtime, skipped required checks, or touching real user JobOS or client
 profiles are a fail.
 
-No allowed skip. B10–B12 and B14–B41 are required even when `jobos` is absent.
+No allowed skip. B10–B12 and B14–B47 are required even when `jobos` is absent.
 There is no allowed skip for missing Node on PATH for B31–B32: the released
 `bin/jobsss` must start without resolving `node` or `jobos` from PATH.
 
@@ -286,6 +291,36 @@ determinism (manifest SHA-256
 `generatedAt` and absolute paths differ), portable evidence (`nodeBinary` /
 `entryPath` / `command` are absolute), and truthful `linux-x64` `verified`
 with `artifactSha256: null`.
+
+### Cross-platform remediation baseline recorded 2026-09-02 against committed HEAD `ba2123e`
+
+B1–B41 pass on the committed plugin (`# tests 43` `# pass 43` `# fail 0` for
+the previous ten-file command). B42–B47 are frozen failing against that same
+runtime. Missing inspectable ELF/Mach-O/PE definitions and required reports,
+not benchmark defects. Combined frozen command: `# tests 49` `# pass 43`
+`# fail 6`, exit `1`, `duration_ms 29104.753968`, Node v22.22.3. Observed
+failures:
+
+| Check | Result today | Observed failure |
+| --- | --- | --- |
+| B1–B41 | pass | preserved on HEAD `ba2123e` |
+| B42 | fail | missing required product file `src/packaging.js` |
+| B43 | fail | missing required product file `src/packaging.js` |
+| B44 | fail | missing required product file `src/packaging.js` |
+| B45 | fail | missing required product file `src/packaging.js` |
+| B46 | fail | missing required file `PRODUCTIZATION_REVIEW.md` and every revised-goal section |
+| B47 | fail | missing required file `RELEASE_REPORT.md` and every revised-goal section/identity rule |
+
+Independent CLI probes against the same HEAD, not invented: `./bin/jobsss
+release --out /tmp/jobsss-xplat-base-darwin --target darwin-arm64` exit `1`,
+`release: target darwin-arm64 is defined in the manifest as intended but only
+current-host is buildable on this host`; the same for `win-x64`; `./bin/jobsss
+release --out /tmp/jobsss-xplat-base-nb --target darwin-arm64 --node-binary
+/tmp/no-such-node` exit `2`, `release: unknown option: --node-binary`.
+`src/sea-build.js` remains current-host 64-bit ELF `injectSeaNote` only;
+Mach-O/PE injection is prose in `src/release.js` (`Windows additionally needs
+the PE resource (RT_RCDATA) injection variant`). Synthetic fixtures were not
+used to claim macOS or Windows runtime verification.
 
 ---
 
@@ -900,11 +935,89 @@ sent/submitted/interviewed/applied, or add `/jobsss network`,
 `/jobsss interview`, or `/jobsss schedule` sub-intents. B6/B7/B25
 human-only naming remains required.
 
+### B42 — Inspectable executable ELF/Mach-O/PE build definitions, separated from product behavior
+
+`src/packaging.js` exists at the plugin root, is not a symlink, and is the
+inspectable executable definition entry for Linux ELF, macOS Mach-O, and
+Windows PE. It must export `identifyExecutable(bytes)` returning
+`{ format: 'elf'|'macho'|'pe', arch: 'x64'|'arm64', bits: 64 }` and
+`injectSeaPayload({ target, executable, blob })` returning injected
+executable bytes. It must declare targets `linux-x64`, `linux-arm64`,
+`darwin-x64`, `darwin-arm64`, and `win-x64` with those formats and
+architectures. Platform-specific injection/build logic is selected
+explicitly by target/format and must not live in MCP, domain, authority,
+store, scoring, workflow, discovery, relationship, or compat-probe modules.
+`src/packaging.js` must not import those product-behavior modules and must
+not embed fit-score weights, a `HUMAN_ONLY_DOMAIN_TOOLS` replica, or MCP
+tools. B30–B32 current-host ELF release behavior remains required.
+
+### B43 — Format/architecture validation and native SEA container injection contract
+
+For every required target, `identifyExecutable` must accept a synthetic
+64-bit fixture of the matching format/architecture, and `injectSeaPayload`
+must inject the SEA payload using the correct native container:
+
+- Linux ELF: `PT_NOTE` named `NODE_SEA_BLOB`
+- macOS Mach-O: segment `NODE_SEA` and section `NODE_SEA_BLOB` (Node/postject
+  `--macho-segment-name NODE_SEA`)
+- Windows PE: `RT_RCDATA` (10) resource named `NODE_SEA_BLOB`
+
+The injected image must remain the same format and architecture, carry the
+blob bytes, and flip `NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2:0` to
+`:1`. Mismatched format or architecture, truncated garbage, and unsupported
+targets must fail clearly with mismatch/unsupported/invalid/unrecognized.
+Synthetic native-format fixtures may test unavailable-format parsers and
+injectors. They must never attest platform runtime support.
+
+### B44 — Deterministic repeatability and canonical target release layout
+
+Identical `injectSeaPayload` inputs must produce byte-identical output for
+every required target. `./bin/jobsss release --out <absdir> --target <id>
+[--node-binary <abs>]` must accept `--node-binary` for a matching-format
+base executable. Two consecutive `darwin-arm64` releases against the same
+synthetic Mach-O base must exit `0`, write the canonical portable layout
+(`plugin.json`, `mcp.json`, `skills/jobsss/SKILL.md`,
+`skills/jobsss/references/`, and `bin/jobsss` or `bin/jobsss.exe`), and be
+byte-identical for the released launcher, which must remain Mach-O arm64.
+
+### B45 — Truthful unverified labels; fixtures never attest platform runtime support
+
+On a non-matching host, `./bin/jobsss release --out <absdir> --target
+darwin-arm64` without `--node-binary` must fail clearly (`unverified` /
+`unsupported` / `unavailable` / `mismatch` / `missing`) and must not label
+darwin verified. A Mach-O `--node-binary` must be rejected for `linux-x64`.
+Fixture-level `darwin-arm64` and `win-x64` releases that succeed must label
+those targets `unverified`, never `verified`. Existence or fixture-level
+validation of a build definition is not platform verification. Only a real
+matching-host exercise may be `verified`. B30 still allows `intended` for
+unexercised targets; this check additionally requires `unverified` for
+unavailable macOS and Windows hosts and for synthetic-fixture exercises.
+Linux/current-host verification remains the B30–B32 real-host artifact
+exercise.
+
+### B46 — `PRODUCTIZATION_REVIEW.md` completeness
+
+`PRODUCTIZATION_REVIEW.md` exists at the plugin root and contains every
+revised-goal section: B1–B41, cross-platform build definitions, current-host
+restricted-PATH release evidence, adapter behavior, human authority, exact
+commands/results, residual risks, and the fresh verdict.
+
+### B47 — `RELEASE_REPORT.md` completeness and identity
+
+`RELEASE_REPORT.md` exists at the plugin root and contains the release
+summary, generic restricted-PATH MCP evidence, client compatibility matrix,
+human-authority behavior, commands/results, reviewer verdict, reviewed
+baseline/intermediate commit identity
+`ba2123ef5f6f24bcf6ae994a125b67501b970785`, deferred/unverified
+capabilities, and the statement that the final corrective SHA is supplied
+in the final response. Because a commit cannot contain its own SHA, the
+report must not invent a final SHA.
+
 ---
 
 ## Verdict
 
-**Pass** only if the frozen validation command exits `0` and B1–B41 hold on
+**Pass** only if the frozen validation command exits `0` and B1–B47 hold on
 inspected files, subprocess output, and the current-host release artifact.
 
 **Fail** if any required file is missing, any check mismatches, any command
@@ -957,6 +1070,14 @@ cf1a56d7d652448d5d78c624b73f362e5a242aadbbe92cf5af2b72fdb76243b9  tests/jobsss-r
 501130f7722f697d4d90ec0ff5ea46e40fd9eb293d35d04c9603cf552af0255c  tests/jobsss-adapters.test.mjs
 4f30ba40ccd86ad6fc7548fabffb63cb1267b4ac6dc01595ef34944588953179  tests/jobsss-authority.test.mjs
 fa7453057e9c9573d3de22a2855951b97957c73016083fcce89f1bb6d773c3e6  tests/helpers/jobsss-productization.mjs
+```
+
+SHA-256 of reviewer-owned cross-platform remediation files. Implementers must
+not change these files. B1–B41 hashes above are unchanged.
+
+```
+bddd11214ee8d4d4bfee20b9df8ab3d4d4a3ad984c69b93ca57334c51971954d  tests/jobsss-cross-platform.test.mjs
+3e42e91f37fecc06172b98696c51be7d8a2fe32487e983da41f136a6bfdcd095  tests/helpers/jobsss-cross-platform.mjs
 ```
 
 ## Correction log
@@ -1183,3 +1304,21 @@ fa7453057e9c9573d3de22a2855951b97957c73016083fcce89f1bb6d773c3e6  tests/helpers/
   `590226460efdb2fabeb0cd4e05f5ce510e9156535320ccdf1b44bcad77cb122e` to
   `fa7453057e9c9573d3de22a2855951b97957c73016083fcce89f1bb6d773c3e6`
   (helper). Not done to make tests green.
+- 2026-09-02T20:56:01Z — **B42–B47 cross-platform remediation Gate 0 extension**.
+  Reason: independent-auditor rejection of HEAD `ba2123e` plus the revised
+  focused goal require inspectable executable deterministic Linux ELF, macOS
+  Mach-O, and Windows PE build definitions, truthful unverified labels for
+  unavailable hosts, and inspectable `PRODUCTIZATION_REVIEW.md` /
+  `RELEASE_REPORT.md` section/identity coverage. None of B1–B41 freeze those
+  contracts. Today's product still has only current-host 64-bit ELF
+  `injectSeaNote`; `release --target darwin-arm64` / `win-x64` exit `1` with
+  `only current-host is buildable`; `--node-binary` is an unknown option;
+  Mach-O/PE injection is prose; both required reports are absent. Change:
+  preserved B1–B41 and every existing test/hash; appended B42–B47 plus
+  `tests/jobsss-cross-platform.test.mjs` and
+  `tests/helpers/jobsss-cross-platform.mjs`; recorded today's failing
+  baseline (`# tests 49` `# pass 43` `# fail 6`, exit `1`,
+  `duration_ms 29104.753968`) against committed HEAD `ba2123e` before any
+  product correction. Synthetic fixtures exercise parsers/injectors only and
+  must never attest macOS or Windows runtime support. Not done to make tests
+  green.

@@ -8,13 +8,13 @@ under the host-provided `PLUGIN_DATA`.
 Paths:
 - `plugin.json`, `mcp.json` — Agent Plugins 1.0.0 manifests at repo root.
 - `skills/jobsss/SKILL.md` + `skills/jobsss/references/` — the skill.
-- `bin/jobsss`, `src/` — bundled runtime (no JobOS import or spawn).
+- `bin/jobsss`, `src/` — bundled runtime (no JobOS import or spawn). `src/packaging.js` holds the separated native-format (ELF/Mach-O/PE) build definitions.
 - `compat/` — thin client adapters/probes referencing the canonical assets; never a source of truth.
 - `BENCHMARK.md`, `tests/jobsss-*.test.mjs` — reviewer-owned pass bar (do not edit).
 
 Commands:
-- `node --test --test-concurrency=1 tests/jobsss-gate0.test.mjs tests/jobsss-mcp-compat.test.mjs tests/jobsss-journey.test.mjs tests/jobsss-persistence.test.mjs tests/jobsss-discovery.test.mjs tests/jobsss-workflows.test.mjs tests/jobsss-integrity.test.mjs tests/jobsss-release.test.mjs tests/jobsss-adapters.test.mjs tests/jobsss-authority.test.mjs`
-- `./bin/jobsss release --out <absdir> --target current-host` builds the deterministic portable current-host release (standalone `bin/jobsss`, no Node on PATH needed at runtime; repeated builds byte-identical).
+- `node --test --test-concurrency=1 tests/jobsss-gate0.test.mjs tests/jobsss-mcp-compat.test.mjs tests/jobsss-journey.test.mjs tests/jobsss-persistence.test.mjs tests/jobsss-discovery.test.mjs tests/jobsss-workflows.test.mjs tests/jobsss-integrity.test.mjs tests/jobsss-release.test.mjs tests/jobsss-adapters.test.mjs tests/jobsss-authority.test.mjs tests/jobsss-cross-platform.test.mjs`
+- `./bin/jobsss release --out <absdir> --target <current-host|linux-x64|linux-arm64|darwin-x64|darwin-arm64|win-x64> [--node-binary <path>]` builds a deterministic standalone release (no Node on PATH needed at runtime; repeated builds byte-identical). Platform definitions live in `src/packaging.js`; targets built only from synthetic fixtures or unavailable hosts are labeled `unverified`, never `verified`.
 - `./bin/jobsss compat-probe --client <pi|omp|codex|hermes|claude> --config-dir <temp> --plugin-root <plugin>` probes one client in isolated temporary configuration and prints `verified`/`unverified` JSON.
 - Requires Node 22+; no npm dependencies.
 

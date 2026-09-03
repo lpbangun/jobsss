@@ -8,15 +8,15 @@ under the host-provided `PLUGIN_DATA`.
 Paths:
 - `plugin.json`, `mcp.json` — Agent Plugins 1.0.0 manifests at repo root.
 - `skills/jobsss/SKILL.md` + `skills/jobsss/references/` — the skill.
-- `bin/jobsss`, `src/` — bundled runtime (no JobOS import or spawn). `src/packaging.js` holds the separated native-format (ELF/Mach-O/PE) build definitions.
+- `bin/jobsss`, `src/` — bundled runtime (no JobOS import or spawn). `src/packaging.js` holds the separated native-format (ELF/Mach-O/PE) build definitions; `src/packaging.lock.json` pins the Node-supported postject SEA injector, official Node input checksums, and the build/test-only independent native-format validators pefile/macholib/altgraph (all downloaded into the temporary cache, never committed).
 - `compat/` — thin client adapters/probes referencing the canonical assets; never a source of truth.
 - `BENCHMARK.md`, `tests/jobsss-*.test.mjs` — reviewer-owned pass bar (do not edit).
 
 Commands:
 - `node --test --test-concurrency=1 tests/jobsss-gate0.test.mjs tests/jobsss-mcp-compat.test.mjs tests/jobsss-journey.test.mjs tests/jobsss-persistence.test.mjs tests/jobsss-discovery.test.mjs tests/jobsss-workflows.test.mjs tests/jobsss-integrity.test.mjs tests/jobsss-release.test.mjs tests/jobsss-adapters.test.mjs tests/jobsss-authority.test.mjs tests/jobsss-cross-platform.test.mjs`
-- `./bin/jobsss release --out <absdir> --target <current-host|linux-x64|linux-arm64|darwin-x64|darwin-arm64|win-x64> [--node-binary <path>]` builds a deterministic standalone release (no Node on PATH needed at runtime; repeated builds byte-identical). Platform definitions live in `src/packaging.js`; targets built only from synthetic fixtures or unavailable hosts are labeled `unverified`, never `verified`.
+- `./bin/jobsss release --out <absdir> --target <current-host|linux-x64|linux-arm64|darwin-x64|darwin-arm64|win-x64> [--node-binary <path>]` builds a deterministic standalone release (no Node on PATH needed at runtime; repeated builds byte-identical). Platform definitions live in `src/packaging.js`; `--node-binary` accepts only the checksum-pinned official Node executable recorded for that target in `src/packaging.lock.json` (exact `executableSha256` is enforced before injection; synthetic fixtures never reach the release CLI). Signed `node.exe` is staged unsigned by packaging (Security certificate-table directory zeroed in a private copy; pinned postject drops the certificate bytes) and must be re-signed on a matching Windows host. Targets built only from cross-built official inputs or unavailable hosts are labeled `unverified`, never `verified`.
 - `./bin/jobsss compat-probe --client <pi|omp|codex|hermes|claude> --config-dir <temp> --plugin-root <plugin>` probes one client in isolated temporary configuration and prints `verified`/`unverified` JSON.
-- Requires Node 22+; no npm dependencies.
+- Requires Node 22+; no npm dependencies. Independent native-format validation (pefile/macholib/altgraph) is build/test-only and needs `python3` at acceptance time, never at runtime.
 
 Invariants:
 - Standalone: one skill, one MCP server (`jobsss` via `./bin/jobsss mcp --data ${PLUGIN_DATA}`); runtime never resolves or spawns `jobos`.

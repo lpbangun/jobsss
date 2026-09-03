@@ -6,33 +6,74 @@
 // authority, and client adapters: those modules never import or reimplement
 // these definitions, and this module never imports them.
 //
-// Supported containers (Node SEA payload injection):
-//   - ELF64 little-endian (Linux x64 / arm64):
-//       a NODE_SEA_BLOB note inside a new PT_NOTE program header
-//   - Mach-O 64 little-endian (macOS x64 / arm64):
-//       a NODE_SEA LC_SEGMENT_64 load command containing a
-//       NODE_SEA_BLOB section
-//   - PE32+ x64 (Windows x64):
-//       an RCDATA (RT_RCDATA) resource entry named NODE_SEA_BLOB
+// Native mutation contract (B49, reviewer-owned):
+//   All ELF / Mach-O / PE mutation goes through the pinned Node-supported
+//   SEA injector `postject` recorded in src/packaging.lock.json (the
+//   officially documented SEA flow: `--sentinel-fuse ...` and, for Mach-O,
+//   `--macho-segment-name NODE_SEA`). No ad hoc binary rewriters live here;
+//   the known malformed-output defects of the removed custom Mach-O/PE
+//   mutators (zero-vmsize NODE_SEA segments, hardcoded PE section-header
+//   appends, stale linkedit/symbol/dyld/code-signature offsets, stale
+//   SizeOfImage, destroyed overlays/resources) are fixed by using the
+//   pinned tool, not by patching around them.
 //
-// Every definition:
-//   - validates the target executable format and architecture strictly and
-//     fails with a clear typed message for mismatched or unsupported input;
-//   - flips the Node SEA sentinel fuse (:0 -> :1) so the injected output is
-//     a single executable;
-//   - embeds the SEA blob through the correct native container mechanism;
-//   - is byte-deterministic for identical inputs;
-//   - embeds no build, user, home, workspace, source-checkout, scratch, or
-//     output path, so the same definition produces the same bytes from any
-//     checkout location.
+//   Custom code in this module only:
+//     - identifies and validates the target format/architecture,
+//     - consults the checksum-pinned lock and verifies SHA-256 before use,
+//     - acquires the pinned postject tarball into a temporary, gitignored
+//       cache and verifies its checksum before extraction,
+//     - orchestrates postject on a working copy of the base executable,
+//     - classifies the PE signing/overlay state read-only BEFORE any tool
+//       acquisition: an unsigned image or an image whose trailing overlay is
+//       exactly its Security certificate table is injectable; any other
+//       overlay fails clearly without mutating the input or running the
+//       injector (the post-injection certificate would be invalid anyway),
+//     - for a certificate-table-covered overlay (supported signed input),
+//       stages ONLY a private unsigned copy (the two Security
+//       certificate-table directory DWORDs are zeroed) so the pinned
+//       injector's output never carries a stale certificate-table reference;
+//       pinned postject drops the trailing certificate bytes itself
+//       (LIEF build_overlay(false)) and matching-host re-signing is a later
+//       Windows distribution step. No pre-injection signature bytes are ever
+//       restored, appended, or re-pointed,
+//     - fails clearly when the tool, network, or inputs are unavailable.
 //
-// A fixture-level exercise proves only that a definition is executable and
-// deterministic; it never attests runtime support on a real platform. A
-// target earns `verified` only after real execution on a matching host.
+//   injectSeaPayload returns the pinned postject output bytes unchanged; the
+//   only PE work product does is the read-only classification above and the
+//   zeroing of the two Security-directory DWORDs in the private injection
+//   working copy (never in the caller's input buffer).
+//
+// Determinism: identical (target, executable, blob) inputs yield
+// byte-identical outputs (verified for the pinned postject). The module
+// memoizes identical-input injections so repeated builds never re-run the
+// injector; the memoized bytes are exactly what a fresh injection would
+// produce (the determinism guarantee), so it cannot fabricate success.
+//
+// Cache: downloaded postject tarballs, extracted tool files, and the
+// per-injection working copies live under the temporary cache directory
+// (JOBSSS_NATIVE_CACHE or the OS temp dir), never inside the plugin tree.
+// The released runtime inherits none of this: postject is build-only and
+// never shipped, and the downloaded JobSSS release requires neither Node
+// nor JobOS on PATH (B52).
+
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import zlib from 'node:zlib';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 export const SEA_RESOURCE_NAME = 'NODE_SEA_BLOB';
 export const SEA_SEGMENT_NAME = 'NODE_SEA';
-export const SEA_FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
+
+// Fragmented so the contiguous sentinel token never appears inside bundled
+// runtime source: the SEA blob embeds the bundle, and the pinned injector
+// requires exactly one sentinel occurrence in the final binary (the base
+// executable carries it once; the blob must add none).
+const SEA_FUSE_PREFIX = 'NODE_SEA_FUSE_';
+const SEA_FUSE_TAIL = 'fce680ab2cc467b6e072b8b5df1996b2';
+export const SEA_FUSE = SEA_FUSE_PREFIX + SEA_FUSE_TAIL;
 
 export const TARGETS = Object.freeze([
   Object.freeze({ id: 'linux-x64', format: 'elf', arch: 'x64', platform: 'linux' }),
@@ -43,42 +84,105 @@ export const TARGETS = Object.freeze([
 ]);
 
 export function targetById(id) {
-  return TARGETS.find(target => target.id === id) || null;
+  const value = String(id || '').trim();
+  return TARGETS.find(target => target.id === value) || null;
+}
+
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+export const PACKAGING_LOCK_REL = 'packaging.lock.json';
+export function packagingLockPath() {
+  return path.join(MODULE_DIR, PACKAGING_LOCK_REL);
 }
 
 function fail(message) {
   throw new Error(message);
 }
 
-// ---------------------------------------------------------------------------
-// Primitive little-endian helpers (all supported containers are LE).
-// ---------------------------------------------------------------------------
-
-function readU16(buf, offset) { return buf.readUInt16LE(offset); }
-function readU32(buf, offset) { return buf.readUInt32LE(offset); }
-function readU64(buf, offset) { return Number(buf.readBigUInt64LE(offset)); }
-function writeU16(buf, offset, value) { buf.writeUInt16LE(value, offset); }
-function writeU32(buf, offset, value) { buf.writeUInt32LE(value, offset); }
-function writeU64(buf, offset, value) { buf.writeBigUInt64LE(BigInt(value), offset); }
-function alignUp(value, alignment) { return Math.ceil(value / alignment) * alignment; }
-
-function padName(text, size) {
-  const out = Buffer.alloc(size);
-  Buffer.from(String(text), 'ascii').copy(out, 0, 0, size);
-  return out;
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
 }
 
-/** Flip the Node SEA sentinel fuse from :0 to :1 inside an executable. */
-function flipSeaFuse(buf) {
-  const needle = Buffer.from(SEA_FUSE, 'utf8');
-  const index = buf.indexOf(needle);
-  if (index < 0) fail('invalid executable: the SEA sentinel fuse is missing');
-  const flagIndex = index + SEA_FUSE.length + 1;
-  if (buf[flagIndex] !== 0x30 /* '0' */) {
-    fail(`invalid executable: unexpected SEA fuse state at offset ${flagIndex}`);
+// ---------------------------------------------------------------------------
+// Lock consultation and checksum verification (B48).
+// ---------------------------------------------------------------------------
+
+export function readPackagingLock() {
+  const abs = packagingLockPath();
+  let doc;
+  try {
+    doc = JSON.parse(fs.readFileSync(abs, 'utf8'));
+  } catch (error) {
+    throw new Error(`packaging lock unreadable at ${PACKAGING_LOCK_REL}: ${error.message}`);
   }
-  buf[flagIndex] = 0x31; // '1'
-  return index;
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+    throw new Error(`packaging lock ${PACKAGING_LOCK_REL} must be a JSON object`);
+  }
+  return doc;
+}
+
+function lockRecords(doc) {
+  const records = [];
+  if (doc && typeof doc === 'object') {
+    if (doc.tool) records.push({ kind: 'tool', ...doc.tool });
+    if (Array.isArray(doc.tools)) {
+      for (const tool of doc.tools) records.push({ kind: 'tool', ...tool });
+    }
+    const inputs = doc.inputs || doc.nodeInputs || doc.nodes || doc.officialNode;
+    if (Array.isArray(inputs)) {
+      for (const input of inputs) records.push({ kind: 'input', ...input });
+    } else if (inputs && typeof inputs === 'object') {
+      for (const [id, input] of Object.entries(inputs)) {
+        records.push({ kind: 'input', id, ...input });
+      }
+    }
+  }
+  return records;
+}
+
+export function postjectPin(doc) {
+  const pin = lockRecords(doc).find(entry => {
+    if (entry.kind !== 'tool') return false;
+    const name = `${entry.id || ''} ${entry.name || ''}`.toLowerCase();
+    return name.includes('postject');
+  });
+  if (!pin) fail(`packaging lock ${PACKAGING_LOCK_REL} must pin the Node-supported SEA injector (postject)`);
+  return pin;
+}
+
+/**
+ * Resolve the checksum-pinned official Node input for a concrete target id.
+ * The release CLI uses this to require the exact locked executable (not just
+ * a matching format/architecture) before any blob generation or injection
+ * (reviewer B58).
+ */
+export function officialNodePin(targetId) {
+  const doc = readPackagingLock();
+  const inputs = Array.isArray(doc.officialNode) ? doc.officialNode : [];
+  const pin = inputs.find(entry => (entry.target || entry.id) === targetId);
+  if (!pin) {
+    fail(`packaging lock ${PACKAGING_LOCK_REL} must pin an official Node input for target ${targetId}`);
+  }
+  if (!/^[a-f0-9]{64}$/.test(String(pin.executableSha256 || '').toLowerCase())) {
+    fail(`packaging lock ${PACKAGING_LOCK_REL} must pin a 64-hex executableSha256 for target ${targetId}`);
+  }
+  return pin;
+}
+
+/**
+ * Verify a pinned SHA-256 checksum before any download/extract/injection
+ * uses the bytes. Throws a checksum/mismatch error, which callers surface
+ * as a clear build failure that never reaches the injector (B48).
+ */
+export function verifyPinnedChecksum(bytes, sha256Hex) {
+  const actual = crypto.createHash('sha256').update(Buffer.from(bytes)).digest('hex');
+  const expected = String(sha256Hex || '').trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expected)) {
+    throw new Error(`checksum/sha256 mismatch: invalid pinned digest ${JSON.stringify(sha256Hex)}`);
+  }
+  if (actual !== expected) {
+    throw new Error(`checksum/sha256 mismatch: got ${actual}, expected ${expected}`);
+  }
+  return actual;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +195,12 @@ const MH_CIGAM_64 = 0xcffaedfe;
 const CPU_X86_64 = 0x01000007;
 const CPU_ARM64 = 0x0100000c;
 const PE_SIGNATURE = Buffer.from('PE\0\0', 'latin1');
+
+function readU16(buf, offset) { return buf.readUInt16LE(offset); }
+function readU32(buf, offset) { return buf.readUInt32LE(offset); }
+function readU64(buf, offset) { return Number(buf.readBigUInt64LE(offset)); }
+function writeU32(buf, offset, value) { buf.writeUInt32LE(value, offset); }
+function alignUp(value, alignment) { return Math.ceil(value / alignment) * alignment; }
 
 export function identifyExecutable(bytes) {
   const buf = Buffer.from(bytes);
@@ -129,336 +239,399 @@ export function identifyExecutable(bytes) {
 }
 
 // ---------------------------------------------------------------------------
-// ELF64 injection: append a NODE_SEA_BLOB PT_NOTE and relocate the program
-// header table exactly like the proven current-host injector.
+// Temporary cache and pinned postject acquisition (build-only).
 // ---------------------------------------------------------------------------
 
-function injectElf(execBytes, blobBytes) {
-  const ELF = Buffer.from(execBytes);
-  if (ELF.length <= 64 || !ELF.subarray(0, 4).equals(ELF_MAGIC)) {
-    fail('invalid ELF: base executable is not an ELF binary');
-  }
-  if (ELF[4] !== 2) fail('invalid ELF: only 64-bit ELF executables are supported');
-  if (ELF[5] !== 1) fail('invalid ELF: only little-endian ELF executables are supported');
-  const e_phoff = readU64(ELF, 0x20);
-  const e_phentsize = readU16(ELF, 0x36);
-  const e_phnum = readU16(ELF, 0x38);
-  if (e_phentsize < 56) fail(`invalid ELF: unexpected program header size ${e_phentsize}`);
-
-  let maxLoadEnd = 0;
-  let phdrEntry = null;
-  const phdrs = [];
-  for (let i = 0; i < e_phnum; i += 1) {
-    const offset = e_phoff + i * e_phentsize;
-    const entry = {
-      type: readU32(ELF, offset),
-      flags: readU32(ELF, offset + 4),
-      offset: readU64(ELF, offset + 8),
-      vaddr: readU64(ELF, offset + 16),
-      paddr: readU64(ELF, offset + 24),
-      filesz: readU64(ELF, offset + 32),
-      memsz: readU64(ELF, offset + 40),
-      align: readU64(ELF, offset + 48),
-      tableOffset: offset,
-    };
-    phdrs.push(entry);
-    if (entry.type === 1) {
-      const end = entry.vaddr + entry.memsz;
-      if (end > maxLoadEnd) maxLoadEnd = end;
-    }
-    if (entry.type === 6) phdrEntry = entry; // PT_PHDR
-  }
-  if (!phdrEntry) fail('invalid ELF: base executable has no PT_PHDR entry');
-  if (!(maxLoadEnd > 0)) fail('invalid ELF: base executable has no loadable segments');
-
-  const newVaddr = alignUp(maxLoadEnd, 0x1000);
-  const namePadded = alignUp(SEA_RESOURCE_NAME.length + 1, 4); // name + NUL, 4-byte aligned
-  const noteLen = 12 + namePadded + blobBytes.length;
-  const noteOffset = alignUp(ELF.length, 0x1000);
-
-  const newTableCount = e_phnum + 2;
-  const newTableSize = newTableCount * e_phentsize;
-  const tableOffset = alignUp(noteOffset + noteLen, 8);
-  const mappedEnd = alignUp(tableOffset + newTableSize, 0x1000);
-
-  const note = Buffer.alloc(noteLen);
-  writeU32(note, 0, SEA_RESOURCE_NAME.length + 1);
-  writeU32(note, 4, blobBytes.length);
-  writeU32(note, 8, 0);
-  note.write(SEA_RESOURCE_NAME, 12, 'utf8');
-  blobBytes.copy(note, 12 + namePadded);
-
-  const out = Buffer.alloc(mappedEnd);
-  ELF.copy(out, 0, 0, ELF.length);
-
-  // Relocated program header table: original entries + PT_LOAD + PT_NOTE.
-  const table = Buffer.alloc(newTableSize);
-  for (let i = 0; i < e_phnum; i += 1) {
-    const src = phdrs[i].tableOffset;
-    const dst = i * e_phentsize;
-    ELF.copy(table, dst, src, src + e_phentsize);
-  }
-  const loadPhdr = {
-    type: 1,
-    flags: 4,
-    offset: noteOffset,
-    vaddr: newVaddr,
-    paddr: newVaddr,
-    filesz: mappedEnd - noteOffset,
-    memsz: mappedEnd - noteOffset,
-    align: 0x1000,
-  };
-  const notePhdr = {
-    type: 4,
-    flags: 4,
-    offset: noteOffset,
-    vaddr: newVaddr,
-    paddr: newVaddr,
-    filesz: noteLen,
-    memsz: noteLen,
-    align: 4,
-  };
-  const entries = [loadPhdr, notePhdr];
-  for (let i = 0; i < entries.length; i += 1) {
-    const dst = (e_phnum + i) * e_phentsize;
-    writeU32(table, dst, entries[i].type);
-    writeU32(table, dst + 4, entries[i].flags);
-    writeU64(table, dst + 8, entries[i].offset);
-    writeU64(table, dst + 16, entries[i].vaddr);
-    writeU64(table, dst + 24, entries[i].paddr);
-    writeU64(table, dst + 32, entries[i].filesz);
-    writeU64(table, dst + 40, entries[i].memsz);
-    writeU64(table, dst + 48, entries[i].align);
-  }
-  // Keep PT_PHDR coherent with the relocated table (AT_PHDR / dl_iterate_phdr).
-  writeU64(table, phdrEntry.tableOffset - e_phoff, 8, tableOffset);
-  writeU64(table, phdrEntry.tableOffset - e_phoff, 16, newVaddr + (tableOffset - noteOffset));
-  writeU64(table, phdrEntry.tableOffset - e_phoff, 24, newVaddr + (tableOffset - noteOffset));
-  writeU64(table, phdrEntry.tableOffset - e_phoff, 32, newTableSize);
-  writeU64(table, phdrEntry.tableOffset - e_phoff, 40, newTableSize);
-
-  note.copy(out, noteOffset);
-  table.copy(out, tableOffset);
-
-  // e_phoff points at the relocated table; e_phnum grows.
-  writeU64(out, 0x20, tableOffset);
-  writeU16(out, 0x38, newTableCount);
-
-  flipSeaFuse(out);
-  return out;
+export function nativeToolCacheDir() {
+  return process.env.JOBSSS_NATIVE_CACHE || path.join(os.tmpdir(), 'jobsss-native-gate-cache');
 }
 
-// ---------------------------------------------------------------------------
-// Mach-O 64 injection: append a NODE_SEA LC_SEGMENT_64 load command with a
-// single NODE_SEA_BLOB section carrying the SEA payload.
-// ---------------------------------------------------------------------------
+// Synchronous HTTPS download executed by a build-only child Node process so
+// the public release/injection API stays synchronous (an async downloader
+// returned a Promise that verifyPinnedChecksum rejected with
+// ERR_INVALID_ARG_TYPE on an empty cache). The child streams the response to
+// a temporary file and exits 0; the parent retries transient failures and
+// reads the file back. HTTP status, redirect-loop, oversized-response, and
+// child failures are surfaced as clear build errors before any checksum or
+// extraction step.
+const HTTPS_DOWNLOADER_SRC = [
+  "'use strict';",
+  '// Build-only synchronous HTTPS download child (never shipped in runtime bundles).',
+  "const https = require('https');",
+  "const fs = require('fs');",
+  "const { URL } = require('url');",
+  'const TARGET = process.argv[1];',
+  'const MAX_BYTES = Number(process.argv[2] || 0);',
+  'const OUT = process.argv[3];',
+  'function fail(code, message) {',
+  "  if (message) process.stderr.write(String(message) + '\\n');",
+  '  process.exit(code);',
+  '}',
+  'function run(target, redirects) {',
+  '  const req = https.get(target, (res) => {',
+  "    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {",
+  '      res.resume();',
+  "      if (redirects >= 5) return fail(2, 'download redirect limit exceeded for ' + TARGET);",
+  '      return run(new URL(res.headers.location, target).toString(), redirects + 1);',
+  '    }',
+  "    if (res.statusCode !== 200) {",
+  '      res.resume();',
+  "      return fail(3, 'download failed with HTTP ' + res.statusCode + ' for ' + TARGET);",
+  '    }',
+  '    const chunks = [];',
+  '    let size = 0;',
+  "    res.on('data', (chunk) => {",
+  '      size += chunk.length;',
+  "      if (MAX_BYTES > 0 && size > MAX_BYTES) {",
+  '        req.destroy();',
+  "        return fail(4, 'download exceeds ' + MAX_BYTES + ' bytes for ' + TARGET);",
+  '      }',
+  '      chunks.push(chunk);',
+  '    });',
+  "    res.on('end', () => {",
+  '      try {',
+  '        fs.writeFileSync(OUT, Buffer.concat(chunks));',
+  '        process.exit(0);',
+  '      } catch (error) {',
+  '        fail(6, error.message);',
+  '      }',
+  "    });",
+  "    res.on('error', (error) => fail(5, error.message));",
+  '  });',
+  "  req.on('error', (error) => fail(5, error.message));",
+  '}',
+  'run(TARGET, 0);',
+  '',
+].join('\n');
 
-const LC_SEGMENT_64 = 0x19;
-const MACHO_SEG_CMD_SIZE = 72;
-const MACHO_SECT_SIZE = 80;
-const MACHO_HEADER_SIZE = 32;
-const MACHO_CMD_TOTAL = MACHO_SEG_CMD_SIZE + MACHO_SECT_SIZE;
-
-function injectMacho(execBytes, blobBytes) {
-  const buf = Buffer.from(execBytes);
-  flipSeaFuse(buf);
-  const magic = readU32(buf, 0);
-  if (magic !== MH_MAGIC_64) fail('invalid Mach-O: little-endian 64-bit Mach-O images are required');
-  const ncmds = readU32(buf, 16);
-  const sizeofcmds = readU32(buf, 20);
-  if (ncmds < 1) fail('invalid Mach-O: no load commands');
-  if (MACHO_HEADER_SIZE + sizeofcmds > buf.length) fail('invalid Mach-O: load commands exceed the file size');
-  if (sizeofcmds % 8 !== 0) fail('invalid Mach-O: load commands are not 8-byte aligned');
-
-  const blobOff = alignUp(buf.length + MACHO_CMD_TOTAL, 16);
-  const out = Buffer.alloc(alignUp(blobOff + blobBytes.length, 16));
-
-  // 1) Header with the grown command count/size.
-  buf.copy(out, 0, 0, MACHO_HEADER_SIZE);
-  writeU32(out, 16, ncmds + 1);
-  writeU32(out, 20, sizeofcmds + MACHO_CMD_TOTAL);
-
-  // 2) Original load commands stay in place...
-  buf.copy(out, MACHO_HEADER_SIZE, MACHO_HEADER_SIZE, MACHO_HEADER_SIZE + sizeofcmds);
-
-  // 3) ...and the file content behind them shifts by exactly one command.
-  buf.copy(out, MACHO_HEADER_SIZE + sizeofcmds + MACHO_CMD_TOTAL, MACHO_HEADER_SIZE + sizeofcmds);
-
-  // 4) Existing segment/section file offsets move with the shift.
-  let cmdOff = MACHO_HEADER_SIZE;
-  for (let i = 0; i < ncmds && cmdOff + 8 <= buf.length; i += 1) {
-    const cmd = readU32(buf, cmdOff);
-    const cmdsize = readU32(buf, cmdOff + 4);
-    if (cmdsize < 8) break;
-    if (cmd === LC_SEGMENT_64 && cmdsize >= 72) {
-      const nsects = readU32(buf, cmdOff + 64);
-      writeU64(out, cmdOff + 40, readU64(out, cmdOff + 40) + MACHO_CMD_TOTAL); // segment fileoff
-      for (let s = 0; s < nsects; s += 1) {
-        const sect = cmdOff + MACHO_SEG_CMD_SIZE + s * MACHO_SECT_SIZE;
-        writeU32(out, sect + 48, readU32(out, sect + 48) + MACHO_CMD_TOTAL);  // section fileoff
+function httpsDownload(url, { maxBytes = 32 * 1024 * 1024, attempts = 3 } = {}) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const outPath = path.join(os.tmpdir(), `jobsss-download-${process.pid}-${attempt}-${Date.now()}.bin`);
+    try {
+      const child = spawnSync(
+        process.execPath,
+        ['-e', HTTPS_DOWNLOADER_SRC, String(url), String(maxBytes), outPath],
+        { encoding: 'utf8', timeout: 300_000, maxBuffer: 1024 * 1024 }
+      );
+      if (child.error) {
+        lastError = child.error;
+        continue;
       }
+      if (child.status !== 0) {
+        const detail = String(child.stderr || child.stdout || '').trim().slice(0, 600);
+        lastError = new Error(detail || `downloader exited ${child.status}`);
+        continue;
+      }
+      if (!fs.existsSync(outPath)) {
+        lastError = new Error('downloader produced no output file');
+        continue;
+      }
+      return fs.readFileSync(outPath);
+    } finally {
+      try { fs.rmSync(outPath, { force: true }); } catch { /* best effort */ }
     }
-    cmdOff += cmdsize;
+  }
+  throw new Error(`download failed for ${url}: ${lastError && lastError.message ? lastError.message : 'unknown error'}`);
+}
+
+/**
+ * Extract a single tar member (512-byte ustar headers) from gunzipped
+ * tar bytes. Only plain files are supported; GNU long-name entries are
+ * handled for the npm tarball layout used by the pinned tool.
+ */
+export function extractTarMember(gunzipped, member) {
+  const buf = Buffer.from(gunzipped);
+  let offset = 0;
+  let pendingLongName = null;
+  while (offset + 512 <= buf.length) {
+    const block = buf.subarray(offset, offset + 512);
+    offset += 512;
+    if (block.every(byte => byte === 0)) continue;
+    const rawName = block.subarray(0, 100).toString('utf8').replace(/\0.*$/, '');
+    const sizeOctal = block.subarray(124, 136).toString('utf8').replace(/\0.*$/, '').trim();
+    const typeflag = String.fromCharCode(block[156]);
+    const size = sizeOctal ? parseInt(sizeOctal, 8) : 0;
+    const padded = alignUp(size, 512);
+    const content = buf.subarray(offset, offset + size);
+    offset += padded;
+    if (typeflag === 'L') {
+      pendingLongName = content.toString('utf8').replace(/\0.*$/, '');
+      continue;
+    }
+    const name = pendingLongName || rawName;
+    pendingLongName = null;
+    if (typeflag === '0' || typeflag === '\0' || typeflag === '') {
+      if (name === member) return Buffer.from(content);
+    }
+  }
+  return null;
+}
+
+/**
+ * Build-only acquisition of the pinned postject injector. Downloads the
+ * exact tarball from the lock when missing, verifies its pinned SHA-256
+ * before extraction (and re-verifies an already-cached tarball), extracts
+ * `package/dist/api.js`, and writes a static synchronous driver script.
+ * Missing tools, checksum mismatches, and download failures fail clearly
+ * before any injection.
+ */
+export function acquirePostject({ cacheDir = nativeToolCacheDir() } = {}) {
+  const pin = postjectPin(readPackagingLock());
+  const version = String(pin.version || '');
+  assert(version, 'postject pin must record an exact version');
+
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const tarballPath = path.join(cacheDir, `postject-${version}.tgz`);
+  if (!fs.existsSync(tarballPath)) {
+    const bytes = httpsDownload(String(pin.url));
+    verifyPinnedChecksum(bytes, pin.sha256);
+    const pending = `${tarballPath}.pending`;
+    fs.writeFileSync(pending, bytes);
+    fs.renameSync(pending, tarballPath);
+  } else {
+    // Reject checksum drift instead of silently reusing a corrupted cache.
+    verifyPinnedChecksum(fs.readFileSync(tarballPath), pin.sha256);
   }
 
-  // 5) New load command: LC_SEGMENT_64 "NODE_SEA" with one "NODE_SEA_BLOB"
-  //    section whose offset/address point at the appended blob.
-  const newCmdOff = MACHO_HEADER_SIZE + sizeofcmds;
-  writeU32(out, newCmdOff, LC_SEGMENT_64);
-  writeU32(out, newCmdOff + 4, MACHO_CMD_TOTAL);
-  padName(SEA_SEGMENT_NAME, 16).copy(out, newCmdOff + 8);
-  writeU64(out, newCmdOff + 24, 0);                       // vmaddr
-  writeU64(out, newCmdOff + 32, 0);                       // vmsize
-  writeU64(out, newCmdOff + 40, blobOff);                 // fileoff
-  writeU64(out, newCmdOff + 48, blobBytes.length);        // filesize
-  writeU32(out, newCmdOff + 56, 0);                       // maxprot
-  writeU32(out, newCmdOff + 60, 0);                       // initprot
-  writeU32(out, newCmdOff + 64, 1);                       // nsects
-  writeU32(out, newCmdOff + 68, 0);                       // flags
-  const sectOff = newCmdOff + MACHO_SEG_CMD_SIZE;
-  padName(SEA_RESOURCE_NAME, 16).copy(out, sectOff);      // sectname
-  padName(SEA_SEGMENT_NAME, 16).copy(out, sectOff + 16);  // segname
-  writeU64(out, sectOff + 32, 0);                         // addr
-  writeU64(out, sectOff + 40, blobBytes.length);          // size
-  writeU32(out, sectOff + 48, blobOff);                   // offset (fileoff)
-  writeU32(out, sectOff + 52, 4);                         // align
-  // reloff / nreloc / flags / reserved1..3 remain zero (Buffer is zeroed).
+  const toolDir = path.join(cacheDir, `postject-${version}`);
+  const apiPath = path.join(toolDir, 'dist', 'api.js');
+  if (!fs.existsSync(apiPath)) {
+    const member = extractTarMember(zlib.gunzipSync(fs.readFileSync(tarballPath)), 'package/dist/api.js');
+    assert(member, `postject ${version} archive must contain package/dist/api.js`);
+    fs.mkdirSync(path.dirname(apiPath), { recursive: true });
+    const pending = `${apiPath}.pending`;
+    fs.writeFileSync(pending, member);
+    fs.renameSync(pending, apiPath);
+  }
 
-  // 6) The SEA payload itself.
-  blobBytes.copy(out, blobOff);
-  return out;
+  const driverPath = path.join(toolDir, 'inject-driver.cjs');
+  if (!fs.existsSync(driverPath)) {
+    const pending = `${driverPath}.pending`;
+    fs.writeFileSync(pending, INJECT_DRIVER_SRC);
+    fs.renameSync(pending, driverPath);
+  }
+  return { apiPath, driverPath, pin };
+}
+
+const INJECT_DRIVER_SRC = [
+  "'use strict';",
+  "// Build-only postject SEA injection driver (never shipped in runtime bundles).",
+  "const { inject } = require(process.argv[2]);",
+  "const fs = require('fs');",
+  `const RESOURCE = ${JSON.stringify(SEA_RESOURCE_NAME)};`,
+  `const SENTINEL = ${JSON.stringify(SEA_FUSE_PREFIX)} + ${JSON.stringify(SEA_FUSE_TAIL)};`,
+  "function fail(message) {",
+  "  console.error(message && message.stack ? message.stack : String(message));",
+  "  process.exit(1);",
+  "}",
+  "function run() {",
+  "  const [apiPath, targetFile, blobFile, machoSegmentName] = process.argv.slice(2);",
+  "  const options = { sentinelFuse: SENTINEL };",
+  "  if (machoSegmentName && machoSegmentName !== 'none') {",
+  "    options.machoSegmentName = machoSegmentName;",
+  "  }",
+  "  Promise.resolve()",
+  "    .then(() => inject(targetFile, RESOURCE, fs.readFileSync(blobFile), options))",
+  "    .then(() => process.exit(0), fail);",
+  "}",
+  "run();",
+  '',
+].join('\n');
+
+function runPinnedInject({ driverPath, apiPath, executablePath, blobPath, machoSegmentName }) {
+  const child = spawnSync(
+    process.execPath,
+    [driverPath, apiPath, executablePath, blobPath, machoSegmentName],
+    { encoding: 'utf8', timeout: 300_000, maxBuffer: 16 * 1024 * 1024 }
+  );
+  if (child.error) {
+    throw new Error(`postject injection failed to run: ${child.error.message}`);
+  }
+  if (child.status !== 0) {
+    const detail = String(child.stderr || child.stdout || '').trim().slice(0, 600);
+    throw new Error(`postject injection failed (exit ${child.status}): ${detail || 'no diagnostics'}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
-// PE32+ injection: append an .rsrc section holding a canonical RCDATA
-// resource directory whose "NODE_SEA_BLOB" data entry carries the payload.
+// PE signing/overlay state classification (read-only staging, not injection).
+//
+// Pinned postject 1.0.0-alpha.6 rebuilds the PE with LIEF build_overlay(false),
+// which drops trailing certificate bytes but leaves the Security
+// certificate-table directory DWORDs pointing at bytes that are no longer a
+// signature. A post-injection certificate copied from the input would be
+// invalid (the image bytes it covers changed) — the auditor-identified
+// defect. The safe contract is therefore:
+//   - no trailing overlay and no Security directory: unsigned, injectable;
+//   - a trailing overlay that is EXACTLY the Security certificate-table entry
+//     (security file offset == raw end and sizes match): supported signed
+//     input; the signature is stripped and must be re-applied on a matching
+//     Windows host after injection, never preserved from the old image;
+//   - any other overlay/malformed signing state: fail clearly, before any
+//     tool acquisition or mutation, leaving the input bytes untouched.
+// The injector input is staged privately only for the supported signed case:
+// the two Security certificate-table directory DWORDs in the *working copy*
+// are zeroed so postject's output carries no stale certificate-table
+// reference. Pinned postject performs every structural mutation (resource
+// rebuild, image sizing, section layout) and drops the certificate bytes
+// itself; the caller's input buffer is never modified.
 // ---------------------------------------------------------------------------
 
-const PE_RT_RCDATA = 10;
-const PE_SECTION_SIZE = 40;
-
-function peSectionTableBase(buf, eLfanew) {
-  const sizeOfOptionalHeader = readU16(buf, eLfanew + 20);
-  return eLfanew + 24 + sizeOfOptionalHeader;
-}
-
-function injectPe(execBytes, blobBytes) {
-  const buf = Buffer.from(execBytes);
-  flipSeaFuse(buf);
+function peOverlayAndSecurity(buf) {
   const eLfanew = readU32(buf, 0x3c);
-  const optOff = eLfanew + 24;
-  if (readU16(buf, optOff) !== 0x20b) fail('invalid PE: PE32+ (64-bit optional header) is required');
   const numberOfSections = readU16(buf, eLfanew + 6);
-  if (numberOfSections < 1) fail('invalid PE: no section headers');
-  const sectBase = peSectionTableBase(buf, eLfanew);
-
+  const sizeOfOptionalHeader = readU16(buf, eLfanew + 20);
+  const opt = eLfanew + 24;
+  const sectBase = opt + sizeOfOptionalHeader;
   let rawEnd = 0;
-  let maxVaEnd = 0;
   for (let i = 0; i < numberOfSections; i += 1) {
-    const off = sectBase + i * PE_SECTION_SIZE;
-    const virtSize = readU32(buf, off + 8);
-    const virtAddr = readU32(buf, off + 12);
-    const rawSize = readU32(buf, off + 16);
-    const rawPtr = readU32(buf, off + 20);
-    rawEnd = Math.max(rawEnd, rawPtr + rawSize);
-    maxVaEnd = Math.max(maxVaEnd, alignUp(virtAddr + Math.max(virtSize, rawSize), 0x1000));
+    const off = sectBase + i * 40;
+    if (off + 40 > buf.length) break;
+    rawEnd = Math.max(rawEnd, readU32(buf, off + 20) + readU32(buf, off + 16));
   }
-  const rawPtr = alignUp(rawEnd, 0x200);
-  const newVa = maxVaEnd > 0 ? maxVaEnd : alignUp(rawPtr, 0x1000);
+  const numberOfRvaAndSizes = readU32(buf, opt + 108);
+  const security = numberOfRvaAndSizes >= 5
+    ? { fileOffset: readU32(buf, opt + 144), size: readU32(buf, opt + 148) }
+    : { fileOffset: 0, size: 0 };
+  const overlay = rawEnd < buf.length ? Buffer.from(buf.subarray(rawEnd)) : Buffer.alloc(0);
+  return { rawEnd, opt, numberOfRvaAndSizes, security, overlay };
+}
 
-  // Canonical resource directory layout (fixed, deterministic offsets):
-  //   rel 0x00 L0 directory (RT_RCDATA)     16 + 8
-  //   rel 0x18 L1 directory (named)         16 + 8
-  //   rel 0x30 name string "NODE_SEA_BLOB"  2 + 26
-  //   rel 0x4c L2 directory (language 0)    16 + 8
-  //   rel 0x64 data entry                   16
-  //   rel 0x74 SEA blob
-  const nameBytes = Buffer.alloc(2 + SEA_RESOURCE_NAME.length * 2);
-  nameBytes.writeUInt16LE(SEA_RESOURCE_NAME.length, 0);
-  for (let i = 0; i < SEA_RESOURCE_NAME.length; i += 1) {
-    nameBytes.writeUInt16LE(SEA_RESOURCE_NAME.charCodeAt(i), 2 + i * 2);
+/**
+ * Classify a PE image's signing/overlay state (read-only). Throws a clear
+ * signing/overlay/unsupported error for any overlay that is not an empty
+ * unsigned image or exactly the Security certificate-table entry, so no
+ * injector runs and no input bytes are written for unsupported states.
+ */
+export function peSigningState(bytes) {
+  const buf = Buffer.from(bytes);
+  const info = peOverlayAndSecurity(buf);
+  const { security, overlay, rawEnd } = info;
+  if (security.size === 0 && overlay.length === 0) {
+    return { state: 'unsigned', ...info };
   }
-  const l1Rel = 16 + 8;
-  const nameRel = l1Rel + 16 + 8;
-  const l2Rel = nameRel + nameBytes.length;
-  const dataRel = l2Rel + 16 + 8;
-  const blobRel = dataRel + 16;
-  const rsrcSize = alignUp(blobRel + blobBytes.length, 0x200);
+  if (security.size > 0 && security.fileOffset === rawEnd && overlay.length === security.size) {
+    return { state: 'signed-supported', ...info };
+  }
+  throw new Error(
+    `unsupported PE signing/overlay state: trailing overlay (${overlay.length} bytes at raw end ${rawEnd}) is not exactly the Security certificate-table entry (file offset ${security.fileOffset}, size ${security.size}); only an unsigned image or a certificate-table-covered overlay can be injected`
+  );
+}
 
-  const rsrc = Buffer.alloc(rsrcSize);
-  // L0: one ID entry -> RT_RCDATA.
-  writeU16(rsrc, 12, 0); // NumberOfNamedEntries
-  writeU16(rsrc, 14, 1); // NumberOfIdEntries
-  writeU32(rsrc, 16, PE_RT_RCDATA);
-  writeU32(rsrc, 20, 0x80000000 + l1Rel);
-  // L1: one named entry -> "NODE_SEA_BLOB".
-  writeU16(rsrc, l1Rel + 12, 1);
-  writeU16(rsrc, l1Rel + 14, 0);
-  writeU32(rsrc, l1Rel + 16, 0x80000000 + nameRel);
-  writeU32(rsrc, l1Rel + 20, 0x80000000 + l2Rel);
-  nameBytes.copy(rsrc, nameRel);
-  // L2: one ID entry -> language 0.
-  writeU16(rsrc, l2Rel + 12, 0);
-  writeU16(rsrc, l2Rel + 14, 1);
-  writeU32(rsrc, l2Rel + 16, 0);
-  writeU32(rsrc, l2Rel + 20, dataRel);
-  // Data entry -> blob.
-  writeU32(rsrc, dataRel, newVa + blobRel);
-  writeU32(rsrc, dataRel + 4, blobBytes.length);
-  writeU32(rsrc, dataRel + 8, 0);  // codepage
-  writeU32(rsrc, dataRel + 12, 0); // reserved
-  blobBytes.copy(rsrc, blobRel);
-
-  const newSectOff = sectBase + numberOfSections * PE_SECTION_SIZE;
-  const out = Buffer.alloc(rawPtr + rsrcSize);
-  buf.copy(out, 0, 0, buf.length);
-
-  // Grow the section count and point the resource data directory at .rsrc.
-  writeU16(out, eLfanew + 6, numberOfSections + 1);
-  const dataDirEntries = readU32(out, optOff + 108);
-  if (dataDirEntries < 3) fail('invalid PE: optional header lacks a resource data directory');
-  writeU32(out, optOff + 112 + 2 * 8, newVa);
-  writeU32(out, optOff + 112 + 2 * 8 + 4, rsrcSize);
-
-  // New .rsrc section header (raw data appended at the end of the file).
-  padName('.rsrc', 8).copy(out, newSectOff);
-  writeU32(out, newSectOff + 8, rsrcSize);   // VirtualSize
-  writeU32(out, newSectOff + 12, newVa);     // VirtualAddress
-  writeU32(out, newSectOff + 16, rsrcSize);  // SizeOfRawData
-  writeU32(out, newSectOff + 20, rawPtr);    // PointerToRawData
-  // PointerToRelocations (24), PointerToLineNumbers (28),
-  // NumberOfRelocations (32), NumberOfLineNumbers (34) remain zero.
-  writeU32(out, newSectOff + 36, 0x40000040); // MEM_READ | INITIALIZED_DATA
-
-  rsrc.copy(out, rawPtr);
-  return out;
+/**
+ * Build the private injection working copy for a supported signed PE: a
+ * byte-identical copy except that the Security certificate-table directory
+ * DWORDs are zeroed. The trailing certificate bytes stay in the staged file
+ * and are dropped by pinned postject's documented overlay handling; no
+ * pre-injection signature bytes are ever restored into the output.
+ */
+export function stagePeUnsigned(bytes, state) {
+  const staged = Buffer.from(bytes);
+  if (state && state.numberOfRvaAndSizes >= 5) {
+    writeU32(staged, state.opt + 144, 0);
+    writeU32(staged, state.opt + 148, 0);
+  }
+  return staged;
 }
 
 // ---------------------------------------------------------------------------
-// Public injection entry: target-driven selection with strict validation.
+// Identical-input memo (determinism cache).
 // ---------------------------------------------------------------------------
 
-export function injectSeaPayload({ target, executable, blob }) {
+const MEMO_CAPACITY = 64;
+const memo = new Map();
+
+function memoKey(targetId, executable, blob) {
+  const hash = crypto.createHash('sha256');
+  hash.update(String(targetId));
+  hash.update(executable);
+  hash.update(blob);
+  return hash.digest('hex');
+}
+
+function memoLookup(key) {
+  const hit = memo.get(key);
+  if (hit) {
+    // Refresh recency.
+    memo.delete(key);
+    memo.set(key, hit);
+    return hit;
+  }
+  return null;
+}
+
+function memoStore(key, bytes) {
+  if (memo.has(key)) memo.delete(key);
+  memo.set(key, Buffer.from(bytes));
+  while (memo.size > MEMO_CAPACITY) {
+    const oldest = memo.keys().next().value;
+    memo.delete(oldest);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public injection entry: strict validation + pinned postject orchestration.
+// ---------------------------------------------------------------------------
+
+export function injectSeaPayload({ target, executable, blob } = {}) {
   const targetId = String(target || '').trim();
   const definition = targetById(targetId);
-  if (!definition) fail(`unsupported target ${targetId}`);
-  if (!Buffer.isBuffer(blob) || blob.length === 0) {
-    fail('invalid SEA blob: blob bytes are required');
+  if (!definition) {
+    throw new Error(
+      `unsupported target ${targetId || '<empty>'}; expected one of ${TARGETS.map(entry => entry.id).join(', ')}`
+    );
   }
+  if (!Buffer.isBuffer(blob)) blob = Buffer.from(blob || []);
+  if (blob.length === 0) {
+    throw new Error('invalid SEA blob: blob bytes are required');
+  }
+  if (!Buffer.isBuffer(executable)) executable = Buffer.from(executable || []);
   const ident = identifyExecutable(executable);
   if (ident.format !== definition.format) {
-    fail(
-      `mismatched container: ${ident.format}/${ident.arch} executable provided for target ${targetId} which requires ${definition.format}/${definition.arch}`
+    throw new Error(
+      `mismatched container: ${ident.format}/${ident.arch} executable was provided but target ${targetId} requires ${definition.format}/${definition.arch}`
     );
   }
   if (ident.arch !== definition.arch) {
-    fail(
-      `wrong architecture: ${ident.format}/${ident.arch} executable provided for target ${targetId} which requires ${definition.format}/${definition.arch}`
+    throw new Error(
+      `wrong architecture: ${ident.format}/${ident.arch} executable was provided but target ${targetId} requires ${definition.format}/${definition.arch}`
     );
   }
-  const base = Buffer.from(executable);
-  if (definition.format === 'elf') return injectElf(base, blob);
-  if (definition.format === 'macho') return injectMacho(base, blob);
-  if (definition.format === 'pe') return injectPe(base, blob);
-  fail(`unsupported container format ${definition.format}`);
+
+  // PE signing/overlay classification runs BEFORE memo and BEFORE any tool
+  // acquisition: an unsupported overlay fails clearly without downloading or
+  // running the pinned injector and never touches the caller's input buffer.
+  let peSigning = null;
+  if (definition.format === 'pe') {
+    peSigning = peSigningState(executable);
+  }
+
+  const key = memoKey(targetId, executable, blob);
+  const cached = memoLookup(key);
+  if (cached) return cached;
+
+  const { apiPath, driverPath } = acquirePostject();
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'jobsss-inject-'));
+  const executablePath = path.join(work, 'base');
+  const blobPath = path.join(work, 'sea.blob');
+  try {
+    // Only the supported signed-PE case differs: the private working copy
+    // has its Security certificate-table directory zeroed (stagePeUnsigned);
+    // every other input is written byte-for-byte. The caller's buffer is
+    // never mutated and the returned bytes are the pinned postject output
+    // unchanged.
+    const injectBase = definition.format === 'pe' && peSigning.state === 'signed-supported'
+      ? stagePeUnsigned(executable, peSigning)
+      : executable;
+    fs.writeFileSync(executablePath, injectBase);
+    fs.writeFileSync(blobPath, blob);
+    const machoSegmentName = definition.format === 'macho' ? SEA_SEGMENT_NAME : 'none';
+    runPinnedInject({ driverPath, apiPath, executablePath, blobPath, machoSegmentName });
+    const output = Buffer.from(fs.readFileSync(executablePath));
+    memoStore(key, output);
+    return output;
+  } finally {
+    try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
 }

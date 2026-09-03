@@ -22,7 +22,7 @@ restarted MCP process. No user state is written into the plugin directory.
 - `mcp.json` — `jobsss` stdio server (`./bin/jobsss mcp --data ${PLUGIN_DATA}`)
 - `skills/jobsss/SKILL.md` — `/jobsss` routing for the standalone journey
 - `skills/jobsss/references/` — journey and human-only handoff guidance
-- `bin/jobsss` + `src/` — bundled runtime (offline core plus safe public intake; no JobOS dependency); `src/packaging.js` holds the separated ELF/Mach-O/PE platform definitions
+- `bin/jobsss` + `src/` — bundled runtime (offline core plus safe public intake; no JobOS dependency); `src/packaging.js` holds the separated ELF/Mach-O/PE platform definitions built through the checksum-pinned Node SEA injector defined in `src/packaging.lock.json`
 - `tests/` — reviewer-owned acceptance checks plus fixtures
 
 ## Release builds
@@ -33,14 +33,26 @@ restarted MCP process. No user state is written into the plugin directory.
 
 builds the deterministic standalone current-host release: a regular
 `bin/jobsss` executable (no Node or JobOS on PATH needed at runtime) plus the
-portable plugin core, with repeated clean builds byte-identical. Intended
+portable plugin core, with repeated clean builds byte-identical. Native
+mutation uses the Node-supported SEA injector `postject` pinned with exact
+version/URL/SHA-256 in `src/packaging.lock.json`; checksum-verified official
+Node v22.22.3 executables are used as real base inputs, downloaded into the
+temporary cache only (`JOBSSS_NATIVE_CACHE` or the OS temp dir), never into
+the repository. Intended
 cross-platform targets (`linux-x64`, `linux-arm64`, `darwin-x64`,
 `darwin-arm64`, `win-x64`) are defined in `src/packaging.js` and selected
-with `--target`, optionally with `--node-binary <path>` naming a base Node
-executable of the matching native format/architecture. A target is labeled
-`verified` only after real execution on a matching host; builds from
-synthetic native-format fixtures remain `unverified` (they validate the
-definition, never the platform runtime). Full release evidence and deferred
+with `--target`; `--node-binary <path>` must name the exact checksum-pinned
+official Node executable recorded for that target (its `executableSha256` is
+enforced before injection — matching format/architecture alone is not
+enough). Signed `node.exe` is staged unsigned by packaging (the Security
+certificate-table directory is zeroed in a private copy and pinned postject
+drops the certificate bytes; no pre-injection signature is ever restored),
+so the released Windows artifact must be re-signed on a matching Windows
+host. A target is labeled `verified` only after real execution on a matching
+host; cross-builds from official inputs remain `unverified` (they validate
+the definition, never the platform runtime). Independent Mach-O/PE
+validation uses checksum-pinned build/test-only pefile/macholib/altgraph,
+never the production parser. Full release evidence and deferred
 capabilities are recorded in `RELEASE_REPORT.md`.
 
 ## Core journey

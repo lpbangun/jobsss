@@ -30,6 +30,7 @@ import {
   getPackagingApi,
   hostMatchesTarget,
   identifyExecutable,
+  injectionExecutable,
   launcherPath,
   loadPackagingModule,
   makeFixture,
@@ -40,6 +41,7 @@ import {
   targetEntry
 } from './helpers/jobsss-cross-platform.mjs';
 import { isolate } from './helpers/jobsss-live-mcp.mjs';
+import { ensureOfficialExecutable } from './helpers/jobsss-native-inputs.mjs';
 import {
   builderEnv,
   readReleaseManifest,
@@ -71,7 +73,7 @@ test('B42 inspectable executable ELF Mach-O PE build definitions separated from 
   }
 });
 
-test('B43 format/architecture validation and native SEA container injection contract', async () => {
+test('B43 format/architecture validation and native SEA container injection contract', { timeout: 180_000 }, async () => {
   const { api } = await packagingApi();
   for (const target of REQUIRED_PACKAGING_TARGETS) {
     const executable = makeFixture(target.format, target.arch);
@@ -85,7 +87,8 @@ test('B43 format/architecture validation and native SEA container injection cont
     assert.equal(identified.format, target.format, `${PACKAGING_MODULE_REL} must validate ${target.id} as ${target.format}`);
     assert.equal(identified.arch, target.arch, `${PACKAGING_MODULE_REL} must validate ${target.id} as ${target.arch}`);
     const blob = blobFor(target.id);
-    const injected = api.injectSeaPayload({ target: target.id, executable, blob });
+    const injectBase = injectionExecutable(target);
+    const injected = api.injectSeaPayload({ target: target.id, executable: injectBase, blob });
     assertNativeSeaInjection(injected, {
       format: target.format,
       arch: target.arch,
@@ -134,10 +137,10 @@ test('B43 format/architecture validation and native SEA container injection cont
   );
 });
 
-test('B44 deterministic repeatability and canonical target release layout', { timeout: 60_000 }, async t => {
+test('B44 deterministic repeatability and canonical target release layout', { timeout: 180_000 }, async t => {
   const { api } = await packagingApi();
   for (const target of REQUIRED_PACKAGING_TARGETS) {
-    const executable = makeFixture(target.format, target.arch);
+    const executable = injectionExecutable(target);
     const blob = blobFor(`repeat-${target.id}`);
     const first = api.injectSeaPayload({ target: target.id, executable, blob });
     const second = api.injectSeaPayload({ target: target.id, executable, blob });
@@ -155,30 +158,28 @@ test('B44 deterministic repeatability and canonical target release layout', { ti
   }
 
   const ctx = isolate(t, 'jobsss-xplat-layout');
-  const target = REQUIRED_PACKAGING_TARGETS.find(entry => entry.id === 'darwin-arm64');
   const parent = mkdtempSync(path.join(tmpdir(), 'jobsss-xplat-out-'));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
-  const base = path.join(parent, 'darwin-arm64-node');
+  const official = ensureOfficialExecutable('darwin-arm64');
   const outA = path.join(parent, 'out-a');
   const outB = path.join(parent, 'out-b');
-  writeFileSync(base, makeFixture(target.format, target.arch));
   const env = builderEnv(ctx.trap);
   const first = await runRepoJobsss(
-    ['release', '--out', outA, '--target', 'darwin-arm64', '--node-binary', base],
+    ['release', '--out', outA, '--target', 'darwin-arm64', '--node-binary', official.executablePath],
     env,
-    { timeoutMs: 45_000 }
+    { timeoutMs: 120_000 }
   );
   const second = await runRepoJobsss(
-    ['release', '--out', outB, '--target', 'darwin-arm64', '--node-binary', base],
+    ['release', '--out', outB, '--target', 'darwin-arm64', '--node-binary', official.executablePath],
     env,
-    { timeoutMs: 45_000 }
+    { timeoutMs: 120_000 }
   );
   assert.equal(
     first.code,
     0,
-    `./bin/jobsss release --target darwin-arm64 --node-binary <synthetic Mach-O> must exit 0 (got ${first.code}): stdout=${first.stdout.slice(0, 400)} stderr=${first.stderr.slice(0, 400)}`
+    `./bin/jobsss release --target darwin-arm64 --node-binary <official Node> must exit 0 (got ${first.code}): stdout=${first.stdout.slice(0, 400)} stderr=${first.stderr.slice(0, 400)}`
   );
-  assert.equal(second.code, 0, `repeated darwin-arm64 fixture release must exit 0 (got ${second.code}): ${second.stderr.slice(0, 400)}`);
+  assert.equal(second.code, 0, `repeated darwin-arm64 official-input release must exit 0 (got ${second.code}): ${second.stderr.slice(0, 400)}`);
   const pluginA = resolveTargetPluginRoot(outA, 'darwin-arm64');
   const pluginB = resolveTargetPluginRoot(outB, 'darwin-arm64');
   assert.ok(pluginA, 'darwin-arm64 release must write the canonical portable plugin layout');
@@ -187,13 +188,13 @@ test('B44 deterministic repeatability and canonical target release layout', { ti
   assertCanonicalTargetLayout(pluginB);
   const binA = readFileSync(launcherPath(pluginA));
   const binB = readFileSync(launcherPath(pluginB));
-  assert.equal(binA.equals(binB), true, 'repeated darwin-arm64 fixture releases must be byte-identical for bin/jobsss');
+  assert.equal(binA.equals(binB), true, 'repeated darwin-arm64 official-input releases must be byte-identical for bin/jobsss');
   const ident = identifyExecutable(binA);
   assert.equal(ident.format, 'macho', 'darwin-arm64 released launcher must be Mach-O');
   assert.equal(ident.arch, 'arm64', 'darwin-arm64 released launcher must be arm64');
 });
 
-test('B45 truthful unverified labels; synthetic fixtures never attest platform runtime support', { timeout: 60_000 }, async t => {
+test('B45 truthful unverified labels; synthetic fixtures never attest platform runtime support', { timeout: 180_000 }, async t => {
   const { api } = await packagingApi();
   const ctx = isolate(t, 'jobsss-xplat-labels');
   const parent = mkdtempSync(path.join(tmpdir(), 'jobsss-xplat-labels-'));
@@ -230,45 +231,45 @@ test('B45 truthful unverified labels; synthetic fixtures never attest platform r
 
   const darwinOut = path.join(parent, 'darwin-out');
   mkdirSync(darwinOut, { recursive: true });
+  const officialDarwin = ensureOfficialExecutable('darwin-arm64');
   const darwinRel = await runRepoJobsss(
-    ['release', '--out', darwinOut, '--target', 'darwin-arm64', '--node-binary', macho],
+    ['release', '--out', darwinOut, '--target', 'darwin-arm64', '--node-binary', officialDarwin.executablePath],
     env,
-    { timeoutMs: 45_000 }
+    { timeoutMs: 120_000 }
   );
   assert.equal(
     darwinRel.code,
     0,
-    `fixture-level darwin-arm64 definition must be executable (got ${darwinRel.code}): ${darwinRel.stderr.slice(0, 400)}`
+    `official-input darwin-arm64 definition must be executable (got ${darwinRel.code}): ${darwinRel.stderr.slice(0, 400)}`
   );
   const darwinRoot = resolveTargetPluginRoot(darwinOut, 'darwin-arm64');
-  assert.ok(darwinRoot, 'darwin-arm64 fixture release must produce the canonical layout');
+  assert.ok(darwinRoot, 'darwin-arm64 official-input release must produce the canonical layout');
   const darwinManifest = readReleaseManifest(darwinOut, darwinRoot);
   assertUnverifiedTarget(
     darwinManifest.doc,
     'darwin-arm64',
-    'on this host and when the definition is exercised only with a synthetic Mach-O fixture'
+    'on this host and when the definition is exercised only with a cross-built official Mach-O input'
   );
   if (targetEntry(darwinManifest.doc, 'win-x64')) {
     assertUnverifiedTarget(darwinManifest.doc, 'win-x64', 'unless exercised on a real matching Windows host');
   }
 
   const winOut = path.join(parent, 'win-out');
-  const pe = path.join(parent, 'pe-x64');
-  writeFileSync(pe, makeFixture('pe', 'x64'));
+  const officialWin = ensureOfficialExecutable('win-x64');
   const winRel = await runRepoJobsss(
-    ['release', '--out', winOut, '--target', 'win-x64', '--node-binary', pe],
+    ['release', '--out', winOut, '--target', 'win-x64', '--node-binary', officialWin.executablePath],
     env,
-    { timeoutMs: 45_000 }
+    { timeoutMs: 120_000 }
   );
-  assert.equal(winRel.code, 0, `fixture-level win-x64 definition must be executable (got ${winRel.code}): ${winRel.stderr.slice(0, 400)}`);
+  assert.equal(winRel.code, 0, `official-input win-x64 definition must be executable (got ${winRel.code}): ${winRel.stderr.slice(0, 400)}`);
   const winRoot = resolveTargetPluginRoot(winOut, 'win-x64');
-  assert.ok(winRoot, 'win-x64 fixture release must produce the canonical layout');
+  assert.ok(winRoot, 'win-x64 official-input release must produce the canonical layout');
   assertCanonicalTargetLayout(winRoot, { windows: true });
   const winManifest = readReleaseManifest(winOut, winRoot);
   assertUnverifiedTarget(
     winManifest.doc,
     'win-x64',
-    'on this host and when the definition is exercised only with a synthetic PE fixture'
+    'on this host and when the definition is exercised only with a cross-built official PE input'
   );
 
   for (const target of REQUIRED_PACKAGING_TARGETS) {
@@ -276,7 +277,7 @@ test('B45 truthful unverified labels; synthetic fixtures never attest platform r
     const blob = blobFor(`label-${target.id}`);
     const injected = api.injectSeaPayload({
       target: target.id,
-      executable: makeFixture(target.format, target.arch),
+      executable: injectionExecutable(target),
       blob
     });
     assertNativeSeaInjection(injected, {

@@ -13,10 +13,21 @@
 // darwin-arm64 (Mach-O), win-x64 (PE32+), plus the current-host alias which
 // resolves to the host-matching definition and the host's own Node binary.
 // A target earns `verified` only when it is built from a real matching host
-// executable and exercised on this host. A build using a `--node-binary`
-// that is a synthetic native-format fixture, or a build on a non-matching
-// host, is labeled `unverified` — a fixture validates the definition, never
-// the platform runtime.
+// executable and exercised on this host. `--node-binary` accepts ONLY the
+// checksum-pinned official Node executable recorded in
+// src/packaging.lock.json for that target (exact executableSha256 is
+// enforced before blob generation or injection); a same-format/arch byte
+// mutant fails with a checksum error and writes no launcher. Synthetic
+// native-format fixtures never reach the release CLI — they exercise only
+// the direct injectSeaPayload test path. A cross-built release from an
+// official input is labeled `unverified` — structural validation is never
+// platform runtime verification.
+//
+// Windows distribution: signed official node.exe is staged unsigned by
+// src/packaging.js (Security certificate-table directory zeroed in a private
+// copy; pinned postject drops the certificate bytes). The released artifact
+// is unsigned and must be re-signed on a matching Windows host; win-x64
+// stays unverified until real execution.
 //
 // Determinism: the SEA blob is content-derived (identical entry text), the
 // native injection is byte-deterministic for identical inputs, and the
@@ -32,7 +43,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { TARGETS, identifyExecutable, injectSeaPayload, targetById } from './packaging.js';
+import { TARGETS, identifyExecutable, injectSeaPayload, officialNodePin, targetById } from './packaging.js';
 import { generateSeaBlob, hostTargetId, nodeBinary, repoRootFromSource } from './sea-build.js';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -74,12 +85,13 @@ Options:
   --out <absdir>     absolute output directory (required)
   --target <id>      current-host (default), linux-x64, linux-arm64,
                      darwin-x64, darwin-arm64, or win-x64
-  --node-binary <p>  base Node executable of the matching native format and
-                     architecture; required for a fixture-level build of a
-                     non-host target, and validated strictly when provided
-Targets not built from a real matching host executable are labeled
-unverified in release-manifest.json; a synthetic fixture exercise is a
-definition test, never platform verification.`);
+  --node-binary <p>  exact checksum-pinned official Node executable for the
+                     target (src/packaging.lock.json executableSha256 is
+                     enforced before injection); required for a cross-build
+                     of a non-host target
+Targets not built from and exercised on a real matching host executable are
+labeled unverified in release-manifest.json; an official-input cross-build
+is structural definition validation, never platform verification.`);
 }
 
 function manifestTargetEntries({ builtTargetId, hostId, isCurrentHostBuild, fixtureLevel, binSha, meta }) {
@@ -121,7 +133,7 @@ function manifestTargetEntries({ builtTargetId, hostId, isCurrentHostBuild, fixt
         arch: target.arch,
         status: 'unverified',
         notes: isBuilt
-          ? [`definition implemented in src/packaging.js and exercised only with a synthetic ${target.format} fixture; not platform verification`, 'unverified until exercised on a real matching host']
+          ? [`built from the checksum-pinned official Node v${meta.nodeVersion} ${target.format}/${target.arch} input and structurally validated on this host; not platform verification`, 'unverified until exercised on a real matching host']
           : ['definition implemented in src/packaging.js; not exercised in this output'],
       });
     }
@@ -183,8 +195,9 @@ export function releaseCommand(argv, { repoRoot = repoRootFromSource() } = {}) {
   }
 
   // Resolve the base executable: an explicit --node-binary (validated
-  // strictly against the target definition) or the host's own Node binary
-  // when the target matches the host.
+  // strictly: format, architecture, and the locked official executableSha256
+  // for the target) or the host's own Node binary when the target matches
+  // the host (also verified against the locked official identity).
   let base;
   let fixtureLevel = false;
   if (nodeBinaryArg) {
@@ -207,6 +220,14 @@ export function releaseCommand(argv, { repoRoot = repoRootFromSource() } = {}) {
         `release: wrong architecture for --node-binary: a ${ident.format}/${ident.arch} executable was provided but target ${expected.id} requires a ${expected.format}/${expected.arch} executable`
       );
     }
+    const lockPin = officialNodePin(injectTargetId);
+    const rawSha = crypto.createHash('sha256').update(raw).digest('hex');
+    const expectedSha = String(lockPin.executableSha256 || '').toLowerCase();
+    if (rawSha !== expectedSha) {
+      throw new Error(
+        `release: checksum/sha256 mismatch for --node-binary: got ${rawSha}, expected ${expectedSha} (target ${injectTargetId} accepts only the locked official Node ${lockPin.version} executable)`
+      );
+    }
     base = raw;
     let providedReal = null;
     try {
@@ -217,10 +238,18 @@ export function releaseCommand(argv, { repoRoot = repoRootFromSource() } = {}) {
     fixtureLevel = !(hostMatch && providedReal === process.execPath);
   } else if (hostMatch) {
     base = fs.readFileSync(process.execPath);
+    const lockPin = officialNodePin(injectTargetId);
+    const baseSha = crypto.createHash('sha256').update(base).digest('hex');
+    const expectedSha = String(lockPin.executableSha256 || '').toLowerCase();
+    if (baseSha !== expectedSha) {
+      throw new Error(
+        `release: checksum/sha256 mismatch: the host Node executable ${process.execPath} (${baseSha}) is not the locked official Node ${lockPin.version} ${injectTargetId} executable (${expectedSha}); refusing to build from an unpinned base`
+      );
+    }
   } else {
     throw new Error(
       `release: target ${targetArg} is unavailable on this host (${process.platform}/${process.arch}); ` +
-      `pass --node-binary with a matching ${definition.format}/${definition.arch} base executable for a fixture-level build, which remains unverified and is not platform verification`
+      `pass --node-binary with the checksum-pinned official ${definition.format}/${definition.arch} Node executable for a cross-build, which remains unverified and is not platform verification`
     );
   }
 
@@ -290,7 +319,8 @@ export function releaseCommand(argv, { repoRoot = repoRootFromSource() } = {}) {
     notes: [
       'Repeated clean builds are byte-identical for the complete release tree: deterministic SEA bundle, base executable, and content-derived portable metadata.',
       'Source of truth remains the portable Agent Plugin at the repository root; the release is a copy for download.',
-      'Non-host targets are labeled unverified: a synthetic fixture exercise validates the native-format definition, never the platform runtime.',
+      'Non-host targets are built from the checksum-pinned official Node input and labeled unverified: structural validation is never platform runtime verification.',
+      'Signed node.exe is staged unsigned (packaging zeroes the Security certificate-table directory in a private copy; pinned postject drops the certificate bytes); Windows distribution requires matching-host re-signing.',
       'Client compatibility adapters and the trusted-local decide surface are owned by their own slices and are not part of this packaging slice.',
     ],
   };

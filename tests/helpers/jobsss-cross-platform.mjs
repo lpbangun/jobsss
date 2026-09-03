@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { pluginPath, REPO_ROOT } from './jobsss-gate0.mjs';
 import { listRelFiles } from './jobsss-live-mcp.mjs';
+import { ensureOfficialExecutable } from './jobsss-native-inputs.mjs';
 import { entryStatus, matrixTargets } from './jobsss-productization.mjs';
 
 export const PACKAGING_MODULE_REL = 'src/packaging.js';
@@ -300,18 +301,18 @@ export function makePeFixture({ arch = 'x64' } = {}) {
   const sizeOfHeaders = 0x200;
   const rawOff = 0x200;
   const rawSize = 0x200;
-  const buf = Buffer.alloc(sizeOfHeaders + rawSize);
+  const rsrcRawOff = rawOff + rawSize;
+  const rsrcRawSize = 0x200;
+  const buf = Buffer.alloc(sizeOfHeaders + rawSize + rsrcRawSize);
   buf.write('MZ', 0, 'ascii');
   buf.writeUInt32LE(eLfanew, 0x3c);
   PE_SIGNATURE.copy(buf, eLfanew);
   buf.writeUInt16LE(arch === 'arm64' ? 0xaa64 : 0x8664, coffOff);
-  buf.writeUInt16LE(1, coffOff + 2);
+  buf.writeUInt16LE(2, coffOff + 2);
   buf.writeUInt16LE(optSize, coffOff + 16);
   buf.writeUInt16LE(0x0022, coffOff + 18);
   buf.writeUInt16LE(0x20b, optOff);
   buf.writeUInt32LE(rawSize, optOff + 16);
-  buf.writeUInt32LE(0x1000, optOff + 24);
-  buf.writeBigUInt64LE(0x1000n, optOff + 24); // ImageBase overwritten next
   buf.writeBigUInt64LE(0x140000000n, optOff + 24);
   buf.writeUInt32LE(0x1000, optOff + 32);
   buf.writeUInt32LE(0x200, optOff + 36);
@@ -319,19 +320,40 @@ export function makePeFixture({ arch = 'x64' } = {}) {
   buf.writeUInt16LE(0, optOff + 42);
   buf.writeUInt16LE(0, optOff + 48);
   buf.writeUInt16LE(3, optOff + 68);
-  buf.writeUInt32LE(0x2000, optOff + 56);
+  buf.writeUInt32LE(0x3000, optOff + 56);
   buf.writeUInt32LE(sizeOfHeaders, optOff + 60);
-  buf.writeUInt16LE(0x10b, optOff + 68); // subsystem IMAGE_SUBSYSTEM_WINDOWS_CUI? keep 3
   buf.writeUInt16LE(3, optOff + 68);
   buf.writeUInt32LE(numberOfRvaAndSizes, optOff + 108);
-  buf.write('TEXT\0\0\0\0', sectOff, 'ascii');
+  // Pinned postject requires an existing resource tree (has_resources()).
+  const rsrcRva = 0x2000;
+  buf.writeUInt32LE(rsrcRva, optOff + 112 + 16);
+  buf.writeUInt32LE(0x60, optOff + 112 + 20);
   buf.write('.text\0\0\0', sectOff, 'ascii');
   buf.writeUInt32LE(rawSize, sectOff + 8);
   buf.writeUInt32LE(0x1000, sectOff + 12);
   buf.writeUInt32LE(rawSize, sectOff + 16);
   buf.writeUInt32LE(rawOff, sectOff + 20);
   buf.writeUInt32LE(0x60000020, sectOff + 36);
+  buf.write('.rsrc\0\0\0', sectOff + 40, 'ascii');
+  buf.writeUInt32LE(rsrcRawSize, sectOff + 48);
+  buf.writeUInt32LE(rsrcRva, sectOff + 52);
+  buf.writeUInt32LE(rsrcRawSize, sectOff + 56);
+  buf.writeUInt32LE(rsrcRawOff, sectOff + 60);
+  buf.writeUInt32LE(0x40000040, sectOff + 76);
   fuse.copy(buf, rawOff);
+  const res = buf.subarray(rsrcRawOff);
+  res.writeUInt16LE(1, 14);
+  res.writeUInt32LE(16, 16);
+  res.writeUInt32LE(0x80000018, 20);
+  res.writeUInt16LE(1, 0x18 + 14);
+  res.writeUInt32LE(1, 0x18 + 16);
+  res.writeUInt32LE(0x80000030, 0x18 + 20);
+  res.writeUInt16LE(1, 0x30 + 14);
+  res.writeUInt32LE(0, 0x30 + 16);
+  res.writeUInt32LE(0x48, 0x30 + 20);
+  res.writeUInt32LE(rsrcRva + 0x58, 0x48);
+  res.writeUInt32LE(8, 0x48 + 4);
+  res.write('VERSINFO', 0x58, 'ascii');
   return buf;
 }
 
@@ -340,6 +362,14 @@ export function makeFixture(format, arch) {
   if (format === 'macho') return makeMachoFixture({ arch });
   if (format === 'pe') return makePeFixture({ arch });
   throw new Error(`unknown fixture format ${format}`);
+}
+
+// Pinned postject/LIEF cannot add a PT_NOTE to the tiny synthetic ELF layout
+// (no relocatable PHDR table). ELF injection therefore uses checksum-pinned
+// official Node. Synthetic Mach-O and resource-bearing PE fixtures inject.
+export function injectionExecutable(target) {
+  if (target.format === 'elf') return ensureOfficialExecutable(target.id).bytes;
+  return makeFixture(target.format, target.arch);
 }
 
 export function identifyExecutable(bytes) {

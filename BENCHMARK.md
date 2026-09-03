@@ -31,7 +31,15 @@ evidence, no build-user/home/workspace/source/scratch/output paths, and
 no released-runtime dependency on the build checkout or `tests/fixtures`
 without deleting, rewriting, or weakening B1–B29 or B31–B41. B42–B47
 extend that bar for the confirmed cross-platform remediation round and
-must not delete, rewrite, or weaken B1–B41.
+must not delete, rewrite, or weaken B1–B41. B46 and B47 are additionally
+strengthened so both reports are finalized with the actual frozen-command
+count and PASS, and must not leave a reviewer verdict pending, without
+deleting, rewriting, or weakening B1–B45. B48–B53 extend that bar for the
+confirmed native-remediation round and must not delete, rewrite, or
+weaken B1–B47. B54 extends that bar for empty-cache pinned postject
+acquisition and must not delete, rewrite, or weaken B1–B53. B55–B60
+extend that bar for the independent-auditor native-safety findings and
+must not delete, rewrite, or weaken B1–B54.
 
 ---
 
@@ -54,6 +62,10 @@ must not delete, rewrite, or weaken B1–B41.
 | `tests/helpers/jobsss-productization.mjs` | reviewer | reviewer only |
 | `tests/jobsss-cross-platform.test.mjs` | reviewer | reviewer only |
 | `tests/helpers/jobsss-cross-platform.mjs` | reviewer | reviewer only |
+| `tests/jobsss-native-remediation.test.mjs` | reviewer | reviewer only |
+| `tests/helpers/jobsss-native-format.mjs` | reviewer | reviewer only |
+| `tests/helpers/jobsss-native-inputs.mjs` | reviewer | reviewer only |
+| `tests/helpers/jobsss-native-validators.mjs` | reviewer | reviewer only |
 | `tests/fixtures/profile-resume.md` | reviewer | reviewer only |
 | `tests/fixtures/job-posting.md` | reviewer | reviewer only |
 | `tests/fixtures/legacy-store-v1.json` | reviewer | reviewer only |
@@ -108,6 +120,13 @@ wholesale; attributed ports are allowed):
 - JobOS `/home/logani/projects/Job App/src/workflows.js`
 - JobOS `/home/logani/projects/Job App/.agents/skills/jobos/SKILL.md`
 - JobOS `/home/logani/projects/Job App/LICENSE` (MIT)
+- Node.js Single Executable Applications (v22.22.3)
+  `https://nodejs.org/docs/v22.22.3/api/single-executable-applications.html`
+- Node-supported SEA injection tool postject 1.0.0-alpha.6
+  `https://github.com/nodejs/postject`
+  `https://registry.npmjs.org/postject/-/postject-1.0.0-alpha.6.tgz`
+- Official Node v22.22.3 distribution checksums
+  `https://nodejs.org/dist/v22.22.3/SHASUMS256.txt`
 
 Frozen plugin root: the JobSSS repository root
 `/home/logani/projects/jobsss`.
@@ -140,6 +159,13 @@ temporary directory via `PLUGIN_DATA` / `--data`.
 Unset or blank provider keys for core checks. Do not add npm dependencies
 for these tests. Do not edit `package.json` to make the bar pass.
 Do not require `jobos` on `PATH`. There is no allowed skip for missing JobOS.
+B48–B60 may download checksum-pinned official Node v22.22.3 archives,
+the pinned postject tarball, and pinned independent validator wheels
+(pefile/macholib/altgraph) into a temporary cache outside the plugin tree
+(`$JOBSSS_NATIVE_CACHE` or `os.tmpdir()/jobsss-native-gate-cache`). Those
+blobs must not be committed. There is no allowed skip for missing official
+Node inputs. B54 additionally requires a genuine empty cache: a pre-populated
+`JOBSSS_NATIVE_CACHE` is not a substitute for acquisition.
 
 ---
 
@@ -157,7 +183,8 @@ node --test --test-concurrency=1 \
   tests/jobsss-release.test.mjs \
   tests/jobsss-adapters.test.mjs \
   tests/jobsss-authority.test.mjs \
-  tests/jobsss-cross-platform.test.mjs
+  tests/jobsss-cross-platform.test.mjs \
+  tests/jobsss-native-remediation.test.mjs
 ```
 
 ### Expected exit code
@@ -166,13 +193,13 @@ node --test --test-concurrency=1 \
 
 ### What pass means
 
-Exit `0` is necessary and not sufficient. Every check B1–B47 below must hold
+Exit `0` is necessary and not sufficient. Every check B1–B60 below must hold
 on the real files, on a real bundled MCP subprocess, and on the current-host
 release artifact where those checks require it. Invented output, mocks of the
 runtime, skipped required checks, or touching real user JobOS or client
 profiles are a fail.
 
-No allowed skip. B10–B12 and B14–B47 are required even when `jobos` is absent.
+No allowed skip. B10–B12 and B14–B60 are required even when `jobos` is absent.
 There is no allowed skip for missing Node on PATH for B31–B32: the released
 `bin/jobsss` must start without resolving `node` or `jobos` from PATH.
 
@@ -321,6 +348,97 @@ release --out /tmp/jobsss-xplat-base-nb --target darwin-arm64 --node-binary
 Mach-O/PE injection is prose in `src/release.js` (`Windows additionally needs
 the PE resource (RT_RCDATA) injection variant`). Synthetic fixtures were not
 used to claim macOS or Windows runtime verification.
+
+### Native-remediation baseline recorded 2026-09-02 against committed HEAD `8b2db25`
+
+B1–B47 pass on the committed plugin (`# tests 49` `# pass 49` `# fail 0` for
+the previous eleven-file command). B48–B53 are frozen failing against that
+same runtime using genuine checksum-pinned official Node v22.22.3
+executables in temporary cache only and an independent native-format
+validator that does not import `src/packaging.js` or the synthetic-fixture
+generator. Missing pinned tooling/lock and unsafe ad hoc Mach-O/PE mutation,
+not benchmark defects. Combined frozen command: `# tests 55` `# pass 50`
+`# fail 5`, exit `1`, `duration_ms 40048.300212`, Node v22.22.3. Observed
+failures:
+
+| Check | Result today | Observed failure |
+| --- | --- | --- |
+| B1–B47 | pass | preserved on HEAD `8b2db25` |
+| B48 | fail | missing required product file `src/packaging.lock.json` |
+| B49 | fail | ad hoc `injectMacho` mutator still present in `src/packaging.js` |
+| B50 | fail | official darwin-arm64 Node: stale LC_SYMTAB/LC_DYSYMTAB/LC_DYLD_INFO_ONLY/LC_FUNCTION_STARTS/LC_CODE_SIGNATURE offsets after a 152-byte load-command insertion; NODE_SEA vmsize 0 with filesize 56 |
+| B51 | fail | official win-x64 `node.exe`: SizeOfImage stayed 89866240 after growing sections to 89870336; overlay 15688 bytes destroyed (file shrunk 15176); original RT_ICON/RT_GROUP_ICON/RT_VERSION/RT_MANIFEST resources replaced |
+| B52 | pass | runtime still has no `package.json`; official Node/tool caches are uncommitted; reports do not label darwin/win verified |
+| B53 | fail | `PRODUCTIZATION_REVIEW.md` still says `RELEASE_REPORT.md` reviewer verdict remains pending; recorded `# tests 49` is stale versus live frozen-command count 55 |
+
+Independent official-input probes against the same HEAD, not invented:
+checksum-verified `node-v22.22.3-{linux-x64,linux-arm64,darwin-x64,darwin-arm64,win-x64}`
+archives in `/tmp/jobsss-native-gate-cache` only. Injecting the official
+darwin-arm64 Node through today's `injectSeaPayload` leaves linkedit command
+offsets unshifted by 152 bytes and emits `NODE_SEA` with `vmsize=0`.
+Injecting official `node.exe` leaves `SizeOfImage` at `0x55b4000`, drops the
+15688-byte overlay, and replaces the resource directory. Synthetic fixtures
+were not used to claim macOS or Windows runtime verification.
+
+### Empty-cache acquisition baseline recorded 2026-09-03 against today's worktree
+
+B1–B52 remain intact. Additive B54 fails against today's `acquirePostject`
+before any product correction. Missing empty-cache acquisition, not a
+benchmark defect. Independent CLI and focused B54 output, not invented:
+
+```bash
+JOBSSS_NATIVE_CACHE=<empty> ./bin/jobsss release --out <absdir> --target current-host
+# exit 1
+# TypeError [ERR_INVALID_ARG_TYPE]: ... Received an instance of Promise
+# verifyPinnedChecksum (src/packaging.js:146) <- acquirePostject (src/packaging.js:310)
+```
+
+Focused command:
+
+```bash
+node --test --test-concurrency=1 --test-name-pattern='B54 empty-cache' \
+  tests/jobsss-native-remediation.test.mjs
+```
+
+`# tests 1` `# pass 0` `# fail 1`, exit `1`, `duration_ms 601.945467`,
+Node v22.22.3. Observed failure: empty `JOBSSS_NATIVE_CACHE` current-host
+release exits `1` because `httpsDownload()` returns a Promise that
+`acquirePostject` passes into `verifyPinnedChecksum` / `Buffer.from`.
+Pre-populated `/tmp/jobsss-native-gate-cache` is not a substitute.
+B53 now sees live frozen-command count 56 versus reports still recording
+`# tests 55`; reports stay reviewer-owned for the eventual PASS review and
+were not edited here.
+
+### Independent-auditor native-safety baseline recorded 2026-09-03 against committed HEAD `0b962be`
+
+B1–B54 remain intact except the B51 Authenticode/overlay contradiction
+corrected below. Additive B55–B59 fail against today's committed packaging
+before any further product correction; B60 already passes on separate-process
+official-target releases. Custom PE post-processing, invalid certificate
+restore, missing official `--node-binary` checksums, and in-repo
+parser-as-validator are product gaps, not benchmark defects. Focused command:
+
+```bash
+node --test --test-concurrency=1 --test-name-pattern='B51 |B55 |B56 |B57 |B58 |B59 |B60 '
+  tests/jobsss-native-remediation.test.mjs
+```
+
+Focused result, not invented: `# tests 6` `# pass 0` `# fail 6`, exit `1`,
+`duration_ms 52277.796758`, Node v22.22.3. Observed failures:
+
+| Check | Result today | Observed failure |
+| --- | --- | --- |
+| B51 | fail | injected official PE Security directory file offset 87095808, not 0 |
+| B55 | fail | `function restorePeOverlay(` still present in `src/packaging.js` |
+| B56 | fail | Security directory file offset 87095808 after injection; certificate overlay restored |
+| B57 | fail | extra non-certificate overlay still acquires postject tarball before throwing |
+| B58 | fail | mutated linux-x64 `--node-binary` exit 0 and writes `bin/jobsss` |
+| B59 | fail | `src/packaging.lock.json` does not pin pefile 2024.8.26 |
+| B60 | pass | two fresh-process official-target releases already byte-identical |
+
+Separate B60 command: `# tests 1` `# pass 1` `# fail 0`, exit `0`,
+`duration_ms 101891.397946`. Frozen twelve-file live count becomes 62.
+Reports were not edited here.
 
 ---
 
@@ -957,10 +1075,15 @@ For every required target, `identifyExecutable` must accept a synthetic
 64-bit fixture of the matching format/architecture, and `injectSeaPayload`
 must inject the SEA payload using the correct native container:
 
-- Linux ELF: `PT_NOTE` named `NODE_SEA_BLOB`
+- Linux ELF: `PT_NOTE` named `NODE_SEA_BLOB` against checksum-pinned official
+  Node linux-x64 / linux-arm64 (pinned postject/LIEF cannot relocate the PHDR
+  table of the tiny synthetic ELF layout)
 - macOS Mach-O: segment `NODE_SEA` and section `NODE_SEA_BLOB` (Node/postject
-  `--macho-segment-name NODE_SEA`)
-- Windows PE: `RT_RCDATA` (10) resource named `NODE_SEA_BLOB`
+  `--macho-segment-name NODE_SEA`) against a synthetic Mach-O fixture
+- Windows PE: `RT_RCDATA` (10) resource named `NODE_SEA_BLOB` against a
+  postject-compatible independently sourced PE that already contains a
+  resource directory (pinned postject `inject_into_pe` returns an error when
+  `!binary->has_resources()`)
 
 The injected image must remain the same format and architecture, carry the
 blob bytes, and flip `NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2:0` to
@@ -1000,7 +1123,10 @@ exercise.
 `PRODUCTIZATION_REVIEW.md` exists at the plugin root and contains every
 revised-goal section: B1–B41, cross-platform build definitions, current-host
 restricted-PATH release evidence, adapter behavior, human authority, exact
-commands/results, residual risks, and the fresh verdict.
+commands/results, residual risks, and the fresh verdict. During the eventual
+PASS review this file must also record the actual frozen-command `# tests` /
+`# pass` / `# fail 0` counts and a PASS verdict. It must not leave the
+reviewer verdict pending. B53 freezes those finalization rules.
 
 ### B47 — `RELEASE_REPORT.md` completeness and identity
 
@@ -1011,14 +1137,229 @@ baseline/intermediate commit identity
 `ba2123ef5f6f24bcf6ae994a125b67501b970785`, deferred/unverified
 capabilities, and the statement that the final corrective SHA is supplied
 in the final response. Because a commit cannot contain its own SHA, the
-report must not invent a final SHA.
+report must not invent a final SHA. Intermediate identity
+`8b2db255e7868397d336f8b015c489552b84bf0e` must also remain named. During
+the eventual PASS review this file must record the actual frozen-command
+`# tests` / `# pass` / `# fail 0` counts and a PASS verdict, and must not
+leave the reviewer verdict pending. B53 freezes those finalization rules.
+
+### B48 — Checked-in small lock manifest with pinned URLs, versions, SHA-256, tool identity, and checksum rejection
+
+`src/packaging.lock.json` exists at the plugin root, is not a symlink, is
+small JSON (not a binary cache), and pins:
+
+- the Node-supported SEA injection tool `postject` 1.0.0-alpha.6 at
+  `https://registry.npmjs.org/postject/-/postject-1.0.0-alpha.6.tgz` with
+  SHA-256 `d1447b53e87d49ddaf7fb3350c870afafa72760eca47f6d5cce4cefd537e7d92`
+- official Node v22.22.3 inputs for `linux-x64`, `linux-arm64`,
+  `darwin-x64`, `darwin-arm64`, and `win-x64` with official dist URLs,
+  archive SHA-256, format, architecture, and `buildOnly: true`
+
+Inspectable build definitions must consult that lock and verify SHA-256
+before injection. `src/packaging.js` must export `verifyPinnedChecksum`
+(or `assertPinnedChecksum` / `verifyChecksum`) that throws a
+checksum/sha256/mismatch error for corrupt bytes. Silent latest-version
+installs are a fail. No official Node archive/executable or tool tarball
+may be committed.
+
+### B49 — Ad hoc Mach-O/PE mutators removed; pinned Node-supported injection tooling required
+
+`src/packaging.js` must not implement ad hoc `injectMacho` / `injectPe`
+binary mutation and must not patch around their known malformed-output
+defects (zero-vmsize `NODE_SEA`, hardcoded PE `.rsrc` section-header
+append). Native mutation for ELF, Mach-O, and PE must go through the
+pinned Node-supported injector recorded in `src/packaging.lock.json`
+(documented `postject` flow, including `--macho-segment-name NODE_SEA`).
+Custom code may identify targets, orchestrate the pinned tool, verify
+checksums, and validate outputs. Missing tools, wrong format/arch,
+checksum mismatch, or unsupported signing state must fail clearly and
+non-destructively. Packaging stays separated from MCP/domain/authority/
+store/scoring/workflow/discovery/compat-probe behavior (B42).
+
+### B50 — Genuine official Node Mach-O injection preserves load-command/linkedit offsets, SEA VM sizing, and documented signature-removal semantics
+
+Acceptance must obtain checksum-pinned official Node v22.22.3 darwin-arm64
+and darwin-x64 executables into temporary cache only. `injectSeaPayload`
+against those binaries, plus a rich Mach-O that already contains
+LC_SYMTAB, LC_DYSYMTAB, LC_DYLD_INFO_ONLY, LC_FUNCTION_STARTS,
+LC_CODE_SIGNATURE, and `__LINKEDIT`, must be inspected by the independent
+reviewer parser in `tests/helpers/jobsss-native-format.mjs` (not
+`src/packaging.js` and not the B43 synthetic-fixture generator). After
+injection:
+
+- LC_SYMTAB / LC_DYSYMTAB / dyld-info / function-starts / `__LINKEDIT` file
+  offsets that pointed into moved file content must point at the actual
+  relocated bytes (page-aligned LIEF/postject insertion, typically 0x4000 on
+  arm64 and 0x1000 on x64). A sizeofcmds-delta arithmetic check is not the
+  documented relocation. Offsets must not be left stale at the pre-insertion
+  file positions.
+- `LC_CODE_SIGNATURE` must be removed. Pinned postject 1.0.0-alpha.6
+  (`src/postject.cpp`) calls `Binary::remove_signature()` because "It will
+  need to be signed again anyway." Node.js SEA docs require
+  `codesign --remove-signature` before inject and `codesign --sign -` after.
+  Re-signing is a subsequent matching-host step, not container preservation.
+- `NODE_SEA` filesize > 0, vmsize >= filesize > 0, and the VM range must
+  not overlap other segments
+- the independent parser must locate `NODE_SEA_BLOB` and hash-match the
+  payload; the SEA fuse must be `:1`
+
+Successful container validation is not macOS runtime verification (B45).
+
+### B51 — Genuine official Node PE injection preserves SizeOfImage, section-header space/alignment, and resources
+
+Acceptance must obtain the checksum-pinned official Node v22.22.3 win-x64
+`node.exe` into temporary cache only. `injectSeaPayload` against that
+binary, plus a postject-compatible independently sourced PE that already
+contains a resource directory and insufficient section-header space, must
+be inspected for image sizing, alignment, header capacity, resources, fuse,
+and payload. Pinned postject `inject_into_pe` returns an error when
+`!binary->has_resources()`; resource-less synthetics are not a postject
+contract. LIEF's PE builder rebuilds `.rsrc` at FileAlignment 0x200, so
+non-default FileAlignment synthetics are not used to claim PointerToRawData
+semantics the pinned tool does not implement. Official `node.exe` carries an
+Authenticode certificate overlay; restoring that certificate after mutation
+is not overlay preservation (B55/B56). After injection:
+
+- `SizeOfImage` must cover the last section end and be a multiple of
+  SectionAlignment; it must grow when a new section extends the image
+- a new section header must fit in `SizeOfHeaders` without colliding with
+  section raw data; header space must be checked, not assumed
+- PointerToRawData / VirtualAddress must be aligned to the image's
+  FileAlignment and SectionAlignment; official Node FileAlignment 0x200 and
+  SectionAlignment 0x1000 must be preserved rather than rewritten
+- the Security certificate table must be empty (file offset 0, size 0); the
+  pre-injection Authenticode overlay must not be re-appended
+- original resource directory entries must survive; RT_RCDATA
+  `NODE_SEA_BLOB` must be independently located and hash-matched; the SEA
+  fuse must be `:1`
+
+Successful container validation is not Windows runtime verification (B45).
+Matching-host Windows distribution requires re-signing after injection.
+
+### B52 — Runtime stays dependency-free; official Node/tool caches stay uncommitted; fixtures never attest platform verification
+
+The downloadable runtime still has no `package.json` / npm dependency and
+keeps the frozen stdio `jobsss` MCP contract. Official Node archives,
+extracted executables, generated release binaries, and tool caches must
+not be committed. linux-x64 / linux-arm64 genuine official Node injection
+must keep ELF identity, flip the fuse, and carry `NODE_SEA_BLOB` as a
+PT_NOTE. macOS and Windows remain `unverified` until matching-host
+execution; fixture or cross-build success is not platform verification.
+B30–B32 current-host Linux verification remains required.
+
+### B53 — Both reports are finalized with the actual frozen-command count and PASS before verdict
+
+`PRODUCTIZATION_REVIEW.md` and `RELEASE_REPORT.md` must each record the
+live frozen-command `# tests N` `# pass N` `# fail 0` counts, contain a
+PASS verdict, and must not leave the reviewer verdict pending. N is the
+number of `test(` calls in the frozen twelve-file command (B1–B60). Both
+files must record independent native-format validation, genuine official
+Node inputs, Mach-O load-command/linkedit/code-signature evidence, PE
+`SizeOfImage` evidence, pinned postject / `packaging.lock.json` identity,
+intermediate SHAs `ba2123ef5f6f24bcf6ae994a125b67501b970785` and
+`8b2db255e7868397d336f8b015c489552b84bf0e`, and that the final corrective
+SHA is supplied in the final response. Reports are finalized during the
+eventual PASS review; emitting PASS while either report is pending or
+carries a stale count is a fail.
+
+### B54 — Empty-cache pinned postject acquisition and current-host release
+
+A genuine empty `JOBSSS_NATIVE_CACHE` (no postject tarball, extracted API,
+or inject driver) must still allow:
+
+```bash
+./bin/jobsss release --out <absdir> --target current-host
+```
+
+to exit `0`. The build must download the lock-pinned postject 1.0.0-alpha.6
+tarball from `https://registry.npmjs.org/postject/-/postject-1.0.0-alpha.6.tgz`
+into that temporary cache only, verify SHA-256
+`d1447b53e87d49ddaf7fb3350c870afafa72760eca47f6d5cce4cefd537e7d92` before
+extraction or injection, write no tool-cache or release artifacts into the
+plugin tree, and produce `bin/jobsss`. Pre-populated caches are not a
+substitute. Treating a download `Promise` as bytes, skipping checksum
+verification, or mutating before the pinned tool is acquired is a fail.
+Missing tools, checksum mismatch, or unavailable network must fail clearly
+and non-destructively. Successful current-host execution remains Linux
+verification only (B30–B32 / B45).
+
+### B55 — No custom PE mutation after the pinned injector
+
+`src/packaging.js` must not implement `restorePeOverlay`, must not
+`Buffer.concat` the pre-injection overlay onto postject output, and must
+not `writeU32` the PE Security directory after injection. Native mutation
+for PE must be exactly the pinned postject output. Custom code may
+identify/classify PE overlay and signing state, verify checksums, and
+validate outputs read-only. Patching postject's `build_overlay(false)`
+behavior with an ad hoc rewriter is a fail.
+
+### B56 — Official signed PE becomes unsigned; Authenticode is not restored
+
+Checksum-pinned official win-x64 `node.exe` is Authenticode-signed: the
+trailing overlay length equals the Security certificate-table size.
+After pinned injection the Security directory file offset and size must
+both be 0, and the original certificate bytes must not be re-appended.
+Pinned pefile 2024.8.26 must independently confirm those Security/
+overlay facts plus `SizeOfImage`, FileAlignment 0x200, SectionAlignment
+0x1000, and `NODE_SEA_BLOB`. Restoring a pre-injection certificate is an
+invalid signature, not overlay preservation. Re-signing is a subsequent
+matching-host Windows step, not container preservation, and does not
+make win-x64 runtime-verified.
+
+### B57 — Unsupported non-certificate overlay/signing state fails before mutation
+
+A PE whose trailing overlay is not exactly the Security certificate table
+(including official `node.exe` plus extra non-certificate bytes) must fail
+clearly with a signing/overlay/unsupported error before pinned postject is
+acquired or run. The input executable bytes must remain untouched. Missing
+tools are not a substitute diagnosis: an empty `JOBSSS_NATIVE_CACHE` must
+still fail for overlay/signing, not download postject first.
+
+### B58 — `release --node-binary` enforces the locked official executable checksum
+
+`./bin/jobsss release --target <id> --node-binary <path>` must verify the
+provided executable's SHA-256 against the lock entry for that target
+before generating the SEA blob or invoking the injector. Same-format/
+same-architecture bytes that do not match the locked `executableSha256`
+must fail with a checksum/sha256/mismatch error and must not write a
+launcher. Each locked official Node input must be accepted for its target.
+Format/architecture checks remain required (B43/B45) and are not a
+substitute for the checksum. Synthetic fixtures may still exercise
+`injectSeaPayload` directly; the release CLI does not accept them as
+`--node-binary`.
+
+### B59 — Independent Mach-O/PE validation uses pinned external parsers and records exact output
+
+`src/packaging.lock.json` must pin independently maintained parsers
+pefile 2024.8.26, macholib 1.16.3, and altgraph 0.17.4 with exact wheel
+URLs, SHA-256 digests, sources, and build/test-only status. Tests download
+those wheels into temporary cache only, reject checksum drift, and invoke
+them via isolated `PYTHONPATH` without installing globally or adding a
+runtime dependency. They must not import `src/packaging.js` or the
+synthetic-fixture generator. Exact JSON output is recorded for official
+injected darwin-arm64 (no `LC_CODE_SIGNATURE`, `NODE_SEA` VM sizing,
+`__LINKEDIT`) and win-x64 (Security directory 0/0, resources, alignments,
+`SizeOfImage`). In-repository custom parsers are not the authoritative
+official-output validator.
+
+### B60 — Two fresh-process complete official-target release trees are byte-identical
+
+For every locked official Node target (`linux-x64`, `linux-arm64`,
+`darwin-x64`, `darwin-arm64`, `win-x64`), `./bin/jobsss release --out
+<a|b> --target <id> --node-binary <official executable>` must be invoked
+twice in separate child processes and the complete output trees compared
+recursively, including both `release-manifest.json` copies and launcher
+bytes. In-process `injectSeaPayload` memoization is not a substitute.
+macOS and Windows remain `unverified` (B45). Current-host restricted-PATH
+runtime proof remains B30–B32.
 
 ---
 
 ## Verdict
 
-**Pass** only if the frozen validation command exits `0` and B1–B47 hold on
-inspected files, subprocess output, and the current-host release artifact.
+**Pass** only if the frozen validation command exits `0` and B1–B60 hold on
+inspected files, subprocess output, the current-host release artifact, and
+the independently validated official-Node Mach-O/PE containers.
 
 **Fail** if any required file is missing, any check mismatches, any command
 hangs, any mock replaces the bundled runtime, any `jobos` executable is
@@ -1073,11 +1414,29 @@ fa7453057e9c9573d3de22a2855951b97957c73016083fcce89f1bb6d773c3e6  tests/helpers/
 ```
 
 SHA-256 of reviewer-owned cross-platform remediation files. Implementers must
-not change these files. B1–B41 hashes above are unchanged.
+not change these files. B1–B41 hashes above are unchanged. B43 injection-input
+correction below updates only these two files. Additive B55–B60 additionally
+update `tests/jobsss-cross-platform.test.mjs` so release `--node-binary` uses
+locked official inputs; helper `jobsss-cross-platform.mjs` is unchanged.
 
 ```
-bddd11214ee8d4d4bfee20b9df8ab3d4d4a3ad984c69b93ca57334c51971954d  tests/jobsss-cross-platform.test.mjs
-3e42e91f37fecc06172b98696c51be7d8a2fe32487e983da41f136a6bfdcd095  tests/helpers/jobsss-cross-platform.mjs
+e144be696f71d60666267e93490c7a497d75dd7a0482846bee0927fa9356dcf3  tests/jobsss-cross-platform.test.mjs
+73f34d084ba6f60d6552a7f29221557d9fe1abd005ae4991d7561f6feaef308f  tests/helpers/jobsss-cross-platform.mjs
+```
+
+SHA-256 of reviewer-owned native-remediation files. Implementers must not
+change these files. B1–B47 hashes above are unchanged except the two
+cross-platform files listed immediately above. Additive B54 updated
+`tests/jobsss-native-remediation.test.mjs`; additive B55–B60 update that file
+plus `tests/helpers/jobsss-native-format.mjs` and add
+`tests/helpers/jobsss-native-validators.mjs`. `jobsss-native-inputs.mjs` is
+unchanged.
+
+```
+71112bedbc1ba2f11e974fbefdbc2e727159f6ad3ec0466293f978e658240f2c  tests/jobsss-native-remediation.test.mjs
+7a57942827f257858e63d059432d25cbfe2814e711c23f60275b28f31386cc6e  tests/helpers/jobsss-native-format.mjs
+045f88f6b07a11b99c9b3fd63a471bde13d5c32e59e77166f8170d9317e9cffe  tests/helpers/jobsss-native-inputs.mjs
+836bc661b7d80be8ae4772e44cb2f016924d5de3250cdd6af1050b4448f67f9b  tests/helpers/jobsss-native-validators.mjs
 ```
 
 ## Correction log
@@ -1322,3 +1681,80 @@ bddd11214ee8d4d4bfee20b9df8ab3d4d4a3ad984c69b93ca57334c51971954d  tests/jobsss-c
   product correction. Synthetic fixtures exercise parsers/injectors only and
   must never attest macOS or Windows runtime support. Not done to make tests
   green.
+- 2026-09-02T23:55:24Z — **B48–B53 native-remediation Gate 0 extension**.
+  Reason: independent-auditor rejection of HEAD `8b2db25` plus the revised
+  focused goal require replacing unsafe custom Mach-O/PE mutation with
+  checksum-pinned Node-supported SEA injection (postject), proving
+  container correctness against genuine official Node executables and an
+  independent validator, and finalizing both reports with the actual
+  frozen-command count/PASS. None of B1–B47 freeze those contracts. Today's
+  `injectMacho` leaves LC_SYMTAB/LC_DYSYMTAB/dyld-info/function-starts/
+  code-signature offsets stale and emits NODE_SEA with vmsize 0; today's
+  `injectPe` leaves SizeOfImage stale, assumes section-header space and
+  0x200/0x1000 alignment, destroys overlays, and replaces resources.
+  Cross-platform tests still parse synthetic self-generated fixtures.
+  Change: preserved B1–B47 and every existing test/hash; additionally
+  strengthened B46/B47 report-finalization prose; appended B48–B53 plus
+  `tests/jobsss-native-remediation.test.mjs`,
+  `tests/helpers/jobsss-native-format.mjs`, and
+  `tests/helpers/jobsss-native-inputs.mjs`; recorded today's failing
+  baseline (`# tests 55` `# pass 50` `# fail 5`, exit `1`,
+  `duration_ms 40048.300212`) against committed HEAD `8b2db25` before any
+  product correction. Official Node archives stay in temporary cache only.
+  Synthetic fixtures and the production parser must never attest macOS or
+  Windows runtime support. Not done to make tests green.
+- 2026-09-03T00:45:57Z — **B43/B50/B51 genuine postject/Node-SEA contradictions**.
+  Reason: independent confirmation against pinned postject 1.0.0-alpha.6
+  `src/postject.cpp`, Node.js v22.22.3 SEA docs, checksum-pinned official
+  Node v22.22.3 darwin/win executables (SHA-256 match lock), byte-level
+  relocated content, and `tests/helpers/jobsss-native-format.mjs`.
+  B50 expected LC_SYMTAB/dyld/linkedit/code-signature offsets to move by
+  the sizeofcmds delta (136) and to preserve LC_CODE_SIGNATURE. Pinned
+  postject/LIEF inserts NODE_SEA page-aligned (darwin-arm64 +16384,
+  darwin-x64 +4096) so remaining offsets point at relocated __LINKEDIT
+  content, not at orig+sizeofcmds, and calls `Binary::remove_signature()`
+  because "It will need to be signed again anyway"; Node SEA docs require
+  `codesign --remove-signature` before inject and `codesign --sign -` after.
+  B43/B44/B45/B51 demanded postject accept resource-less synthetic PE
+  fixtures; `inject_into_pe` returns kError when `!has_resources()`. Official
+  win-x64 `node.exe` injection already preserves SizeOfImage (89866240 →
+  90009600), 0x200/0x1000 alignment, original resources, overlay (via the
+  product overlay restore of the Authenticode certificate table), fuse, and
+  payload hash. Tiny synthetic ELF fixtures flip the fuse but emit no
+  PT_NOTE because LIEF cannot relocate that PHDR table. Change: preserved
+  B1–B42, B44–B49, B52 and every existing auditor invariant (SizeOfImage,
+  header space, official alignment, resources, overlay, fuse, payload hash,
+  determinism, truthful unverified). Corrected B43 injection inputs to
+  official Node ELF and postject-compatible resource-bearing PE; corrected
+  B50 to content-based relocated offsets, nonzero NODE_SEA VM/no overlap,
+  and documented signature removal; replaced B51 resource-less / non-default
+  FileAlignment synthetic PE legs with official Node plus postject-compatible
+  independently sourced PEs. Not done to make tests green.
+- 2026-09-03T01:41:35Z — **B54 empty-cache pinned postject acquisition**. Reason:
+  independent reproduction of a genuine empty `JOBSSS_NATIVE_CACHE` current-host
+  release failure after the prior native-remediation review. Today's
+  `acquirePostject` calls `httpsDownload()` and passes the returned Promise into
+  `verifyPinnedChecksum` (`Buffer.from`), so `./bin/jobsss release --target
+  current-host` exits `1` with `ERR_INVALID_ARG_TYPE` / `Received an instance of
+  Promise` whenever the cache is empty. Pre-populated caches hid the defect.
+  Change: preserved B1–B53 and every existing test/hash except the additive
+  B54 test in `tests/jobsss-native-remediation.test.mjs`; appended B54 empty-cache
+  current-host acquisition/checksum/no-plugin-tree-write contract; recorded
+  today's failing baseline (`# tests 1` `# pass 0` `# fail 1`, exit `1`,
+  `duration_ms 601.945467`) from the focused B54 command plus the independent
+  CLI reproduction. Frozen twelve-file live count is now 56. Reports were not
+  edited. Not done to make tests green.
+- 2026-09-03T02:20:00Z — **B51 Authenticode correction and B55–B60 auditor native-safety extension**.
+  Reason: independent completion auditor rejected HEAD `0b962bee448133eff9db6c953894e4ba360db79e`
+  for five remaining product gaps: `restorePeOverlay` custom PE mutation;
+  restored invalid Authenticode; `release --node-binary` format/arch-only;
+  missing fresh-process official-target double builds; in-repo parser colocated
+  with fixture generation as the “independent” validator. B51’s prior overlay-
+  preservation requirement contradicted pinned postject `build_overlay(false)`,
+  Node SEA signing flow, and Authenticode (certificate authenticates pre-inject
+  bytes). Change: preserved B1–B50 and B52–B54; corrected B51 to require empty
+  Security directory and no certificate restore while keeping SizeOfImage,
+  alignment, header space, resources, fuse, and payload; strengthened B44/B45
+  release `--node-binary` legs to locked official inputs without claiming macOS/
+  Windows runtime verification; appended B55–B60 plus
+  `tests/helpers/jobsss-native-validators.mjs`. Live focused failures against HEAD `0b962be`, not invented: B51/B55–B59 command `# tests 6` `# pass 0` `# fail 6`, exit `1`, `duration_ms 52277.796758` (B51/B56 Security offset 87095808; B55 `restorePeOverlay` present; B57 postject acquired before overlay reject; B58 mutated `--node-binary` exit 0; B59 lock missing pefile 2024.8.26). B60 `# tests 1` `# pass 1` `# fail 0`, `duration_ms 101891.397946`. Frozen twelve-file live count is now 62. Reports were not edited. Not done to make tests green.

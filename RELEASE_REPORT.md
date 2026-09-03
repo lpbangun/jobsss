@@ -1,7 +1,9 @@
 # JobSSS Release Report
 
 Reviewed baseline / intermediate commit: **ba2123ef5f6f24bcf6ae994a125b67501b970785**
-(`Productize standalone JobSSS plugin`). The final corrective SHA is supplied in the final response.
+(`Productize standalone JobSSS plugin`). Native-remediation intermediate
+identity **8b2db255e7868397d336f8b015c489552b84bf0e**. Superseded pre-audit
+SHA **0b962bee448133eff9db6c953894e4ba360db79e**. The final corrective SHA is supplied in the final response.
 
 ## Release summary
 
@@ -14,20 +16,46 @@ downloadable, deterministic, portable release tree per target:
   executable with a Node SEA payload, plus the canonical plugin core and
   justified metadata (`LICENSE`, `README.md`, `release-manifest.json`).
 - `linux-x64`, `linux-arm64` — ELF64 little-endian definitions (PT_NOTE
-  `NODE_SEA_BLOB` injection).
+  `NODE_SEA_BLOB` injection via pinned postject).
 - `darwin-x64`, `darwin-arm64` — Mach-O 64 definitions (`NODE_SEA`
-  `LC_SEGMENT_64` section injection).
-- `win-x64` — PE32+ definition (RCDATA `NODE_SEA_BLOB` resource injection).
+  `LC_SEGMENT_64` section injection via pinned postject
+  `--macho-segment-name NODE_SEA`).
+- `win-x64` — PE32+ definition (RCDATA `NODE_SEA_BLOB` resource injection
+  via pinned postject). Signed official `node.exe` is staged unsigned
+  (Security certificate-table directory zeroed in a private copy; pinned
+  postject drops the certificate bytes) and must be re-signed on a
+  matching Windows host.
 
 All native-format definitions live in `src/packaging.js`, separated from MCP
 tools, domain behavior, scoring, authority, and client adapters, and are
-selected explicitly by target rather than described as future prose. Two
-clean builds of the same target are byte-identical for the complete `--out`
-tree, and no release file or printable binary string contains build-user,
-workspace, source-checkout, scratch, or output paths. (The only `/home/`
-string inside the artifact is the Node distribution's own embedded OpenSSL
-build path `/home/iojs/build/ws/...`, which is inherent to the base Node
-binary and is not a user/workspace path.)
+selected explicitly by target. Injection tooling is pinned in
+`src/packaging.lock.json`: postject 1.0.0-alpha.6 at
+`https://registry.npmjs.org/postject/-/postject-1.0.0-alpha.6.tgz`
+(SHA-256 `d1447b53e87d49ddaf7fb3350c870afafa72760eca47f6d5cce4cefd537e7d92`)
+and official Node v22.22.3 inputs (build-only, temporary cache only).
+`--node-binary` accepts only the checksum-pinned official executable for
+that target. Empty `JOBSSS_NATIVE_CACHE` downloads the exact postject
+tarball over HTTPS via a synchronous build-only child, verifies the pinned
+SHA-256 before extraction, and writes the cache outside the plugin tree.
+
+Two clean current-host builds were byte-identical for the complete `--out`
+tree (11 files). Released `bin/jobsss` sha256
+`7ee8a77c3648aed8afa3912b4517f1e669790c7c3e694020ff05d665ac8eefe9`.
+No release file or printable binary string contains build-user, workspace,
+source-checkout, scratch, or output paths. (The only `/home/` string inside
+the artifact is the Node distribution's own embedded OpenSSL build path
+`/home/iojs/build/ws/...`.)
+
+Independent native-format validation against checksum-pinned official Node
+v22.22.3 darwin-arm64 / darwin-x64 / win-x64 / linux-x64 / linux-arm64
+executables, using pinned pefile 2024.8.26 / macholib 1.16.3 / altgraph
+0.17.4: Mach-O LC_SYMTAB / linkedit offsets point at relocated content
+after page-aligned NODE_SEA insertion; LC_CODE_SIGNATURE is removed
+(documented postject / Node SEA re-signing semantics); PE SizeOfImage is
+90009600 covering the last section; original resources and FileAlignment
+0x200 / SectionAlignment 0x1000 hold; Security directory fileOffset/size
+are 0; overlaySize 0; fuse and payload hash hold. darwin-x64 /
+darwin-arm64 / win-x64 remain unverified as runtime platforms.
 
 ## Generic restricted-PATH MCP evidence
 
@@ -109,60 +137,52 @@ node --test --test-concurrency=1 \
   tests/jobsss-release.test.mjs \
   tests/jobsss-adapters.test.mjs \
   tests/jobsss-authority.test.mjs \
-  tests/jobsss-cross-platform.test.mjs
+  tests/jobsss-cross-platform.test.mjs \
+  tests/jobsss-native-remediation.test.mjs
 ```
 
-Final reviewed result after the reviewer authored `PRODUCTIZATION_REVIEW.md`:
+Final reviewed result after both reports record the live frozen-command
+count:
 
-- `# tests 49` · `# pass 49` · `# fail 0` · exit `0`
-- B1–B47 all pass, including B42–B45 native ELF/Mach-O/PE definition,
-  injection, determinism, canonical-layout, and truthful unverified-label
-  checks; B46 inspectable reviewer evidence; and B47 this final release report.
-- Fresh remediation reviewer check 1 independently reproduced the complete
-  suite and live release evidence before returning PASS.
+- `# tests 62` · `# pass 62` · `# fail 0` · exit `0`
+- B1–B60 all pass, including independent native-format validation,
+  checksum-pinned official Node inputs, Mach-O LC_SYMTAB / linkedit /
+  code-signature-removal evidence, PE SizeOfImage evidence with Security
+  directory 0/0, pinned postject / `packaging.lock.json` identity, empty-
+  cache acquisition, official checksum enforcement, and two fresh-process
+  complete official-target release trees.
 
-Cross-platform fixture exercises (deterministic definitions, not platform
-verification):
-
-```bash
-./bin/jobsss release --out <tmp> --target darwin-arm64 --node-binary <synthetic Mach-O arm64>
-# exit 0; <tmp>/darwin-arm64/bin/jobsss is Mach-O arm64; repeated build byte-identical; manifest marks darwin-arm64 unverified
-./bin/jobsss release --out <tmp> --target win-x64 --node-binary <synthetic PE32+ x64>
-# exit 0; <tmp>/win-x64/bin/jobsss.exe is PE32+ x64; manifest marks win-x64 unverified
-./bin/jobsss release --out <tmp> --target darwin-arm64
-# non-zero; explicit unavailable/unverified failure on this (linux/x64) host
-./bin/jobsss release --out <tmp> --target linux-x64 --node-binary <synthetic Mach-O arm64>
-# non-zero; mismatched native format/architecture failure
-```
-
-Current-host release evidence (this host, linux/x64, Node 22):
+Current-host release evidence (this host, linux/x64, Node 22.22.3):
 
 ```bash
 ./bin/jobsss release --out <a> --target current-host
 ./bin/jobsss release --out <b> --target current-host
-# both exit 0; complete --out trees byte-identical (full-tree SHA comparison)
-# no build-user/home/workspace/scratch/output path leaks in any release file
+# both exit 0; complete --out trees byte-identical (11 files)
+# bin/jobsss sha256 7ee8a77c3648aed8afa3912b4517f1e669790c7c3e694020ff05d665ac8eefe9
 ```
 
 ## Reviewer verdict
 
-**Fresh reviewer verdict: PASS (remediation check 1 of 3).**
+**Fresh reviewer verdict: PASS (native-remediation check 3 of 3).**
 
-The reviewer-authored `PRODUCTIZATION_REVIEW.md` records the inspected tree,
-49/49 frozen checks, current-host restricted-PATH and restart evidence,
-cross-platform definition evidence, adapter matrix, human-authority behavior,
-and residual unverified hosts/clients. Per the explicit user authorization,
-this report-only correction is followed by one final reviewer confirmation;
-no product code or reviewer-owned benchmark file changed after the PASS.
+The reviewer independently confirmed the five auditor findings against
+HEAD `0b962bee448133eff9db6c953894e4ba360db79e`, recorded B51/B55–B59
+failures before product correction, inspected the product correction
+(no `restorePeOverlay`; official PE left unsigned; checksum-gated
+`--node-binary`; pinned pefile/macholib/altgraph; two fresh-process
+official-target trees), and finalized both reports with `# tests 62`
+`# pass 62` `# fail 0`. Product code was not edited by this reviewer.
+The final corrective SHA is supplied in the final response.
 
 ## Deferred/unverified capabilities
 
 - macOS (`darwin-x64`, `darwin-arm64`) and Windows (`win-x64`) release
   definitions are implemented and executable in `src/packaging.js`, but
   they are **unverified** (labeled `unverified` in every release manifest):
-  they have been exercised only against synthetic native-format fixtures on
-  Linux. Runtime support is claimable only after real execution on a
-  matching macOS/Windows host.
+  official-Node container validation and fixture injection are not matching-
+  host execution. Runtime support is claimable only after real execution on
+  a matching macOS/Windows host, including post-inject `codesign --sign` and
+  Windows Authenticode re-signing of the unsigned image.
 - `linux-arm64` is likewise **unverified** until a real arm64 Linux host
   exercises it.
 - Pi, OMP, and Codex client integrations are **unverified** per

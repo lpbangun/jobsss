@@ -12,23 +12,28 @@
 //     preparation blob under the gitignored development scratch directory
 //     of the repository, so every build on the same host embeds the same
 //     bytes (deterministic output).
-//  3. A copy of the current host's Node binary receives the blob as an ELF
-//     note named `NODE_SEA_BLOB` inside a new PT_NOTE program header
-//     (matching `postject_find_resource` used by Node's SEA loader), and
-//     the embedded `NODE_SEA_FUSE_...:0` sentinel is flipped to `:1`.
+//  3. The pinned Node-supported injector (postject, recorded in
+//     src/packaging.lock.json and orchestrated by src/packaging.js) injects
+//     the blob into a copy of the base Node executable using the target's
+//     native container: ELF PT_NOTE, Mach-O NODE_SEA segment, or PE RCDATA
+//     resource, flipping the embedded `NODE_SEA_FUSE_...:0` sentinel to
+//     `:1`. No ad hoc native binary rewriters are used (reviewer B49).
 //
-// Only the current host is buildable by this code path (ELF format). The
-// other intended targets (linux-arm64, darwin-x64, darwin-arm64, win-x64)
-// are declared in the release manifest as *intended*: the same bundler and
-// injection recipe applies once a Node binary for that platform (and, for
-// Windows, a PE resource injection instead of the ELF note) is available.
-// They are never claimed as verified or built until actually exercised.
+// Only the current host is exercised by this code path; the other intended
+// targets (linux-arm64, darwin-x64, darwin-arm64, win-x64) are declared in
+// the release manifest as *unverified* until a matching host exercises them.
+// Cross-builds use the checksum-pinned official Node executable for the
+// target (enforced by src/release.js against src/packaging.lock.json);
+// signed node.exe is staged unsigned by src/packaging.js and win-x64 remains
+// unverified until real matching-host execution and re-signing. Targets are
+// never claimed as verified until actually exercised.
 //
 // Determinism: two clean builds on the same host produce byte-identical
-// `bin/jobsss` because the base Node binary, the bundle text, and the
-// runtime-root derivation are all identical. Nothing here mutates the
-// source tree; build scratch lives under the gitignored development
-// scratch directory of the repository.
+// `bin/jobsss` because the base Node binary, the bundle text, the SEA
+// blob, and the pinned injector's output are all deterministic. Nothing
+// here mutates the source tree; build scratch lives under the gitignored
+// development scratch directory of the repository and the OS temporary
+// cache, never inside the plugin tree.
 //
 // The released bundle embeds no build-user/home/workspace/scratch/output
 // path: the runtime root is derived at runtime from the binary's own

@@ -39,7 +39,9 @@ confirmed native-remediation round and must not delete, rewrite, or
 weaken B1–B47. B54 extends that bar for empty-cache pinned postject
 acquisition and must not delete, rewrite, or weaken B1–B53. B55–B60
 extend that bar for the independent-auditor native-safety findings and
-must not delete, rewrite, or weaken B1–B54.
+must not delete, rewrite, or weaken B1–B54. B61–B64 extend that bar for
+the remaining independent-native evidence gaps and must not delete,
+rewrite, or weaken B1–B60.
 
 ---
 
@@ -159,7 +161,7 @@ temporary directory via `PLUGIN_DATA` / `--data`.
 Unset or blank provider keys for core checks. Do not add npm dependencies
 for these tests. Do not edit `package.json` to make the bar pass.
 Do not require `jobos` on `PATH`. There is no allowed skip for missing JobOS.
-B48–B60 may download checksum-pinned official Node v22.22.3 archives,
+B48–B64 may download checksum-pinned official Node v22.22.3 archives,
 the pinned postject tarball, and pinned independent validator wheels
 (pefile/macholib/altgraph) into a temporary cache outside the plugin tree
 (`$JOBSSS_NATIVE_CACHE` or `os.tmpdir()/jobsss-native-gate-cache`). Those
@@ -193,13 +195,13 @@ node --test --test-concurrency=1 \
 
 ### What pass means
 
-Exit `0` is necessary and not sufficient. Every check B1–B60 below must hold
+Exit `0` is necessary and not sufficient. Every check B1–B64 below must hold
 on the real files, on a real bundled MCP subprocess, and on the current-host
 release artifact where those checks require it. Invented output, mocks of the
 runtime, skipped required checks, or touching real user JobOS or client
 profiles are a fail.
 
-No allowed skip. B10–B12 and B14–B60 are required even when `jobos` is absent.
+No allowed skip. B10–B12 and B14–B64 are required even when `jobos` is absent.
 There is no allowed skip for missing Node on PATH for B31–B32: the released
 `bin/jobsss` must start without resolving `node` or `jobos` from PATH.
 
@@ -1252,7 +1254,7 @@ B30–B32 current-host Linux verification remains required.
 `PRODUCTIZATION_REVIEW.md` and `RELEASE_REPORT.md` must each record the
 live frozen-command `# tests N` `# pass N` `# fail 0` counts, contain a
 PASS verdict, and must not leave the reviewer verdict pending. N is the
-number of `test(` calls in the frozen twelve-file command (B1–B60). Both
+number of `test(` calls in the frozen twelve-file command (B1–B64). Both
 files must record independent native-format validation, genuine official
 Node inputs, Mach-O load-command/linkedit/code-signature evidence, PE
 `SizeOfImage` evidence, pinned postject / `packaging.lock.json` identity,
@@ -1353,11 +1355,80 @@ bytes. In-process `injectSeaPayload` memoization is not a substitute.
 macOS and Windows remain `unverified` (B45). Current-host restricted-PATH
 runtime proof remains B30–B32.
 
+### B61 — Pinned macholib independently validates both official Darwin architectures with complete canonical JSON
+
+Pinned macholib 1.16.3 / altgraph 0.17.4, orchestrated only by test-only
+code that must not import `src/packaging.js`, `jobsss-native-format.mjs`,
+or synthetic fixture generators, must independently inspect genuine
+checksum-pinned official Node `darwin-x64` and `darwin-arm64` outputs
+after injection. Each architecture is a first-class case; validating only
+`darwin-arm64` is a fail. Canonical JSON for each target must record:
+
+- format `macho` and architecture
+- `NODE_SEA` segment and `NODE_SEA_BLOB` section
+- exact injected payload length and SHA-256
+- fuse present and enabled (`:1`)
+- `hasCodeSignature` false (no stale `LC_CODE_SIGNATURE`)
+- every file-offset-bearing load command in bounds
+- relocated `__LINKEDIT` offsets/sizes relative to the official input
+- `LC_SYMTAB` `symoff` / `nsyms` / `stroff` / `strsize`
+- `LC_DYSYMTAB` offsets where present
+- exports, chained-fixups, function-starts, data-in-code, and related
+  linkedit offsets where present
+- segment ordering, file ranges, alignment, and non-overlap
+
+In-repository custom parsers are not a substitute for these fields.
+
+### B62 — Pinned pefile independently validates official win-x64 before and after injection
+
+Pinned pefile 2024.8.26 must independently inspect genuine checksum-pinned
+official Windows x64 `node.exe` **before** and **after** injection. Canonical
+JSON must record:
+
+- format `pe` and architecture `x64`
+- FileAlignment 0x200 and SectionAlignment 0x1000
+- complete pre/post resource inventories with type, name, and language
+- preservation of every original resource
+- addition of exactly one `NODE_SEA_BLOB` resource
+- exact injected payload length and SHA-256
+- fuse present and enabled (`:1`)
+- Security directory file offset 0 and size 0 after injection
+- certificate bytes not restored (`certificateRestored` false)
+- all section raw and virtual ranges in bounds
+- independently computed `SizeOfImage` covering the aligned end of every
+  section and equal to the final header `SizeOfImage`
+
+Unsupported non-certificate overlays remain rejected before mutation (B57).
+Custom in-repo PE parsers and fixture generators are not a substitute.
+
+### B63 — Both reports record complete canonical validator JSON for all four cases
+
+`PRODUCTIZATION_REVIEW.md` and `RELEASE_REPORT.md` must each contain the
+complete canonical validator JSON objects for `darwin-x64`, `darwin-arm64`,
+`win-x64-before`, and `win-x64-after`, including payload hashes, fuse state,
+linkedit/resource inventories, and `computedSizeOfImage`. Selected prose
+fragments are a fail. Both reports must also record exact commands,
+validator identities/versions/URLs/SHA-256, official Node input hashes,
+output executable hashes, and the unsupported non-certificate overlay
+rejection. Large binaries and caches remain uncommitted.
+
+### B64 — Release metadata, published-base identity, and one authoritative version
+
+`compat/matrix.json` must not claim that the original Windows Authenticode
+overlay is preserved as a trailing overlay. It must describe certificate
+removal / cleared Security directory / unsigned output. `plugin.json`
+version, `src/cli.js` runtime version, and `src/release.js` manifest
+version must be the same authoritative version, and both reports must
+record it. Both reports must identify published base
+`803135995782e36cbf9427ac903a2e26d2952383` and must not claim that SHA is
+unpushed or that `origin/main` is behind. The new final corrective SHA is
+supplied in the final response.
+
 ---
 
 ## Verdict
 
-**Pass** only if the frozen validation command exits `0` and B1–B60 hold on
+**Pass** only if the frozen validation command exits `0` and B1–B64 hold on
 inspected files, subprocess output, the current-host release artifact, and
 the independently validated official-Node Mach-O/PE containers.
 
@@ -1758,3 +1829,16 @@ unchanged.
   release `--node-binary` legs to locked official inputs without claiming macOS/
   Windows runtime verification; appended B55–B60 plus
   `tests/helpers/jobsss-native-validators.mjs`. Live focused failures against HEAD `0b962be`, not invented: B51/B55–B59 command `# tests 6` `# pass 0` `# fail 6`, exit `1`, `duration_ms 52277.796758` (B51/B56 Security offset 87095808; B55 `restorePeOverlay` present; B57 postject acquired before overlay reject; B58 mutated `--node-binary` exit 0; B59 lock missing pefile 2024.8.26). B60 `# tests 1` `# pass 1` `# fail 0`, `duration_ms 101891.397946`. Frozen twelve-file live count is now 62. Reports were not edited. Not done to make tests green.
+- 2026-09-03T04:30:00Z — **B61–B64 independent-native evidence gaps on published 8031359**. Reason: independent completion auditor rejected published HEAD `803135995782e36cbf9427ac903a2e26d2952383` because reports omit complete canonical validator JSON; pinned macholib/pefile output does not independently prove payload/fuse, relocated Mach-O linkedit offsets, PE original-resource preservation, or computed `SizeOfImage` coverage (those remain in `jobsss-native-format.mjs`); B59 inspects only `darwin-arm64`; `compat/matrix.json` still claims the Authenticode overlay is preserved. Change: preserved B1–B60; appended additive B61–B64 in `tests/jobsss-native-remediation.test.mjs` and this file. Product files, `compat/matrix.json`, plugin/runtime versions, and both reports were not edited. Live focused command against published 8031359, not invented:
+
+```bash
+node --test --test-concurrency=1 --test-name-pattern='B61 |B62 |B63 |B64 ' tests/jobsss-native-remediation.test.mjs
+```
+
+`# tests 4` `# pass 0` `# fail 4`, exit `1`, `duration_ms 25390.068305`. Failures: B61 `doc.case` undefined vs `darwin-x64`; B62 `doc.case` undefined vs `win-x64-before`; B63 `PRODUCTIZATION_REVIEW.md` missing complete canonical JSON for `darwin-x64`; B64 `compat/matrix.json` win-x64 notes still say “Authenticode overlay preserved as a trailing overlay”. Expected report-finalization lag, not a weakened check:
+
+```bash
+node --test --test-concurrency=1 --test-name-pattern='B53 ' tests/jobsss-native-remediation.test.mjs
+```
+
+`# tests 1` `# pass 0` `# fail 1`, exit `1`, `duration_ms 104.417898`, `PRODUCTIZATION_REVIEW.md # tests must be the live frozen-command count 66, not a stale 62`. Frozen twelve-file live count is now 66. Not done to make tests green.

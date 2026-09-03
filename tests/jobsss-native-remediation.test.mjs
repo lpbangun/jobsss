@@ -578,3 +578,258 @@ test('B60 two fresh-process complete release builds for every official Node targ
     assert.ok(Object.keys(treeA).length > 5, `${input.id} release tree must contain the portable plugin layout`);
   }
 });
+
+const PUBLISHED_BASE_SHA = '803135995782e36cbf9427ac903a2e26d2952383';
+const CANONICAL_CASES = Object.freeze([
+  'darwin-x64',
+  'darwin-arm64',
+  'win-x64-before',
+  'win-x64-after'
+]);
+const MACH_O_LINKEDIT_FIELDS = Object.freeze([
+  'symtab',
+  'dysymtab',
+  'exports',
+  'chainedFixups',
+  'functionStarts',
+  'dataInCode'
+]);
+
+function assertPinnedValidatorOrchestrationIndependent() {
+  const helperSrc = readFileSync(pluginPath('tests/helpers/jobsss-native-validators.mjs'), 'utf8');
+  assert.equal(
+    helperSrc.includes('src/packaging.js') || helperSrc.includes('../src/'),
+    false,
+    'pinned validator orchestration must not import JobSSS production modules'
+  );
+  assert.doesNotMatch(
+    helperSrc,
+    /jobsss-native-format|makeIndependentMacho|makeIndependentPe|parseMachoIndependent|parsePeIndependent|makeMachoFixture|makePeFixture/,
+    'pinned validator orchestration must not reuse the in-repo parser or synthetic-fixture generator'
+  );
+}
+
+function assertCanonicalMachoValidatorDoc(doc, { target, arch, blob, before }) {
+  assert.equal(doc.case, target, `canonical Mach-O JSON case must be ${target}`);
+  assert.equal(doc.format, 'macho');
+  assert.equal(doc.arch, arch);
+  assert.equal(typeof doc.sha256, 'string');
+  assert.match(String(doc.sha256), /^[a-f0-9]{64}$/);
+  assert.equal(doc.validators && doc.validators.macholib, '1.16.3');
+  const macho = doc.macho;
+  assert.ok(macho && typeof macho === 'object', 'canonical JSON must include a macho object');
+  assert.equal(macho.hasCodeSignature, false, `${target} must not retain LC_CODE_SIGNATURE`);
+  assert.ok(macho.NODE_SEA, `${target} must record NODE_SEA segment`);
+  assert.ok(macho.NODE_SEA_BLOB, `${target} must record NODE_SEA_BLOB section`);
+  assert.equal(Number(macho.payloadLength), blob.length, `${target} payloadLength must equal injected blob length`);
+  assert.equal(String(macho.payloadSha256), sha256(blob), `${target} payloadSha256 must equal injected blob SHA-256`);
+  assert.equal(macho.fuse && macho.fuse.present, true, `${target} fuse token must be present`);
+  assert.equal(macho.fuse && macho.fuse.enabled, true, `${target} fuse must be enabled (:1)`);
+  assert.equal(macho.fileOffsetCommandsInBounds, true, `${target} every file-offset-bearing load command must be in bounds`);
+  assert.equal(macho.segmentsNonOverlapping, true, `${target} segments must be non-overlapping`);
+  assert.equal(macho.segmentsAligned, true, `${target} segments must be aligned`);
+  assert.ok(macho.LINKEDIT, `${target} must record __LINKEDIT`);
+  assert.equal(macho.LINKEDIT.relocated, true, `${target} __LINKEDIT must be recorded as relocated`);
+  if (before && before.macho && before.macho.LINKEDIT) {
+    assert.ok(
+      Number(macho.LINKEDIT.fileoff) > Number(before.macho.LINKEDIT.fileoff),
+      `${target} __LINKEDIT fileoff must increase after NODE_SEA insertion`
+    );
+  }
+  assert.ok(macho.symtab, `${target} must record LC_SYMTAB offsets`);
+  for (const key of ['symoff', 'nsyms', 'stroff', 'strsize']) {
+    assert.equal(typeof macho.symtab[key], 'number', `${target} LC_SYMTAB.${key} must be numeric`);
+  }
+  if (macho.dysymtab) {
+    for (const key of ['indirectsymoff', 'nindirectsyms']) {
+      assert.equal(typeof macho.dysymtab[key], 'number', `${target} LC_DYSYMTAB.${key} must be numeric when present`);
+    }
+  }
+  for (const field of MACH_O_LINKEDIT_FIELDS) {
+    const rec = macho[field];
+    if (!rec || rec.present === false) continue;
+    if (rec.dataoff != null) assert.equal(typeof rec.dataoff, 'number', `${target} ${field}.dataoff must be numeric when present`);
+    if (rec.datasize != null) assert.equal(typeof rec.datasize, 'number', `${target} ${field}.datasize must be numeric when present`);
+  }
+}
+
+function resourceKey(entry) {
+  return `${entry.type}/${entry.name}/${entry.language}`;
+}
+
+function assertCanonicalPeValidatorDoc(doc, { caseId, afterInjection, blob, before }) {
+  assert.equal(doc.case, caseId, `canonical PE JSON case must be ${caseId}`);
+  assert.equal(doc.format, 'pe');
+  assert.equal(doc.arch, 'x64');
+  assert.equal(doc.validators && doc.validators.pefile, '2024.8.26');
+  const pe = doc.pe;
+  assert.ok(pe && typeof pe === 'object', 'canonical JSON must include a pe object');
+  assert.equal(pe.FileAlignment, 0x200);
+  assert.equal(pe.SectionAlignment, 0x1000);
+  assert.ok(Array.isArray(pe.resources), 'canonical PE JSON must include a complete resource inventory');
+  assert.ok(pe.resources.length > 0, 'official node.exe must expose resources');
+  for (const entry of pe.resources) {
+    assert.ok(entry && 'type' in entry && 'name' in entry && 'language' in entry, 'each resource must record type, name, and language');
+  }
+  assert.equal(pe.sectionRangesInBounds, true, 'all section raw and virtual ranges must be in bounds');
+  assert.equal(typeof pe.computedSizeOfImage, 'number', 'canonical PE JSON must include independently computed SizeOfImage');
+  assert.equal(pe.computedSizeOfImage, pe.SizeOfImage, 'independently computed SizeOfImage must match the header value');
+  if (!afterInjection) {
+    assert.ok(pe.security && pe.security.size > 0, 'win-x64-before must record a non-empty Security directory');
+    assert.ok(pe.overlaySize > 0, 'win-x64-before must record Authenticode overlay bytes');
+    return;
+  }
+  assert.equal(pe.security.fileOffset, 0, 'win-x64-after Security file offset must be 0');
+  assert.equal(pe.security.size, 0, 'win-x64-after Security size must be 0');
+  assert.equal(pe.certificateRestored, false, 'win-x64-after must not restore certificate bytes');
+  assert.equal(Number(pe.payloadLength), blob.length, 'win-x64-after payloadLength must equal injected blob length');
+  assert.equal(String(pe.payloadSha256), sha256(blob), 'win-x64-after payloadSha256 must equal injected blob SHA-256');
+  assert.equal(pe.fuse && pe.fuse.present, true, 'win-x64-after fuse token must be present');
+  assert.equal(pe.fuse && pe.fuse.enabled, true, 'win-x64-after fuse must be enabled (:1)');
+  const beforeKeys = new Set((before.pe.resources || []).map(resourceKey));
+  const afterKeys = pe.resources.map(resourceKey);
+  for (const key of beforeKeys) {
+    assert.ok(afterKeys.includes(key), `original resource ${key} must be preserved`);
+  }
+  const added = afterKeys.filter(key => !beforeKeys.has(key));
+  assert.equal(added.length, 1, 'exactly one resource must be added');
+  assert.match(added[0], /NODE_SEA_BLOB/);
+}
+
+function extractCanonicalJsonBlock(text, caseId) {
+  const marker = `"case":"${caseId}"`;
+  const idx = text.indexOf(marker);
+  if (idx < 0) return null;
+  const start = text.lastIndexOf('{', idx);
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(start, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+test('B61 pinned macholib independently validates official darwin-x64 and darwin-arm64 with complete canonical JSON', { timeout: 180_000 }, async () => {
+  assertPinnedValidatorOrchestrationIndependent();
+  const api = await loadPackaging();
+  for (const id of ['darwin-x64', 'darwin-arm64']) {
+    const official = ensureOfficialExecutable(id);
+    const beforePath = writeTempBinary(official.bytes, `official-${id}`);
+    const before = inspectNativeWithPinnedValidators('macho', beforePath);
+    const blob = blobFor(`canonical-${id}`);
+    const injected = injectOrThrow(api, { target: official.target, executable: official.bytes, blob }, id);
+    const afterPath = writeTempBinary(injected, `injected-${id}`);
+    const after = inspectNativeWithPinnedValidators('macho', afterPath);
+    assertCanonicalMachoValidatorDoc(after.doc, {
+      target: id,
+      arch: official.arch,
+      blob,
+      before: before.doc
+    });
+    assert.match(after.text, /"payloadSha256":"[a-f0-9]{64}"/);
+    assert.match(after.text, /"hasCodeSignature":false/);
+  }
+});
+
+test('B62 pinned pefile independently validates official win-x64 before/after with resources, payload/fuse, and computed SizeOfImage', { timeout: 180_000 }, async () => {
+  assertPinnedValidatorOrchestrationIndependent();
+  const api = await loadPackaging();
+  const official = ensureOfficialExecutable('win-x64');
+  const beforePath = writeTempBinary(official.bytes, 'official-win-x64.exe');
+  const before = inspectNativeWithPinnedValidators('pe', beforePath);
+  assertCanonicalPeValidatorDoc(before.doc, { caseId: 'win-x64-before', afterInjection: false });
+  const blob = blobFor('canonical-win-x64');
+  const injected = injectOrThrow(api, { target: 'win-x64', executable: official.bytes, blob }, 'win-x64');
+  const afterPath = writeTempBinary(injected, 'injected-win-x64.exe');
+  const after = inspectNativeWithPinnedValidators('pe', afterPath);
+  assertCanonicalPeValidatorDoc(after.doc, {
+    caseId: 'win-x64-after',
+    afterInjection: true,
+    blob,
+    before: before.doc
+  });
+  assert.match(after.text, /"payloadSha256":"[a-f0-9]{64}"/);
+  assert.match(after.text, /"computedSizeOfImage":/);
+});
+
+test('B63 both reports record complete canonical validator JSON and pinned identities for all four cases', () => {
+  const pins = {
+    pefile: VALIDATOR_PINS.find(pin => pin.id === 'pefile'),
+    macholib: VALIDATOR_PINS.find(pin => pin.id === 'macholib'),
+    altgraph: VALIDATOR_PINS.find(pin => pin.id === 'altgraph')
+  };
+  for (const rel of ['PRODUCTIZATION_REVIEW.md', 'RELEASE_REPORT.md']) {
+    const text = readFileSync(pluginPath(rel), 'utf8');
+    for (const caseId of CANONICAL_CASES) {
+      const block = extractCanonicalJsonBlock(text, caseId);
+      assert.ok(block, `${rel} must contain complete canonical JSON for case ${caseId}, not a prose summary`);
+      if (caseId.startsWith('darwin-')) {
+        assert.equal(block.format, 'macho');
+        assert.ok(block.macho && block.macho.payloadSha256, `${rel} ${caseId} JSON must include payloadSha256`);
+        assert.equal(block.macho.hasCodeSignature, false);
+      } else {
+        assert.equal(block.format, 'pe');
+        assert.equal(typeof block.pe.computedSizeOfImage, 'number', `${rel} ${caseId} JSON must include computedSizeOfImage`);
+        assert.ok(Array.isArray(block.pe.resources) && block.pe.resources.length > 0, `${rel} ${caseId} JSON must include the resource inventory`);
+      }
+    }
+    assert.match(text, new RegExp(pins.pefile.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(text, new RegExp(pins.macholib.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.ok(text.includes(pins.pefile.sha256), `${rel} must record pefile wheel SHA-256`);
+    assert.ok(text.includes(pins.macholib.sha256), `${rel} must record macholib wheel SHA-256`);
+    assert.ok(text.includes(pins.altgraph.sha256), `${rel} must record altgraph wheel SHA-256`);
+    assert.match(text, /unsupported non-certificate overlay|non-certificate overlay/i);
+  }
+});
+
+test('B64 release metadata, published-base identity, and plugin/runtime version stay consistent', () => {
+  const matrix = JSON.parse(readRequired('compat/matrix.json'));
+  const winNotes = String(matrix.targets && matrix.targets['win-x64'] && matrix.targets['win-x64'].notes || '');
+  assert.doesNotMatch(
+    winNotes,
+    /Authenticode overlay preserved|overlay preserved as a trailing overlay/i,
+    'compat/matrix.json must not claim the original Windows Authenticode overlay is preserved'
+  );
+  assert.match(
+    winNotes,
+    /Security directory|unsigned|certificate/i,
+    'compat/matrix.json must describe certificate removal and cleared Security directory'
+  );
+
+  const plugin = JSON.parse(readRequired('plugin.json'));
+  const cli = readFileSync(pluginPath('src/cli.js'), 'utf8');
+  const release = readFileSync(pluginPath('src/release.js'), 'utf8');
+  const cliVersion = cli.match(/bundled runtime v([0-9]+\.[0-9]+\.[0-9]+)/);
+  const releaseVersion = release.match(/version:\s*'([0-9]+\.[0-9]+\.[0-9]+)'/);
+  assert.ok(cliVersion, 'src/cli.js must print an authoritative runtime version');
+  assert.ok(releaseVersion, 'src/release.js must emit an authoritative release-manifest version');
+  assert.equal(plugin.version, cliVersion[1], 'plugin.json version must match runtime CLI version');
+  assert.equal(plugin.version, releaseVersion[1], 'plugin.json version must match release-manifest version');
+
+  for (const rel of ['PRODUCTIZATION_REVIEW.md', 'RELEASE_REPORT.md']) {
+    const text = readFileSync(pluginPath(rel), 'utf8');
+    assert.ok(text.includes(PUBLISHED_BASE_SHA), `${rel} must identify published base ${PUBLISHED_BASE_SHA}`);
+    assert.doesNotMatch(
+      text,
+      /803135995782e36cbf9427ac903a2e26d2952383[^\n]{0,120}unpushed/i,
+      `${rel} must not claim published base 8031359 is unpushed`
+    );
+    assert.doesNotMatch(
+      text,
+      /origin\/main[^\n]{0,80}behind/i,
+      `${rel} must not claim origin/main is behind for published 8031359`
+    );
+    assert.ok(text.includes(plugin.version), `${rel} must record the single authoritative plugin/runtime version ${plugin.version}`);
+  }
+});

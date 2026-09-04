@@ -45,6 +45,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { TARGETS, identifyExecutable, injectSeaPayload, officialNodePin, targetById } from './packaging.js';
 import { generateSeaBlob, hostTargetId, nodeBinary, repoRootFromSource } from './sea-build.js';
+import { PRODUCT_VERSION } from './version.js';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 void MODULE_DIR;
@@ -299,7 +300,7 @@ export function releaseCommand(argv, { repoRoot = repoRootFromSource() } = {}) {
   const manifest = {
     $schema: 'jobsss-release-manifest/v1',
     plugin: 'jobsss',
-    version: '0.1.0',
+    version: PRODUCT_VERSION,
     kind: 'deterministic-portable-release',
     builtTarget: isCurrentHostBuild ? 'current-host' : targetArg,
     targets: manifestTargetEntries({

@@ -4,6 +4,7 @@
 import * as domain from './domain.js';
 import { ensureDataDir, redactSecrets } from './store.js';
 import { listDecisionHandoffs, createDecisionHandoff } from './authority.js';
+import { PRODUCT_VERSION } from './version.js';
 
 const schema = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: true });
 const string = { type: 'string' };
@@ -150,7 +151,7 @@ async function handleLine(dataDir, line, respond) {
   let msg;
   try { msg = JSON.parse(line); } catch (cause) { respond({ jsonrpc: '2.0', id: null, error: { code: -32700, message: cause.message } }); return; }
   try {
-    if (msg.method === 'initialize') { respond({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2024-11-05', serverInfo: { name: 'jobsss-bundled', version: '0.2.0' }, capabilities: { tools: {} } } }); return; }
+    if (msg.method === 'initialize') { respond({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2024-11-05', serverInfo: { name: 'jobsss-bundled', version: PRODUCT_VERSION }, capabilities: { tools: {} } } }); return; }
     if (msg.method === 'notifications/initialized') return;
     if (msg.method === 'tools/list') { respond({ jsonrpc: '2.0', id: msg.id, result: { tools: TOOLS } }); return; }
     if (msg.method === 'tools/call') { const { name, arguments: args } = msg.params || {}; respond({ jsonrpc: '2.0', id: msg.id, result: await callTool(dataDir, name, args || {}) }); return; }

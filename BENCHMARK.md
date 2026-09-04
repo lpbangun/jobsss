@@ -41,7 +41,13 @@ acquisition and must not delete, rewrite, or weaken B1–B53. B55–B60
 extend that bar for the independent-auditor native-safety findings and
 must not delete, rewrite, or weaken B1–B54. B61–B64 extend that bar for
 the remaining independent-native evidence gaps and must not delete,
-rewrite, or weaken B1–B60.
+rewrite, or weaken B1–B60. B65–B70 extend that bar for the confirmed
+release-evidence and provenance round on published base
+`a380827d3cfd58c7c4dca014a109ead0326db18c` and must not delete, rewrite,
+or weaken B1–B64. B63 is additionally corrected so complete canonical
+validator JSON may be recorded by citing the sole canonical evidence
+artifact rather than embedding duplicate objects, without deleting,
+rewriting, or weakening B1–B62 or B64.
 
 ---
 
@@ -65,6 +71,7 @@ rewrite, or weaken B1–B60.
 | `tests/jobsss-cross-platform.test.mjs` | reviewer | reviewer only |
 | `tests/helpers/jobsss-cross-platform.mjs` | reviewer | reviewer only |
 | `tests/jobsss-native-remediation.test.mjs` | reviewer | reviewer only |
+| `tests/jobsss-native-evidence.test.mjs` | reviewer | reviewer only |
 | `tests/helpers/jobsss-native-format.mjs` | reviewer | reviewer only |
 | `tests/helpers/jobsss-native-inputs.mjs` | reviewer | reviewer only |
 | `tests/helpers/jobsss-native-validators.mjs` | reviewer | reviewer only |
@@ -161,13 +168,13 @@ temporary directory via `PLUGIN_DATA` / `--data`.
 Unset or blank provider keys for core checks. Do not add npm dependencies
 for these tests. Do not edit `package.json` to make the bar pass.
 Do not require `jobos` on `PATH`. There is no allowed skip for missing JobOS.
-B48–B64 may download checksum-pinned official Node v22.22.3 archives,
+B48–B70 may download checksum-pinned official Node v22.22.3 archives,
 the pinned postject tarball, and pinned independent validator wheels
 (pefile/macholib/altgraph) into a temporary cache outside the plugin tree
 (`$JOBSSS_NATIVE_CACHE` or `os.tmpdir()/jobsss-native-gate-cache`). Those
 blobs must not be committed. There is no allowed skip for missing official
-Node inputs. B54 additionally requires a genuine empty cache: a pre-populated
-`JOBSSS_NATIVE_CACHE` is not a substitute for acquisition.
+Node inputs. B54 and B67 additionally require a genuine empty cache: a
+pre-populated `JOBSSS_NATIVE_CACHE` is not a substitute for acquisition.
 
 ---
 
@@ -186,7 +193,8 @@ node --test --test-concurrency=1 \
   tests/jobsss-adapters.test.mjs \
   tests/jobsss-authority.test.mjs \
   tests/jobsss-cross-platform.test.mjs \
-  tests/jobsss-native-remediation.test.mjs
+  tests/jobsss-native-remediation.test.mjs \
+  tests/jobsss-native-evidence.test.mjs
 ```
 
 ### Expected exit code
@@ -195,13 +203,13 @@ node --test --test-concurrency=1 \
 
 ### What pass means
 
-Exit `0` is necessary and not sufficient. Every check B1–B64 below must hold
+Exit `0` is necessary and not sufficient. Every check B1–B70 below must hold
 on the real files, on a real bundled MCP subprocess, and on the current-host
 release artifact where those checks require it. Invented output, mocks of the
 runtime, skipped required checks, or touching real user JobOS or client
 profiles are a fail.
 
-No allowed skip. B10–B12 and B14–B64 are required even when `jobos` is absent.
+No allowed skip. B10–B12 and B14–B70 are required even when `jobos` is absent.
 There is no allowed skip for missing Node on PATH for B31–B32: the released
 `bin/jobsss` must start without resolving `node` or `jobos` from PATH.
 
@@ -441,6 +449,48 @@ Focused result, not invented: `# tests 6` `# pass 0` `# fail 6`, exit `1`,
 Separate B60 command: `# tests 1` `# pass 1` `# fail 0`, exit `0`,
 `duration_ms 101891.397946`. Frozen twelve-file live count becomes 62.
 Reports were not edited here.
+
+### Release-evidence provenance baseline recorded 2026-09-04 against published HEAD `a380827`
+
+B1–B64 remain intact except expected B53 report-finalization lag after
+adding B65–B70. Additive B65–B70 fail against today's committed runtime
+and reports before any product correction. Version drift, missing
+repository-contained evidence command, missing canonical artifact, `/tmp`
+helper citations, and PE key-only acceptance are product/report gaps, not
+benchmark defects. Focused command:
+
+```bash
+node --test --test-concurrency=1 --test-name-pattern='B65 |B66 |B67 |B68 |B69 |B70 ' \
+  tests/jobsss-native-evidence.test.mjs
+```
+
+Focused result, not invented: `# tests 6` `# pass 0` `# fail 6`, exit `1`,
+`duration_ms 552.806569`, Node v22.22.3. Observed failures:
+
+| Check | Result today | Observed failure |
+| --- | --- | --- |
+| B65 | fail | `./bin/jobsss doctor --data` JSON `version` is `0.2.0`, not plugin.json `0.1.0` |
+| B66 | fail | `./bin/jobsss --help` does not document `evidence` |
+| B67 | fail | same missing evidence command |
+| B68 | fail | missing `evidence/native-validation.json` |
+| B69 | fail | missing `evidence/native-validation.json` |
+| B70 | fail | `PRODUCTIZATION_REVIEW.md` cites `/tmp/gen-canonical-json.mjs` |
+
+Independent CLI/MCP probes against the same HEAD, not invented:
+`plugin.json` / CLI help report `0.1.0`; `./bin/jobsss --version` exits `1`
+(`unknown command: --version`) while still printing help `v0.1.0`; doctor
+CLI and MCP `initialize.serverInfo.version` plus MCP doctor report `0.2.0`;
+`./bin/jobsss evidence --out ...` exits `1` (`unknown command: evidence`);
+no `evidence/` directory; `RELEASE_REPORT.md` has no `nodejs.org/dist` URLs.
+Expected report-finalization lag, not a weakened check:
+
+```bash
+node --test --test-concurrency=1 --test-name-pattern='B53 ' tests/jobsss-native-remediation.test.mjs
+```
+
+`# tests 1` `# pass 0` `# fail 1`, exit `1`, `duration_ms 114.311013`,
+`PRODUCTIZATION_REVIEW.md # tests must be the live frozen-command count 72, not a stale 66`.
+Frozen thirteen-file live count is now 72. Reports were not edited here.
 
 ---
 
@@ -1254,7 +1304,7 @@ B30–B32 current-host Linux verification remains required.
 `PRODUCTIZATION_REVIEW.md` and `RELEASE_REPORT.md` must each record the
 live frozen-command `# tests N` `# pass N` `# fail 0` counts, contain a
 PASS verdict, and must not leave the reviewer verdict pending. N is the
-number of `test(` calls in the frozen twelve-file command (B1–B64). Both
+number of `test(` calls in the frozen thirteen-file command (B1–B70). Both
 files must record independent native-format validation, genuine official
 Node inputs, Mach-O load-command/linkedit/code-signature evidence, PE
 `SizeOfImage` evidence, pinned postject / `packaging.lock.json` identity,
@@ -1403,34 +1453,132 @@ Custom in-repo PE parsers and fixture generators are not a substitute.
 
 ### B63 — Both reports record complete canonical validator JSON for all four cases
 
-`PRODUCTIZATION_REVIEW.md` and `RELEASE_REPORT.md` must each contain the
+`PRODUCTIZATION_REVIEW.md` and `RELEASE_REPORT.md` must each record the
 complete canonical validator JSON objects for `darwin-x64`, `darwin-arm64`,
 `win-x64-before`, and `win-x64-after`, including payload hashes, fuse state,
 linkedit/resource inventories, and `computedSizeOfImage`. Selected prose
-fragments are a fail. Both reports must also record exact commands,
-validator identities/versions/URLs/SHA-256, official Node input hashes,
-output executable hashes, and the unsupported non-certificate overlay
-rejection. Large binaries and caches remain uncommitted.
+fragments are a fail. The required recording location is the sole canonical
+evidence artifact `evidence/native-validation.json`. Reports satisfy this
+check by embedding those objects **or** by citing that artifact's
+repository-relative path and SHA-256 so the four complete objects are
+present in the artifact. Embedding is not required once the artifact is
+cited. Both reports must also record exact commands, validator
+identities/versions/URLs/SHA-256, official Node input hashes, output
+executable hashes, and the unsupported non-certificate overlay rejection,
+either inline or in the cited artifact's provenance. Large binaries and
+caches remain uncommitted.
 
 ### B64 — Release metadata, published-base identity, and one authoritative version
 
 `compat/matrix.json` must not claim that the original Windows Authenticode
 overlay is preserved as a trailing overlay. It must describe certificate
-removal / cleared Security directory / unsigned output. `plugin.json`
-version, `src/cli.js` runtime version, and `src/release.js` manifest
-version must be the same authoritative version, and both reports must
-record it. Both reports must identify published base
+removal / cleared Security directory / unsigned output. `plugin.json` is the sole product-version authority, read through
+`src/version.js`. Live CLI help/version output and the `src/release.js`
+release-manifest `version` field must report that same version.
+Source-tree duplicate version literals in `src/cli.js` / `src/release.js`
+are not required and are not a substitute for the manifest-backed module
+and live interfaces. Both reports must record the authoritative version.
+Both reports must identify published base
 `803135995782e36cbf9427ac903a2e26d2952383` and must not claim that SHA is
 unpushed or that `origin/main` is behind. The new final corrective SHA is
 supplied in the final response.
+
+### B65 — One authoritative product version through live plugin/CLI/doctor/MCP/manifest surfaces
+
+`plugin.json` version is the single authoritative JobSSS product version
+(preserve `0.1.0` unless independently justified). These live surfaces must
+all report that same version, with no drifted duplicate literal such as
+`0.2.0`:
+
+- `./bin/jobsss --help` and CLI help/version output
+- `./bin/jobsss doctor --data <dir>` JSON `version`
+- bundled MCP `initialize.result.serverInfo.version`
+- bundled MCP `doctor` tool result `version`
+- generated `release-manifest.json` `version` from
+  `./bin/jobsss release --out <absdir> --target current-host`
+- `PRODUCTIZATION_REVIEW.md` and `RELEASE_REPORT.md`
+
+Source-tree string matching of `src/cli.js` / `src/mcp.js` is not a
+substitute for exercising those real interfaces. Source and SEA execution
+must both work (B31/B32 remain required).
+
+### B66 — Repository-contained evidence command with explicit output and external cache
+
+A checked-in command exists:
+
+```bash
+JOBSSS_NATIVE_CACHE=<abs-empty-external-cache> ./bin/jobsss evidence --out <absfile>
+```
+
+`./bin/jobsss --help` must document `evidence` and `--out`. The command must
+not be an unknown CLI verb. It must run from a clean checkout using only
+repository files plus checksum-verified pinned downloads, with the caller
+selecting the external cache and output. It must not import reviewer test
+helpers, `jobsss-native-format.mjs`, or synthetic native fixtures; must not
+depend on `/tmp/gen-canonical-json.mjs`, prior generated artifacts, or real
+user state; and must not write caches into the plugin tree. Reports, README,
+and AGENTS.md must not cite that transient helper.
+
+### B67 — Empty-cache verified pinned downloads and two fresh-process byte-identical canonical JSON
+
+Two separate processes, each with a genuine empty `JOBSSS_NATIVE_CACHE`
+outside the plugin tree, must run `./bin/jobsss evidence --out <a|b>` and
+exit `0`. The two output files must be byte-identical canonical JSON and
+must match committed `evidence/native-validation.json`. The empty cache must
+receive checksum-verified pinned postject and independent validator
+downloads before validation. A cache planted with bytes that miss the locked
+postject SHA-256 must fail with checksum/sha256/mismatch before writing
+`--out`. Pre-populated caches are not a substitute.
+
+### B68 — Sole canonical evidence artifact has Darwin/Windows provenance and no absolute/temp/user values
+
+`evidence/native-validation.json` exists, is committed, and contains
+first-class cases `darwin-x64`, `darwin-arm64`, `win-x64-before`, and
+`win-x64-after`. It must record schema/product/base provenance including
+pinned postject, pefile, macholib, and altgraph URL/version/SHA-256; official
+Node v22.22.3 Darwin x64/arm64 and win-x64 URL/version/architecture/archive
+and executable hashes; payload, fuse, output hash; Mach-O range/linkedit/
+signature evidence; PE alignment/resource/security/overlay/section/
+`SizeOfImage` evidence; and unsupported non-certificate overlay rejection.
+It must identify published base `a380827d3cfd58c7c4dca014a109ead0326db18c`
+and the authoritative product version. Absolute/temp/user paths, timestamps,
+credentials, and unverified macOS/Windows runtime claims are a fail.
+
+### B69 — Exact PE original resource tuple preservation and one NODE_SEA_BLOB addition
+
+The canonical artifact's `win-x64-before` and `win-x64-after` inventories
+must compare every original resource by the exact tuple (type, name/
+identifier, language, exact byte size, SHA-256). No original tuple may
+disappear, mutate, change identity/language, or unexpectedly duplicate.
+Exactly one intended `NODE_SEA_BLOB` (`RT_RCDATA`) addition is permitted.
+After injection the Security directory remains file offset 0 and size 0,
+obsolete certificate bytes are absent (`certificateRestored` false),
+payload/fuse/section ranges hold, and independently computed `SizeOfImage`
+equals the header value. Key-only (type/name/language) comparison is not
+sufficient.
+
+### B70 — Reports cite the sole artifact by path, hash, and exact command
+
+`PRODUCTIZATION_REVIEW.md` and `RELEASE_REPORT.md` must each concisely
+reference `evidence/native-validation.json` by repository-relative path,
+SHA-256 of that file, and the exact runnable command
+`JOBSSS_NATIVE_CACHE=<absdir> ./bin/jobsss evidence --out <absfile>`.
+Stale `/tmp/gen-canonical-json.mjs` references and manually duplicated
+complete validator JSON objects are absent. `RELEASE_REPORT.md` must include
+the exact official Darwin x64/arm64 and win-x64 Node dist URLs plus archive
+and executable SHA-256. Both reports must identify published base
+`a380827d3cfd58c7c4dca014a109ead0326db18c` and must not invent a future
+corrective commit SHA. Provenance is exact or points unambiguously to the
+artifact/lock entries. Target verification status remains truthful (B45).
 
 ---
 
 ## Verdict
 
-**Pass** only if the frozen validation command exits `0` and B1–B64 hold on
-inspected files, subprocess output, the current-host release artifact, and
-the independently validated official-Node Mach-O/PE containers.
+**Pass** only if the frozen validation command exits `0` and B1–B70 hold on
+inspected files, subprocess output, the current-host release artifact, the
+independently validated official-Node Mach-O/PE containers, and the sole
+canonical evidence artifact.
 
 **Fail** if any required file is missing, any check mismatches, any command
 hangs, any mock replaces the bundled runtime, any `jobos` executable is
@@ -1508,6 +1656,20 @@ unchanged.
 7a57942827f257858e63d059432d25cbfe2814e711c23f60275b28f31386cc6e  tests/helpers/jobsss-native-format.mjs
 045f88f6b07a11b99c9b3fd63a471bde13d5c32e59e77166f8170d9317e9cffe  tests/helpers/jobsss-native-inputs.mjs
 836bc661b7d80be8ae4772e44cb2f016924d5de3250cdd6af1050b4448f67f9b  tests/helpers/jobsss-native-validators.mjs
+```
+
+SHA-256 of reviewer-owned native-evidence files. Implementers must not
+change these files. B1–B64 hashes above are unchanged except
+`tests/jobsss-native-remediation.test.mjs`, updated to include the
+thirteenth frozen file in B53's live count, to let B63 record complete
+canonical JSON via the sole artifact citation, and to correct B64 so it
+verifies manifest-backed `src/version.js` plus live CLI interfaces
+instead of duplicate version literals. Additive B65–B70 live in
+`tests/jobsss-native-evidence.test.mjs`.
+
+```
+02bf357d2c199b945cc37290b4809f5da0e599b8ae04e409c937117dfb62da0e  tests/jobsss-native-remediation.test.mjs
+ed6d48f07219e6b8a57558e38af3b5c705d7727ac012cda239b463e1f4777fb0  tests/jobsss-native-evidence.test.mjs
 ```
 
 ## Correction log
@@ -1842,3 +2004,23 @@ node --test --test-concurrency=1 --test-name-pattern='B53 ' tests/jobsss-native-
 ```
 
 `# tests 1` `# pass 0` `# fail 1`, exit `1`, `duration_ms 104.417898`, `PRODUCTIZATION_REVIEW.md # tests must be the live frozen-command count 66, not a stale 62`. Frozen twelve-file live count is now 66. Not done to make tests green.
+- 2026-09-04T20:35:53Z — **B65–B70 release-evidence provenance on published a380827**. Reason: completion audit of HEAD `a380827d3cfd58c7c4dca014a109ead0326db18c` rejected remaining gaps: doctor/MCP `serverInfo` still report `0.2.0` while plugin/CLI/release report `0.1.0`; reports cite absent `/tmp/gen-canonical-json.mjs` and embed duplicated validator JSON instead of one repository-contained artifact; `RELEASE_REPORT.md` omits official Darwin URLs/hashes; PE acceptance compares resource keys but not size/SHA-256. B63's prior requirement that both reports embed complete JSON contradicted the confirmed goal's sole-artifact provenance. Change: preserved B1–B64 except the B63 recording-location correction (embed **or** cite `evidence/native-validation.json` by path+SHA-256); appended additive B65–B70 in `tests/jobsss-native-evidence.test.mjs`; updated B53's frozen file list to the thirteen-file command. Product files and reports were not edited. Live focused command against published a380827, not invented:
+
+```bash
+node --test --test-concurrency=1 --test-name-pattern='B65 |B66 |B67 |B68 |B69 |B70 ' tests/jobsss-native-evidence.test.mjs
+```
+
+`# tests 6` `# pass 0` `# fail 6`, exit `1`, `duration_ms 552.806569`. Failures: B65 doctor CLI `version` `0.2.0` vs plugin.json `0.1.0`; B66/B67 `./bin/jobsss --help` does not document `evidence`; B68/B69 missing `evidence/native-validation.json`; B70 `PRODUCTIZATION_REVIEW.md` cites `/tmp/gen-canonical-json.mjs`. Independent probes, not invented: MCP `initialize.serverInfo.version` `0.2.0`; `./bin/jobsss evidence` exits `1` `unknown command: evidence`; `RELEASE_REPORT.md` has no `nodejs.org/dist` URLs. Expected report-finalization lag, not a weakened check:
+
+```bash
+node --test --test-concurrency=1 --test-name-pattern='B53 ' tests/jobsss-native-remediation.test.mjs
+```
+
+`# tests 1` `# pass 0` `# fail 1`, exit `1`, `duration_ms 114.311013`, `PRODUCTIZATION_REVIEW.md # tests must be the live frozen-command count 72, not a stale 66`. Frozen thirteen-file live count is now 72. Not done to make tests green.
+- 2026-09-04T21:21:13Z — **B64 manifest-backed version authority**. Reason: genuine benchmark defect. B64 still required `src/cli.js` to match `/bundled runtime v([0-9]+\.[0-9]+\.[0-9]+)/` and `src/release.js` to match `/version:\s*'([0-9]+\.[0-9]+\.[0-9]+)'/`. That contradicts B65 (source-tree string matching of `src/cli.js` is not a substitute for live interfaces) and the confirmed single-authority `plugin.json` → `src/version.js` module (`PRODUCT_VERSION` interpolation, no duplicate literals). Focused B64 therefore failed against a correct product. Change: preserved B64 matrix/identity/report checks; replaced duplicate-literal source matches with `src/version.js` authority plus live `./bin/jobsss --help`/`--version` and release-manifest `PRODUCT_VERSION` wiring. Product/report files were not edited by this correction. Live focused command against today's tree before the check rewrite, not invented:
+
+```bash
+node --test --test-concurrency=1 --test-name-pattern='B53 |B64 ' tests/jobsss-native-remediation.test.mjs
+```
+
+`# tests 2` `# pass 1` `# fail 1`, exit `1`, `duration_ms 116.423437`. Failure: B64 `src/cli.js must print an authoritative runtime version` (literal regex vs `v${PRODUCT_VERSION}`). Not done to make tests green.

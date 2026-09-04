@@ -51,7 +51,8 @@ const FROZEN_TEST_FILES = Object.freeze([
   'tests/jobsss-adapters.test.mjs',
   'tests/jobsss-authority.test.mjs',
   'tests/jobsss-cross-platform.test.mjs',
-  'tests/jobsss-native-remediation.test.mjs'
+  'tests/jobsss-native-remediation.test.mjs',
+  'tests/jobsss-native-evidence.test.mjs'
 ]);
 const INTERMEDIATE_SHAS = Object.freeze([
   'ba2123ef5f6f24bcf6ae994a125b67501b970785',
@@ -763,6 +764,27 @@ test('B62 pinned pefile independently validates official win-x64 before/after wi
   assert.match(after.text, /"computedSizeOfImage":/);
 });
 
+function loadCanonicalCaseFromReports(rel, text, caseId) {
+  const inline = extractCanonicalJsonBlock(text, caseId);
+  if (inline) return inline;
+  const artifactRel = 'evidence/native-validation.json';
+  assert.ok(
+    text.includes(artifactRel),
+    `${rel} must contain complete canonical JSON for case ${caseId}, or cite ${artifactRel}`
+  );
+  const abs = pluginPath(artifactRel);
+  assert.equal(existsSync(abs), true, `${rel} cites ${artifactRel} but the artifact is missing`);
+  const bytes = readFileSync(abs);
+  const digest = sha256(bytes);
+  assert.ok(text.includes(digest), `${rel} must cite SHA-256 of ${artifactRel} when it does not embed case ${caseId}`);
+  const doc = JSON.parse(bytes.toString('utf8'));
+  const fromCases = doc.cases && !Array.isArray(doc.cases) ? doc.cases[caseId] : null;
+  const fromList = Array.isArray(doc.cases) ? doc.cases.find(item => item && item.case === caseId) : null;
+  const block = fromCases || fromList || (doc.case === caseId ? doc : null) || extractCanonicalJsonBlock(bytes.toString('utf8'), caseId);
+  assert.ok(block, `${artifactRel} must contain complete canonical JSON for case ${caseId}`);
+  return block;
+}
+
 test('B63 both reports record complete canonical validator JSON and pinned identities for all four cases', () => {
   const pins = {
     pefile: VALIDATOR_PINS.find(pin => pin.id === 'pefile'),
@@ -772,7 +794,7 @@ test('B63 both reports record complete canonical validator JSON and pinned ident
   for (const rel of ['PRODUCTIZATION_REVIEW.md', 'RELEASE_REPORT.md']) {
     const text = readFileSync(pluginPath(rel), 'utf8');
     for (const caseId of CANONICAL_CASES) {
-      const block = extractCanonicalJsonBlock(text, caseId);
+      const block = loadCanonicalCaseFromReports(rel, text, caseId);
       assert.ok(block, `${rel} must contain complete canonical JSON for case ${caseId}, not a prose summary`);
       if (caseId.startsWith('darwin-')) {
         assert.equal(block.format, 'macho');
@@ -793,7 +815,7 @@ test('B63 both reports record complete canonical validator JSON and pinned ident
   }
 });
 
-test('B64 release metadata, published-base identity, and plugin/runtime version stay consistent', () => {
+test('B64 release metadata, published-base identity, and plugin/runtime version stay consistent', async () => {
   const matrix = JSON.parse(readRequired('compat/matrix.json'));
   const winNotes = String(matrix.targets && matrix.targets['win-x64'] && matrix.targets['win-x64'].notes || '');
   assert.doesNotMatch(
@@ -808,14 +830,75 @@ test('B64 release metadata, published-base identity, and plugin/runtime version 
   );
 
   const plugin = JSON.parse(readRequired('plugin.json'));
+  assert.match(String(plugin.version || ''), /^[0-9]+\.[0-9]+\.[0-9]+$/, 'plugin.json must declare a semver product version');
+  const version = plugin.version;
+
+  const versionSrc = readFileSync(pluginPath('src/version.js'), 'utf8');
+  assert.match(versionSrc, /plugin\.json/, 'src/version.js must read plugin.json as the version authority');
+  assert.match(versionSrc, /export const PRODUCT_VERSION/, 'src/version.js must export PRODUCT_VERSION');
+  const versionMod = await import(pathToFileURL(pluginPath('src/version.js')).href);
+  assert.equal(
+    versionMod.PRODUCT_VERSION,
+    version,
+    `src/version.js PRODUCT_VERSION must equal plugin.json ${version}, not ${versionMod.PRODUCT_VERSION}`
+  );
+  assert.equal(
+    path.resolve(versionMod.PLUGIN_MANIFEST_PATH),
+    path.resolve(pluginPath('plugin.json')),
+    'src/version.js must resolve PLUGIN_MANIFEST_PATH to checkout plugin.json in source mode'
+  );
+
   const cli = readFileSync(pluginPath('src/cli.js'), 'utf8');
   const release = readFileSync(pluginPath('src/release.js'), 'utf8');
-  const cliVersion = cli.match(/bundled runtime v([0-9]+\.[0-9]+\.[0-9]+)/);
-  const releaseVersion = release.match(/version:\s*'([0-9]+\.[0-9]+\.[0-9]+)'/);
-  assert.ok(cliVersion, 'src/cli.js must print an authoritative runtime version');
-  assert.ok(releaseVersion, 'src/release.js must emit an authoritative release-manifest version');
-  assert.equal(plugin.version, cliVersion[1], 'plugin.json version must match runtime CLI version');
-  assert.equal(plugin.version, releaseVersion[1], 'plugin.json version must match release-manifest version');
+  assert.match(
+    cli,
+    /import\s*\{\s*PRODUCT_VERSION\s*\}\s*from\s*'\.\/version\.js'/,
+    'src/cli.js must import PRODUCT_VERSION from src/version.js'
+  );
+  assert.match(
+    release,
+    /import\s*\{\s*PRODUCT_VERSION\s*\}\s*from\s*'\.\/version\.js'/,
+    'src/release.js must import PRODUCT_VERSION from src/version.js'
+  );
+  assert.match(cli, /bundled runtime v\$\{PRODUCT_VERSION\}/, 'src/cli.js must print the manifest-backed runtime version');
+  assert.match(release, /version:\s*PRODUCT_VERSION/, 'src/release.js must emit the manifest-backed release-manifest version');
+  assert.doesNotMatch(
+    cli,
+    /bundled runtime v[0-9]+\.[0-9]+\.[0-9]+/,
+    'src/cli.js must not duplicate a runtime version literal'
+  );
+  assert.doesNotMatch(
+    release,
+    /version:\s*'[0-9]+\.[0-9]+\.[0-9]+'/,
+    'src/release.js must not duplicate a release-manifest version literal'
+  );
+
+  const launcher = pluginPath('bin/jobsss');
+  const help = spawnSync(launcher, ['--help'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: process.env,
+    timeout: 15_000
+  });
+  const helpText = `${help.stdout || ''}\n${help.stderr || ''}`;
+  assert.equal(help.status, 0, `./bin/jobsss --help must exit 0: ${helpText.slice(0, 400)}`);
+  assert.match(
+    help.stdout,
+    new RegExp(`bundled runtime v${version}\\b`),
+    `live CLI help must print manifest-backed version ${version}`
+  );
+  const cliVersion = spawnSync(launcher, ['--version'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: process.env,
+    timeout: 15_000
+  });
+  const versionText = `${cliVersion.stdout || ''}\n${cliVersion.stderr || ''}`;
+  assert.match(
+    versionText,
+    new RegExp(`^${version}\\s*$`, 'm'),
+    `live CLI --version must report ${version}: ${versionText.slice(0, 400)}`
+  );
 
   for (const rel of ['PRODUCTIZATION_REVIEW.md', 'RELEASE_REPORT.md']) {
     const text = readFileSync(pluginPath(rel), 'utf8');

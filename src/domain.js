@@ -26,6 +26,7 @@ import {
   planOutreach, draftOutreach, listOutreach, draftInterviewStory,
   listInterviewStories, interviewPrep, getInterviewPrep, interviewDebriefHandoff,
 } from './relationships.js';
+import { PRODUCT_VERSION } from './version.js';
 
 // Plugin root. In source mode this resolves to the repository root; in the
 // standalone SEA bundle it derives from the binary's own location (see
@@ -185,7 +186,7 @@ export function doctor(dataDir) {
   let writable = true;
   try { fs.accessSync(abs, fs.constants.R_OK | fs.constants.W_OK); } catch { writable = false; }
   return {
-    ok: writable, status: 'ok', runtime: 'jobsss-bundled', version: '0.2.0',
+    ok: writable, status: 'ok', runtime: 'jobsss-bundled', version: PRODUCT_VERSION,
     schemaVersion: STORE_SCHEMA_VERSION, dataDir: abs, pluginData: abs,
     storeExists: fs.existsSync(path.join(abs, 'store.json')), bundled: true, writable,
     launcher: './bin/jobsss',

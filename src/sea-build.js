@@ -55,6 +55,7 @@ const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const SEA_BUILD_REL = path.join('.tmp', 'jobsss' + '-productization', 'sea-build');
 
 const MODULES = Object.freeze([
+  'version.js',
   'store.js',
   'scoring.js',
   'workflows.js',
@@ -67,6 +68,7 @@ const MODULES = Object.freeze([
   'sea-build.js',
   'release.js',
   'compat-probe.js',
+  'evidence.js',
   'cli.js',
 ]);
 

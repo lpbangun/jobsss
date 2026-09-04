@@ -17,6 +17,8 @@ import { doctor, start } from './domain.js';
 import { releaseCommand } from './release.js';
 import { runCompatProbe } from './compat-probe.js';
 import { decideCommand, decidePrintHelp } from './authority.js';
+import { PRODUCT_VERSION } from './version.js';
+import { evidenceCommand } from './evidence.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -28,7 +30,7 @@ const IS_STANDALONE =
   typeof __sea !== 'undefined' && !!__sea && __sea.standalone === true;
 
 function printHelp() {
-  console.log(`jobsss bundled runtime v0.1.0
+  console.log(`jobsss bundled runtime v${PRODUCT_VERSION}
 Usage:
   jobsss mcp --data <dir>     Start MCP stdio server with PLUGIN_DATA
   jobsss doctor --data <dir>  Diagnose bundled runtime
@@ -38,6 +40,9 @@ Usage:
                               (targets: current-host linux-x64 linux-arm64
                               darwin-x64 darwin-arm64 win-x64; non-host
                               fixture builds stay unverified)
+  jobsss evidence --out <file>
+                              Regenerate canonical native evidence using
+                              caller-selected JOBSSS_NATIVE_CACHE
   jobsss compat-probe --client <pi|omp|codex|hermes|claude> --config-dir <temp> --plugin-root <plugin>
                               Probe one client in an isolated temporary config
 
@@ -53,6 +58,10 @@ export function runCli(argv = process.argv.slice(2)) {
   const cmd = argv[0];
   if (!cmd || cmd === '--help' || cmd === '-h') {
     printHelp();
+    process.exit(0);
+  }
+  if (cmd === '--version' || cmd === '-V') {
+    console.log(PRODUCT_VERSION);
     process.exit(0);
   }
   if (!IS_STANDALONE) {
@@ -81,6 +90,10 @@ export function runCli(argv = process.argv.slice(2)) {
   }
   if (cmd === 'release') {
     releaseCommand(argv.slice(1), { repoRoot: ROOT });
+    return;
+  }
+  if (cmd === 'evidence') {
+    evidenceCommand(argv.slice(1), { repoRoot: ROOT });
     return;
   }
   if (cmd === 'compat-probe') {

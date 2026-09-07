@@ -1,6 +1,8 @@
 # JobSSS Release Report
 
-Candidate identity: uncommitted now, then exactly one unpushed corrective commit, on published base `a380827d3cfd58c7c4dca014a109ead0326db18c`. Published history is unchanged. Historical evidence identities: `803135995782e36cbf9427ac903a2e26d2952383`, `ba2123ef5f6f24bcf6ae994a125b67501b970785`, and `8b2db255e7868397d336f8b015c489552b84bf0e`. The final corrective SHA is supplied in the final response.
+Historical release report retained from audited base `dd9497be2b973b6dd0316c826f22d4eafca65f39`, on published base `a380827d3cfd58c7c4dca014a109ead0326db18c`. The command results and reviewer verdict below are prior evidence, not acceptance of the current integrity candidate. Historical evidence identities: `803135995782e36cbf9427ac903a2e26d2952383`, `ba2123ef5f6f24bcf6ae994a125b67501b970785`, and `8b2db255e7868397d336f8b015c489552b84bf0e`. Published history is unchanged.
+
+Native artifact refresh (2026-09-07): the supported pinned evidence command regenerated the canonical artifact from runtime source at `76d75cabc34f7c14b1d254c96ff7e5861cd47ebf`. Integrity changes grow the embedded SEA payload and therefore change native output hashes and layout offsets; official inputs, injector and validator pins are unchanged. The artifact citation below describes this refresh only. Current-candidate full-suite results and independent behavioral acceptance are tracked separately; no new reviewer PASS or agent-host journey is claimed here.
 
 ## Release summary
 
@@ -13,14 +15,14 @@ The release pipeline still uses the sole native implementation in `src/packaging
 Complete evidence is recorded once:
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `8422504b6a75eae0dfcec5b257f049faf3167f1c3035725b5d5c2b040eb499e3`
+- SHA-256: `20cc5ef1868c7da562a6ec6eff94989cf69e892ae528f24dd52b6aaa3c5c5213`
 - Exact reproduction command:
 
 ```bash
 JOBSSS_NATIVE_CACHE="$(mktemp -d)" ./bin/jobsss evidence --out "$(pwd)/evidence/native-validation.json"
 ```
 
-The command uses a caller-selected external empty cache, downloads only locked inputs, verifies checksums before validation, avoids user configuration/data and prior generated files, and emits deterministic path- and timestamp-free JSON. Two fresh processes produced byte-identical output matching the repository artifact.
+The command uses a caller-selected external empty cache, downloads only locked inputs, verifies checksums before validation, avoids user configuration/data and prior generated files, and emits deterministic path- and timestamp-free JSON. Frozen B67 requires two fresh processes with empty caches to produce byte-identical output matching the repository artifact.
 
 ### Exact official Node inputs
 
@@ -57,13 +59,13 @@ The current-host standalone release is built and exercised with Node and JobOS a
 | Hermes | verified |
 | Claude | verified |
 
-Adapters remain thin and canonical assets remain authoritative.
+Adapters remain thin and canonical assets remain authoritative. These retained Hermes/Claude labels describe historical MCP connectivity probes only, not canonical skill loading, a state-changing agent-host journey, or native Agent Plugins package loading. Current version availability observations are recorded separately in `compat/matrix.json` and do not upgrade verification.
 
 ## Human-authority behavior
 
 Only trusted local CLI handoffs can complete human decisions. MCP remains non-authoritative and cannot attest sending, submission, approval, applied status, scheduling, or interview debrief outcomes.
 
-## Commands/results
+## Historical commands/results (before integrity corrections)
 
 Focused command:
 
@@ -83,7 +85,7 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 
 ## Reviewer verdict
 
-**Fresh reviewer verdict: PASS** for B1–B70 on the unchanged candidate.
+**Historical reviewer verdict: PASS** for B1–B70 on the prior unchanged candidate only. This is not a reviewer verdict on the current integrity candidate.
 
 ## Deferred/unverified capabilities
 

@@ -4,7 +4,7 @@ Historical release report retained from audited base `dd9497be2b973b6dd0316c826f
 
 Current candidate identity: the final corrective SHA is supplied in the final response; that identity does not turn the historical results below into current-candidate acceptance.
 
-Native artifact refresh (2026-09-07): the supported pinned evidence command regenerated the canonical artifact from runtime source at `76d75cabc34f7c14b1d254c96ff7e5861cd47ebf`. Integrity changes grow the embedded SEA payload and therefore change native output hashes and layout offsets; official inputs, injector and validator pins are unchanged. The artifact citation below describes this refresh only. Current-candidate full-suite results and independent behavioral acceptance are tracked separately; no new reviewer PASS or agent-host journey is claimed here.
+Native artifact refresh (2026-09-07, correction round 5): the supported pinned evidence command regenerated the canonical artifact from `781f1346bf5f7f040615bce320030c1a288658e0` plus the historical-proof preparation eligibility correction in `src/relationships.js`, retained in the final corrective commit. The embedded SEA payload and corresponding native output hashes and layout offsets changed; official inputs, injector and validator pins are unchanged. The artifact citation below describes this refresh only. Current-candidate full-suite results and independent behavioral acceptance are tracked separately; no new reviewer PASS or agent-host journey is claimed here.
 
 ## Release summary
 
@@ -17,7 +17,7 @@ The release pipeline still uses the sole native implementation in `src/packaging
 Complete evidence is recorded once:
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `20cc5ef1868c7da562a6ec6eff94989cf69e892ae528f24dd52b6aaa3c5c5213`
+- SHA-256: `ff3d02846d84acc5a00906074b598ae956f9803a03bade7b44b681aec7cbb040`
 - Exact reproduction command:
 
 ```bash

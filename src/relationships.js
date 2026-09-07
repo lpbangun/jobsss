@@ -22,7 +22,7 @@
 // or drives a browser.
 import fs from 'node:fs';
 import path from 'node:path';
-import { id, now, loadStore, commitStore, ensureDataDir } from './store.js';
+import { id, now, loadStore, commitStore, ensureDataDir, activeProofIdsForStore } from './store.js';
 
 const STORY_FIELDS = Object.freeze(['title', 'situation', 'task', 'action', 'result', 'reflection']);
 export const STORY_STATES = Object.freeze(['draft_needs_verification', 'verified', 'retired']);
@@ -641,9 +641,12 @@ export function interviewPrep(dataDir, args = {}) {
     if (applicationId) requireOwnedApplication(store, applicationId, profileId, job ? job.id : null);
     const stories = ensureCollection(store, 'interviewStories');
     const preps = ensureCollection(store, 'interviewPrep');
-    // Retired stories remain in history but are excluded from current
-    // interview coverage and preparation.
-    const storyList = Object.values(stories).filter(s => s.profileId === profileId && s.state !== 'retired');
+    // Retired stories and stories referencing historical or retired proof remain
+    // in history but cannot contribute current interview coverage or preparation.
+    const activeProofIds = activeProofIdsForStore(store, profileId);
+    const storyList = Object.values(stories).filter(s =>
+      s.profileId === profileId && s.state !== 'retired' &&
+      (s.proofPointIds || []).every(proofId => activeProofIds.has(proofId)));
     const coverage = coverageForStories(storyList);
     const gaps = coverage.filter(item => item.status === 'gap').map(item => item.factor);
     const at = now();

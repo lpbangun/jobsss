@@ -6,7 +6,7 @@ Current candidate identity: the final corrective SHA is supplied in the final re
 
 **Historical verdict: PASS — not acceptance of the current integrity candidate.** The behavioral descriptions and test results below describe that prior review unless explicitly marked as refreshed.
 
-Native artifact refresh (2026-09-07): the supported pinned evidence command regenerated the canonical artifact from runtime source at `76d75cabc34f7c14b1d254c96ff7e5861cd47ebf`. Integrity changes grow the embedded SEA payload and therefore change native output hashes and layout offsets; official inputs, injector and validator pins are unchanged. The artifact citation below describes this refresh only. Current-candidate full-suite results and independent behavioral acceptance are tracked separately; no new reviewer PASS or agent-host journey is claimed here.
+Native artifact refresh (2026-09-07, correction round 5): the supported pinned evidence command regenerated the canonical artifact from `781f1346bf5f7f040615bce320030c1a288658e0` plus the historical-proof preparation eligibility correction in `src/relationships.js`, retained in the final corrective commit. The embedded SEA payload and corresponding native output hashes and layout offsets changed; official inputs, injector and validator pins are unchanged. The artifact citation below describes this refresh only. Current-candidate full-suite results and independent behavioral acceptance are tracked separately; no new reviewer PASS or agent-host journey is claimed here.
 
 ## B1–B41
 
@@ -19,7 +19,7 @@ The authoritative JobSSS product version is **0.1.0** from `plugin.json`. The re
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `20cc5ef1868c7da562a6ec6eff94989cf69e892ae528f24dd52b6aaa3c5c5213`
+- SHA-256: `ff3d02846d84acc5a00906074b598ae956f9803a03bade7b44b681aec7cbb040`
 - Exact reproduction command:
 
 ```bash

@@ -55,6 +55,41 @@ export function tokenize(text) {
     .filter(Boolean);
 }
 
+/**
+ * Canonical active-proof eligibility shared by every proof consumer.
+ * Resume-import proof is eligible for current matching only when its id is in
+ * the current resume's proof set (or its summary text is shared verbatim with
+ * the current resume text). Independently added manual proof (any other
+ * source) stays active unless explicitly retired. Historical-only proof stays
+ * stored as history but is excluded from the returned set. Returns null when
+ * the profile is unknown.
+ */
+export function activeProofIdsForStore(store, profileId) {
+  const profile = store?.profiles?.[profileId];
+  if (!profile) return null;
+  const out = new Set();
+  const currentText = String(profile.resumeText || '');
+  for (const pid of (Array.isArray(profile.proofPointIds) ? profile.proofPointIds : [])) {
+    const proof = store.proofPoints?.[pid];
+    if (!proof || proof.profileId !== profileId) continue;
+    if (proof.retiredAt || proof.status === 'retired') continue;
+    out.add(pid);
+  }
+  if (currentText) {
+    for (const proof of Object.values(store.proofPoints || {})) {
+      if (proof.profileId !== profileId || proof.source !== 'resume_import') continue;
+      if (proof.retiredAt || proof.status === 'retired') continue;
+      if (proof.summary && currentText.includes(proof.summary)) out.add(proof.id);
+    }
+  }
+  for (const proof of Object.values(store.proofPoints || {})) {
+    if (proof.profileId !== profileId || proof.source === 'resume_import') continue;
+    if (proof.retiredAt || proof.status === 'retired') continue;
+    out.add(proof.id);
+  }
+  return out;
+}
+
 export function ensureDataDir(dataDir) {
   if (!dataDir || typeof dataDir !== 'string') throw new Error('PLUGIN_DATA / --data directory is required');
   const abs = path.resolve(dataDir);
@@ -110,8 +145,26 @@ function appendAudit(store, entry) {
  * the schema marker/version, integer revision, and a migration audit entry are
  * added. Already-current stores are touched only to guarantee an integer
  * revision and schema markers.
+ *
+ * Unsupported future schemas (version or schemaVersion above the bundled
+ * STORE_SCHEMA_VERSION) are rejected without rewriting anything: the caller
+ * receives a typed error and the canonical bytes remain untouched.
  */
+function assertSupportedSchema(parsed) {
+  for (const field of ['version', 'schemaVersion']) {
+    const raw = parsed?.[field];
+    if (raw == null) continue;
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric) && numeric > STORE_SCHEMA_VERSION) {
+      throw Object.assign(
+        new Error(`Unsupported future store ${field} ${raw}: this runtime supports schema ${STORE_SCHEMA_VERSION}`),
+        { code: 'unsupported_schema_version', details: { [field]: raw } }
+      );
+    }
+  }
+}
 function normalizeStore(parsed) {
+  assertSupportedSchema(parsed);
   const store = ensureCollections(parsed);
   const current = Number(store.version || store.schemaVersion || 1);
   store.version = STORE_SCHEMA_VERSION;

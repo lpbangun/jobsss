@@ -16,7 +16,7 @@
 //   - answers are reusable, profile-owned, and never auto-filled
 //   - preview/export payloads are secret-safe (no resume text dumps, no env
 //     secrets) and never claim a sync or send happened
-import { id, now, hashText, tokenize } from './store.js';
+import { id, now, hashText, tokenize, activeProofIdsForStore } from './store.js';
 
 // Local, human-reviewable application states. Anything that would attest an
 // external action (applied, submitted, sent, approved, ...) is rejected.
@@ -300,20 +300,20 @@ export function pursueJob(store, { jobId, profileId }) {
   writeJobLifecycle(store, job, { status: 'pursued', saved: true, pursuedAt: at, updatedAt: at });
   syncTasksForApplication(store, { jobId, profileId, status: 'pursued' });
   const artifactId = id('artifact', `${profileId}:${jobId}:application-readiness`);
-  ensure(store, 'artifacts')[artifactId] = {
-    id: artifactId,
-    jobId,
-    profileId,
-    kind: 'application_readiness',
-    status: 'draft_needs_human_review',
-    title: `Application readiness: ${job.title}`,
-    proofPointIds: Object.values(ensure(store, 'proofPoints'))
-      .filter(proof => proof.profileId === profileId)
-      .map(proof => proof.id),
-    checklist: ['verify profile facts', 'verify proof points', 'review role fit', 'prepare materials'],
-    createdAt: now(),
-    updatedAt: now(),
-  };
+  if (!ensure(store, 'artifacts')[artifactId]) {
+    ensure(store, 'artifacts')[artifactId] = {
+      id: artifactId,
+      jobId,
+      profileId,
+      kind: 'application_readiness',
+      status: 'draft_needs_human_review',
+      title: `Application readiness: ${job.title}`,
+      proofPointIds: proofPointsFor(store, profileId).map(proof => proof.id),
+      checklist: ['verify profile facts', 'verify proof points', 'review role fit', 'prepare materials'],
+      createdAt: now(),
+      updatedAt: now(),
+    };
+  }
   return {
     ok: true,
     jobId,
@@ -396,9 +396,23 @@ export function updateTask(store, { profileId, taskId, status }) {
   return { ok: true, profileId, taskId: task.id, task, message: 'Local task state updated; no external action was performed.' };
 }
 
+// Single shared eligibility definition lives in store.js
+// (activeProofIdsForStore): retired ids lingering in a profile set are never
+// admitted, so historical-only proof cannot leak into answer matching.
+function activeProofIdsFor(store, profileId) {
+  return activeProofIdsForStore(store, profileId);
+}
 function proofPointsFor(store, profileId) {
+  const active = activeProofIdsFor(store, profileId);
   return Object.values(ensure(store, 'proofPoints'))
     .filter(proof => proof.profileId === profileId)
+    .filter(proof => {
+      if (proof.retiredAt || proof.status === 'retired') return false;
+      if (!active) return true;
+      if (active.has(proof.id)) return true;
+      // Historical-only proof stays stored but never contributes current evidence.
+      return false;
+    })
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
 }
 
@@ -660,6 +674,37 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
 
   const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${hashText(body).slice(0, 12)}`);
   const nowIso = now();
+  const existingArtifact = ensure(store, 'artifacts')[artifactId];
+  // Unchanged regeneration must retain trusted artifact approvals/rejections,
+  // actor/timestamps, and decision ledger/history: identical content returns
+  // the existing record untouched. Changed content mints a distinct id above
+  // and never inherits an unrelated human approval.
+  if (existingArtifact && existingArtifact.contentHash === hashText(body) && existingArtifact.content === body) {
+    return {
+      ok: true,
+      jobId,
+      profileId,
+      artifactId,
+      artifact: existingArtifact,
+      requirements,
+      selectedProofPointIds: existingArtifact.proofPointIds || selectedIds,
+      selectedProofIds: existingArtifact.proofPointIds || selectedIds,
+      coverage: { matches: coverage.matches, gaps: coverage.gaps },
+      gaps: coverage.gaps,
+      document: {
+        content: body,
+        format: existingArtifact.format || format,
+        kind,
+        proofPointIds: existingArtifact.proofPointIds || selectedIds,
+        selectedProofPointIds: existingArtifact.proofPointIds || selectedIds,
+        requirements,
+        gaps: coverage.gaps,
+      },
+      proofPointIds: existingArtifact.proofPointIds || selectedIds,
+      format: existingArtifact.format || format,
+      message: 'Unchanged draft already exists; trusted human review state was preserved with no overwrite.',
+    };
+  }
   const artifact = {
     id: artifactId,
     jobId,
@@ -812,18 +857,36 @@ export function addAnswer(store, {
 
 export function listAnswers(store, { profileId, category = null, status = null }) {
   requireProfile(store, profileId);
+  const active = activeProofIdsFor(store, profileId);
   const answers = Object.values(ensure(store, 'answers'))
     .filter(item => item.profileId === profileId)
     .filter(item => !category || item.category === category)
     .filter(item => !status || item.status === status)
-    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))
+    // Explicit active/current versus historical-only distinction: answers
+    // grounded entirely in currently active proof are current matching
+    // candidates; anything else remains readable history only.
+    .map(item => {
+      const ids = Array.isArray(item.proofPointIds) ? item.proofPointIds : [];
+      const proofCurrency = ids.length && active && ids.every(pid => active.has(pid)) ? 'active' : 'historical';
+      return { ...item, proofCurrency };
+    });
   return { ok: true, profileId, answers, items: answers, count: answers.length };
 }
 
 export function matchAnswers(store, { profileId, questions = [], employer = '' }) {
   requireProfile(store, profileId);
+  const active = activeProofIdsFor(store, profileId);
   const pool = Object.values(ensure(store, 'answers'))
-    .filter(item => item.profileId === profileId && item.status === 'unverified');
+    .filter(item => item.profileId === profileId && item.status === 'unverified')
+    // Historical-only proof cannot contribute reusable-answer matching:
+    // only answers grounded entirely in currently active proof remain eligible.
+    .filter(item => {
+      const ids = Array.isArray(item.proofPointIds) ? item.proofPointIds : [];
+      if (!ids.length) return false;
+      if (!active) return true;
+      return ids.every(pid => active.has(pid));
+    });
   const asked = Array.isArray(questions) ? questions.map(String).filter(Boolean) : [];
   const matches = asked.map(question => {
     const questionTokens = new Set(tokenize(question));

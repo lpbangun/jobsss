@@ -641,7 +641,9 @@ export function interviewPrep(dataDir, args = {}) {
     if (applicationId) requireOwnedApplication(store, applicationId, profileId, job ? job.id : null);
     const stories = ensureCollection(store, 'interviewStories');
     const preps = ensureCollection(store, 'interviewPrep');
-    const storyList = Object.values(stories).filter(s => s.profileId === profileId);
+    // Retired stories remain in history but are excluded from current
+    // interview coverage and preparation.
+    const storyList = Object.values(stories).filter(s => s.profileId === profileId && s.state !== 'retired');
     const coverage = coverageForStories(storyList);
     const gaps = coverage.filter(item => item.status === 'gap').map(item => item.factor);
     const at = now();

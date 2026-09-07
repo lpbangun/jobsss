@@ -90,10 +90,88 @@ function parseDataDir(argv) {
   const eq = argv.find(arg => arg.startsWith('--data='));
   return eq ? eq.slice('--data='.length) : process.env.PLUGIN_DATA || null;
 }
+function isAdvertisedTool(name) {
+  return typeof name === 'string' && Object.prototype.hasOwnProperty.call(HANDLERS, name);
+}
+function toolSchemaFor(name) {
+  const found = TOOLS.find(entry => entry.name === name);
+  return found ? found.inputSchema : null;
+}
+function checkValueType(schema, value, path) {
+  if (!schema || typeof schema !== 'object') return null;
+  // Only an absent (undefined) optional value skips validation: an explicit
+  // null must satisfy the declared type like any other value.
+  if (value === undefined) return null;
+  const type = schema.type;
+  if (!type) return null;
+  if (type === 'string' && typeof value !== 'string') return `${path} must be a string`;
+  if (type === 'integer' && !Number.isInteger(value)) return `${path} must be an integer`;
+  if (type === 'number' && (typeof value !== 'number' || !Number.isFinite(value))) return `${path} must be a number`;
+  if (type === 'boolean' && typeof value !== 'boolean') return `${path} must be a boolean`;
+  if (type === 'array' && !Array.isArray(value)) return `${path} must be an array`;
+  if (type === 'object' && (typeof value !== 'object' || value === null || Array.isArray(value))) return `${path} must be an object`;
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) return `${path} must be one of ${schema.enum.join(', ')}`;
+  if (typeof schema.minimum === 'number' && typeof value === 'number' && value < schema.minimum) return `${path} must be >= ${schema.minimum}`;
+  if (typeof schema.maximum === 'number' && typeof value === 'number' && value > schema.maximum) return `${path} must be <= ${schema.maximum}`;
+  if (schema.type === 'array' && schema.items && Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const nested = checkValueType(schema.items, value[i], `${path}[${i}]`);
+      if (nested) return nested;
+    }
+  }
+  if (schema.type === 'object' && schema.properties && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    for (const [key, sub] of Object.entries(schema.properties)) {
+      if (value[key] !== undefined) {
+        const nested = checkValueType(sub, value[key], `${path}.${key}`);
+        if (nested) return nested;
+      }
+    }
+    if (Array.isArray(schema.required)) {
+      for (const key of schema.required) {
+        if (value[key] === undefined || value[key] === null) return `${path}.${key} is required`;
+      }
+    }
+  }
+  return null;
+}
+function validateToolInput(name, args) {
+  const schema = toolSchemaFor(name);
+  if (!schema) return;
+  // Absent arguments (undefined/null) mean no inputs; any other non-object
+  // (false, 0, strings, arrays) is a schema violation, never silently {}.
+  if (args !== undefined && args !== null && (typeof args !== 'object' || Array.isArray(args))) {
+    throw Object.assign(new Error(`Invalid params: arguments for ${name} must be an object`), { code: 'invalid_params' });
+  }
+  const input = args ?? {};
+  for (const key of (schema.required || [])) {
+    // Required-field presence uses the declared schema; empty strings for
+    // entity names remain domain errors, but missing keys fail here.
+    if (input[key] === undefined || input[key] === null) {
+      throw Object.assign(new Error(`Invalid params: ${key} is required for ${name}`), { code: 'invalid_params' });
+    }
+  }
+  for (const [key, sub] of Object.entries(schema.properties || {})) {
+    if (input[key] !== undefined) {
+      const problem = checkValueType(sub, input[key], key);
+      if (problem) throw Object.assign(new Error(`Invalid params: ${problem} for ${name}`), { code: 'invalid_params' });
+    }
+  }
+}
 async function callTool(dataDir, name, args = {}) {
-  const handler = HANDLERS[name];
-  if (!handler) throw Object.assign(new Error('Requested tool is blocked or not available to MCP.'), { code: 'mcp_tool_not_available' });
-  return result(await handler(dataDir, args));
+  // Own advertised tool membership only: inherited names (constructor,
+  // toString, hasOwnProperty, ...) are never dispatched.
+  if (!isAdvertisedTool(name)) throw Object.assign(new Error('Requested tool is blocked or not available to MCP.'), { code: 'mcp_tool_not_available' });
+  // Central input-schema enforcement before any domain dispatch, so invalid
+  // arguments never mutate canonical state.
+  validateToolInput(name, args);
+  return result(await HANDLERS[name](dataDir, args ?? {}));
+}
+function toolErrorResult(message, code) {
+  const text = redactSecrets(String(message));
+  // Encode as JSON so both modern isError readers and legacy frozen readers
+  // (which JSON-parse tool text and look for `.error`) observe the failure.
+  const payload = code ? { ok: false, error: { code: String(code), message: text } } : { ok: false, error: { message: text } };
+  return { content: [{ type: 'text', text: JSON.stringify(payload) }], isError: true };
 }
 function send(message, framing = 'header') {
   const json = JSON.stringify(message);
@@ -150,13 +228,38 @@ export function startMcp({ dataDir, input = process.stdin, sendResponse = send, 
 async function handleLine(dataDir, line, respond) {
   let msg;
   try { msg = JSON.parse(line); } catch (cause) { respond({ jsonrpc: '2.0', id: null, error: { code: -32700, message: cause.message } }); return; }
+  // JSON-RPC notifications (no id) receive no response, including known
+  // methods and failing tool calls; notification mutations are never
+  // executed as attested human actions.
+  const isNotification = msg == null || typeof msg !== 'object' || msg.id === undefined;
   try {
-    if (msg.method === 'initialize') { respond({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2024-11-05', serverInfo: { name: 'jobsss-bundled', version: PRODUCT_VERSION }, capabilities: { tools: {} } } }); return; }
+    if (msg.method === 'initialize') { if (isNotification) return; respond({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2024-11-05', serverInfo: { name: 'jobsss-bundled', version: PRODUCT_VERSION }, capabilities: { tools: {} } } }); return; }
     if (msg.method === 'notifications/initialized') return;
-    if (msg.method === 'tools/list') { respond({ jsonrpc: '2.0', id: msg.id, result: { tools: TOOLS } }); return; }
-    if (msg.method === 'tools/call') { const { name, arguments: args } = msg.params || {}; respond({ jsonrpc: '2.0', id: msg.id, result: await callTool(dataDir, name, args || {}) }); return; }
+    if (typeof msg.method === 'string' && msg.method.startsWith('notifications/')) return;
+    if (msg.method === 'ping') { if (isNotification) return; respond({ jsonrpc: '2.0', id: msg.id, result: {} }); return; }
+    if (msg.method === 'tools/list') { if (isNotification) return; respond({ jsonrpc: '2.0', id: msg.id, result: { tools: TOOLS } }); return; }
+    if (msg.method === 'tools/call') {
+      if (isNotification) return;
+      const { name, arguments: args } = msg.params || {};
+      try {
+        respond({ jsonrpc: '2.0', id: msg.id, result: await callTool(dataDir, name, args ?? {}) });
+      } catch (cause) {
+        // Genuine protocol errors (unknown tools, invalid params/schemas)
+        // remain protocol errors; domain/business execution failures return
+        // a normal model-visible tool result with isError:true.
+        if (cause?.code === 'mcp_tool_not_available' || cause?.code === 'invalid_params') {
+          throw cause;
+        }
+        let text = cause?.code ? `${cause.code}: ${cause.message}` : String(cause?.message || cause);
+        if (cause?.code === 'external_status_forbidden') text = 'external_status_forbidden: blocked human-only status is not available to MCP';
+        respond({ jsonrpc: '2.0', id: msg.id, result: toolErrorResult(text, cause?.code || 'domain_error') });
+      }
+      return;
+    }
+    if (isNotification) return;
     respond({ jsonrpc: '2.0', id: msg.id ?? null, error: { code: -32601, message: 'Method not found' } });
   } catch (cause) {
+    if (isNotification) return;
     let message = cause?.code ? `${cause.code}: ${cause.message}` : cause.message;
     if (cause?.code === 'external_status_forbidden') message = 'external_status_forbidden: blocked human-only status is not available to MCP';
     respond({ jsonrpc: '2.0', id: msg.id ?? null, error: { code: -32000, message } });

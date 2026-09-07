@@ -6,6 +6,12 @@ without API keys; optional public HTTP(S) job intake and ATS discovery use the n
 
 ## Launch
 
+Source installation requires Node 22+ on PATH: the source checkout launcher
+begins with `/usr/bin/env node`, so `node` must be installed and explicitly
+available on PATH in that setup. The source checkout is not equivalent to the
+native standalone package: the deterministic current-host release built via
+`./bin/jobsss release` executes with Node and JobOS absent from PATH.
+
 MCP server `jobsss` (stdio) via the bundled launcher:
 
 ```
@@ -91,10 +97,12 @@ are not MCP-attestable: a human completes each one on the trusted local CLI
 revision, and content hash. MCP callers can only list and create non-authoritative
 decision handoffs (`list_decision_handoffs`, `create_decision_handoff`).
 
-Client compatibility: Pi/OMP, Codex, Hermes, and Claude load the same canonical
-skill and bundled runtime through thin pointers recorded in `compat/matrix.json`.
-A client or platform is labeled `verified` only after a real isolated launch
-proved it; everything unproven is labeled `unverified`. See `compat/README.md`.
+Client compatibility: each client references the same canonical skill and
+bundled runtime through thin pointers recorded in `compat/matrix.json`.
+MCP registration alone does not prove skill loading or a state-changing
+agent-host journey. A client or platform is labeled `verified` only after a
+real isolated launch proved it; everything unproven is labeled `unverified`.
+See `compat/README.md`.
 
 JobSSS never claims submission, sending, approval, or deferred capability and
 never invents jobs, scores, or proofs.

@@ -32,9 +32,13 @@ Probes run `./bin/jobsss compat-probe --client <name> --config-dir <temp>
 --plugin-root <plugin>` with temporary HOME/XDG and client home overrides;
 real client profiles are never read or written.
 
-Command meanings are identical across clients: every client loads this same
-canonical skill and routes to the same bundled `jobsss` runtime, so a command
-means the same thing in Pi/OMP, Codex, Hermes, and Claude. Client adapters
+Command meanings are identical across clients: each client references the same
+canonical skill definition and routes to the same bundled `jobsss` runtime, so a command
+means the same thing in Pi/OMP, Codex, Hermes, and Claude once the client has
+actually loaded the skill and proven a live runtime launch. Registration,
+connectivity, skill loading, agent-host journey, native package loading, and
+matching-platform execution are distinct levels; only a real isolated launch
+proves `verified`. Client adapters
 never change tool semantics, add tools, or duplicate policy.
 
 ## Trusted local surface and pending decisions

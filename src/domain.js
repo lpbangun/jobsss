@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   slug, id, now, loadStore, commitStore, hashText, dedupeKeyForJob, tokenize,
-  ensureDataDir, STORE_SCHEMA_VERSION,
+  ensureDataDir, STORE_SCHEMA_VERSION, activeProofIdsForStore,
 } from './store.js';
 import { localScore } from './scoring.js';
 import {
@@ -170,7 +170,24 @@ function persistResumeRevision(store, profile, text, sourceName) {
   store.resumes = store.resumes || {};
   const sourceHash = hashText(text);
   const existing = Object.values(store.resumes).find(item => item.profileId === profile.id && item.sourceHash === sourceHash);
-  if (existing) return existing;
+  if (existing) {
+    // A→B→A: repoint the current pointer at the existing A revision while
+    // retaining both A and B records and their revision ids. Identical
+    // content never creates a duplicate content revision. Pointer changes are
+    // recorded in the durable audit history so the change chronology survives
+    // restart; resumeRevisionIds stays append-only.
+    if (!Array.isArray(profile.resumeRevisionIds)) profile.resumeRevisionIds = [];
+    if (!profile.resumeRevisionIds.includes(existing.id)) profile.resumeRevisionIds.push(existing.id);
+    const prior = profile.currentResumeId || null;
+    profile.currentResumeId = existing.id;
+    if (prior !== existing.id) {
+      store.audit = Array.isArray(store.audit) ? store.audit : [];
+      store.audit.push({ event: 'resume_revision_restored', profileId: profile.id, resumeId: existing.id,
+        revision: existing.revision, priorCurrentResumeId: prior, resumeRevisionIds: [...profile.resumeRevisionIds],
+        createdAt: now() });
+    }
+    return existing;
+  }
   const revision = Object.values(store.resumes).filter(item => item.profileId === profile.id).length + 1;
   const resumeId = id('resume', `${profile.id}:${sourceHash}`);
   const record = { id: resumeId, profileId: profile.id, revision, sourceName, sourceHash,
@@ -181,10 +198,78 @@ function persistResumeRevision(store, profile, text, sourceName) {
   return record;
 }
 
+// Active-proof eligibility delegates to the canonical shared helper in
+// store.js (activeProofIdsForStore) so every consumer — scoring, drafting,
+// answers, coverage — applies one definition. Historical-only proof stays
+// stored as history with its provenance and verification retained, but is
+// excluded from current score evidence, draft selection, answer matching,
+// and preparation coverage.
+function isActiveProof(store, profile, proof) {
+  if (!proof || !profile || proof.profileId !== profile.id) return false;
+  const active = activeProofIdsForStore(store, profile.id);
+  return active ? active.has(proof.id) : false;
+}
+function activeProofsFor(store, profile) {
+  return Object.values(store.proofPoints || {}).filter(proof => isActiveProof(store, profile, proof));
+}
+function historicalProofIdsFor(store, profile) {
+  const active = activeProofIdsForStore(store, profile.id);
+  return Object.values(store.proofPoints || {})
+    .filter(proof => proof.profileId === profile.id && !(active && active.has(proof.id)))
+    .map(proof => proof.id);
+}
+function resolveCollisionSafeProfileId(store, name) {
+  const base = slug(name);
+  const existing = store.profiles[base];
+  if (!existing) return base;
+  // Same exact identity retries remain supported on the same record.
+  if (existing.name === name) return base;
+  // Distinct names (including non-Latin names and ASCII slug collisions)
+  // must never silently overwrite another profile: allocate a distinct id.
+  const extra = hashText(`profile:${String(name)}`).slice(0, 8);
+  let candidate = `${base}-${extra}`;
+  let counter = 1;
+  while (store.profiles[candidate] && store.profiles[candidate].name !== name) {
+    counter += 1;
+    candidate = `${base}-${extra}-${counter}`;
+  }
+  return candidate;
+}
+
 export function doctor(dataDir) {
   const abs = ensureDataDir(dataDir);
   let writable = true;
   try { fs.accessSync(abs, fs.constants.R_OK | fs.constants.W_OK); } catch { writable = false; }
+  // Diagnose corrupt canonical state without modifying it: invalid JSON or
+  // an invalid store shape reports non-ok accurately, while a healthy empty
+  // installation (no store yet) still diagnoses normally.
+  try {
+    const storeFile = path.join(abs, 'store.json');
+    if (fs.existsSync(storeFile)) {
+      const raw = fs.readFileSync(storeFile, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { ok: false, status: 'corrupt_store', runtime: 'jobsss-bundled', version: PRODUCT_VERSION,
+          schemaVersion: STORE_SCHEMA_VERSION, dataDir: abs, pluginData: abs, storeExists: true,
+          bundled: true, writable, launcher: './bin/jobsss',
+          message: 'PLUGIN_DATA store is corrupt: valid JSON object required.' };
+      }
+      for (const field of ['version', 'schemaVersion']) {
+        const numeric = Number(parsed[field]);
+        if (parsed[field] != null && Number.isFinite(numeric) && numeric > STORE_SCHEMA_VERSION) {
+          return { ok: false, status: 'unsupported_schema', runtime: 'jobsss-bundled', version: PRODUCT_VERSION,
+            schemaVersion: STORE_SCHEMA_VERSION, dataDir: abs, pluginData: abs, storeExists: true,
+            bundled: true, writable, launcher: './bin/jobsss',
+            message: `PLUGIN_DATA store uses unsupported future ${field} ${parsed[field]}; this runtime supports schema ${STORE_SCHEMA_VERSION}.` };
+        }
+      }
+    }
+  } catch (cause) {
+    return { ok: false, status: 'corrupt_store', runtime: 'jobsss-bundled', version: PRODUCT_VERSION,
+      schemaVersion: STORE_SCHEMA_VERSION, dataDir: abs, pluginData: abs,
+      storeExists: fs.existsSync(path.join(abs, 'store.json')), bundled: true, writable,
+      launcher: './bin/jobsss', message: `PLUGIN_DATA store is corrupt: ${cause.message}` };
+  }
   return {
     ok: writable, status: 'ok', runtime: 'jobsss-bundled', version: PRODUCT_VERSION,
     schemaVersion: STORE_SCHEMA_VERSION, dataDir: abs, pluginData: abs,
@@ -209,22 +294,42 @@ export function createProfile(dataDir, args = {}) {
   if (!name) throw error('missing_name', 'create_profile requires name');
   const input = readIntakeText(dataDir, args, 'resume', ['resumeText', 'text', 'content']);
   return mutate(dataDir, args, store => {
-    const profileId = slug(name);
+    const profileId = resolveCollisionSafeProfileId(store, name);
     const existing = store.profiles[profileId];
     if (existing) {
+      // Same exact identity retry: never silently adopt another profile's
+      // record (resolveCollisionSafeProfileId guarantees name equality here).
+      if (existing.name !== name) {
+        throw error('profile_conflict', `Profile name "${name}" collides with a distinct existing profile; retry with a distinct name`);
+      }
       if (input.text) {
         existing.resumeText = input.text;
         existing.resumeSource = input.sourceName;
         existing.resume = resumeDocument(profileId, input.text);
         persistResumeRevision(store, existing, input.text, input.sourceName);
         const proofs = extractProofPoints(profileId, input.text);
-        existing.proofPointIds = proofs.map(proof => proof.id);
-        for (const proof of proofs) store.proofPoints[proof.id] = proof;
+        // Unchanged re-import must retain trusted proof verification,
+        // decision ledger/history, and audit history: existing proof records
+        // (with verifiedAt/status/actor) are never overwritten, and changed
+        // content never inherits an unrelated human approval (new ids start
+        // unverified). Manual proofs are preserved across resume changes.
+        const manualIds = (existing.proofPointIds || []).filter(pid => {
+          const prior = store.proofPoints[pid];
+          return prior && prior.source !== 'resume_import';
+        });
+        const freshIds = [];
+        for (const proof of proofs) {
+          if (!store.proofPoints[proof.id]) store.proofPoints[proof.id] = proof;
+          freshIds.push(proof.id);
+        }
+        existing.proofPointIds = [...new Set([...freshIds, ...manualIds])];
         existing.updatedAt = now();
       }
-      const proofPoints = Object.values(store.proofPoints).filter(proof => proof.profileId === profileId);
+      const proofPoints = activeProofsFor(store, existing);
       const { resumeText: _private, ...safeProfile } = existing;
-      return { profileId, id: profileId, profile: safeProfile, proofPoints, created: false };
+      return { profileId, id: profileId, profile: safeProfile, proofPoints,
+        activeProofPointIds: proofPoints.map(proof => proof.id),
+        historicalProofPointIds: historicalProofIdsFor(store, existing), created: false };
     }
     const proofPoints = extractProofPoints(profileId, input.text);
     const profile = {
@@ -235,9 +340,14 @@ export function createProfile(dataDir, args = {}) {
     };
     store.profiles[profileId] = profile;
     persistResumeRevision(store, profile, input.text, input.sourceName);
-    for (const proof of proofPoints) store.proofPoints[proof.id] = proof;
+    for (const proof of proofPoints) {
+      if (!store.proofPoints[proof.id]) store.proofPoints[proof.id] = proof;
+    }
+    const active = activeProofsFor(store, profile);
     const { resumeText: _private, ...safeProfile } = profile;
-    return { profileId, id: profileId, profile: safeProfile, proofPoints, created: true };
+    return { profileId, id: profileId, profile: safeProfile, proofPoints: active,
+      activeProofPointIds: active.map(proof => proof.id),
+      historicalProofPointIds: historicalProofIdsFor(store, profile), created: true };
   });
 }
 
@@ -250,10 +360,12 @@ export function listProfiles(dataDir, args = {}) {
 
 export function listResumes(dataDir, args = {}) {
   const store = loadStore(dataDir);
-  requireProfile(store, args.profileId);
+  const profile = requireProfile(store, args.profileId);
   const resumes = Object.values(store.resumes || {}).filter(item => item.profileId === args.profileId)
-    .sort((a, b) => a.revision - b.revision);
-  return { ok: true, profileId: args.profileId, resumes, items: resumes, count: resumes.length };
+    .sort((a, b) => a.revision - b.revision)
+    .map(item => ({ ...item, current: item.id === profile.currentResumeId }));
+  return { ok: true, profileId: args.profileId, currentResumeId: profile.currentResumeId || null,
+    resumes, items: resumes, count: resumes.length };
 }
 
 export function updateProfile(dataDir, args = {}) {
@@ -339,7 +451,10 @@ export function scoreJob(dataDir, args = {}) {
   return mutate(dataDir, args, store => {
     const job = requireJobOwned(store, jobId, profileId);
     const profile = requireProfile(store, profileId);
-    const proofPoints = Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId);
+    // Current matching uses only active proof: current-resume set plus
+    // independent nonretired manual proof. Historical-only proof remains
+    // stored but cannot contribute score evidence.
+    const proofPoints = activeProofsFor(store, profile);
     const fit = localScore({ profile: { ...profile, proofPoints }, job });
     store.scores[jobId] = fit;
     return { ...fit, jobId, profileId, profile: profileId, id: jobId, fit };
@@ -391,7 +506,11 @@ export function reviewQueue(dataDir, args = {}) {
       && !terminal.has(store.applications?.[job.id]?.status)).map(job => ({
     id: job.id, jobId: job.id, profileId, title: job.title, kind: 'job_review', status: 'needs_review',
   }));
-  const queue = artifacts.length ? artifacts : fallback;
+  // Every pending job remains visible even when another job has an artifact:
+  // combine artifact entries with per-job fallbacks, without duplicating a
+  // fallback for an already represented job.
+  const represented = new Set(artifacts.map(item => item.jobId || item.id));
+  const queue = [...artifacts, ...fallback.filter(item => !represented.has(item.jobId))];
   return { ok: true, profileId, queue, items: queue, artifacts, count: queue.length,
     message: 'Local review queue; human decision required for any external step.' };
 }

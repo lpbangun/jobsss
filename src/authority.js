@@ -160,6 +160,9 @@ export function pendingDecisionItems(store, { profileId } = {}) {
   const items = [];
   const push = (entity, type) => {
     if (!entity || (profileId && entity.profileId !== profileId)) return;
+    // Retired/skipped/archived artifacts remain in history but are absent
+    // from current approval queues.
+    if (type === 'artifact' && (entity.retiredAt || String(entity.status || '').startsWith('retired_'))) return;
     const kind = pendingKindFor(entity, type);
     if (!kind) return;
     const revision = Number.isInteger(ledger[entity.id]?.revision) && ledger[entity.id].revision >= 1 ? ledger[entity.id].revision : 1;
@@ -453,8 +456,17 @@ export function createDecisionHandoff(dataDir, args = {}) {
   ensureDataDir(dataDir);
   const profileId = String(args.profileId || '').trim();
   if (!profileId) throw typedError('missing_profile', 'create_decision_handoff requires profileId');
+  // expectedRevision participates in the canonical atomic write contract:
+  // a stale revision rejects before any persistent change.
+  const expectedRevision = args.expectedRevision == null || args.expectedRevision === ''
+    ? null
+    : Number(args.expectedRevision);
+  if (expectedRevision != null && (!Number.isInteger(expectedRevision) || expectedRevision < 0)) {
+    throw typedError('invalid_revision', `--expectedRevision must be an integer (got ${args.expectedRevision})`);
+  }
+  const note = args.note == null ? null : String(args.note);
   let outcome;
-  commitStore(dataDir, {}, store => {
+  commitStore(dataDir, { expectedRevision }, store => {
     requireProfile(store, profileId);
     const kindRaw = String(args.kind || 'decision_handoff').trim().toLowerCase();
     const kind = /^[a-z0-9._-]{1,64}$/.test(kindRaw) ? kindRaw : 'decision_handoff';
@@ -463,16 +475,17 @@ export function createDecisionHandoff(dataDir, args = {}) {
     }
     const at = now();
     const handoffId = id('handoff', `${profileId}:${kind}:${at}`);
-    const record = { id: handoffId, profileId, kind, createdAt: at, actor: 'agent_requested_human_review' };
+    const record = { id: handoffId, profileId, kind, note, createdAt: at, actor: 'agent_requested_human_review' };
     store.decisionHandoffs[handoffId] = record;
     store.audit = Array.isArray(store.audit) ? store.audit : [];
-    store.audit.push({ event: 'decision_handoff_created', handoffId, profileId, kind, createdAt: at });
+    store.audit.push({ event: 'decision_handoff_created', handoffId, profileId, kind, note, createdAt: at });
     outcome = {
       ok: true,
       handoffId,
       id: handoffId,
       created: true,
       kind,
+      note,
       handoff: record,
       message: 'Handoff created for human review. No authority was granted; a human must complete it with the trusted local CLI ./bin/jobsss decide using the exact entity id, revision, and content hash.',
     };

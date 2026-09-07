@@ -7,7 +7,9 @@
       "id": "pi",
       "status": "unverified",
       "loading": "native-skills",
-      "version": "0.84.3",
+      "version": "0.85.1",
+      "versionObservedAt": "2026-09-07T03:00:00Z",
+      "versionNote": "availability observation only (binary present); not a new integration verification, status unchanged", 
       "probe": "./bin/jobsss compat-probe --client pi --config-dir <temp> --plugin-root <plugin>",
       "notes": "stock Pi core exposes native skill loading but no documented native stdio MCP host; proving the JobSSS runtime would require a custom extension tool bridge plus a model-authorized session, so this client is unverified and never claimed as verified."
     },
@@ -16,6 +18,8 @@
       "status": "unverified",
       "loading": "unknown",
       "version": "18.0.4",
+      "versionObservedAt": "2026-09-07T03:00:00Z",
+      "versionNote": "availability observation only (binary present); not a new integration verification, status unchanged",
       "probe": "./bin/jobsss compat-probe --client omp --config-dir <temp> --plugin-root <plugin>",
       "notes": "this build exposes no mcp/plugin subcommand and no documented native Agent Plugins loader was established; unverified until a real isolated launch proves the JobSSS runtime."
     },
@@ -23,7 +27,9 @@
       "id": "codex",
       "status": "unverified",
       "loading": "native",
-      "version": "0.147.0",
+      "version": "0.153.4",
+      "versionObservedAt": "2026-09-07T03:00:00Z",
+      "versionNote": "availability observation only (binary present); not a new integration verification, status unchanged",
       "adapter": "compat/codex/config.toml.template",
       "probe": "./bin/jobsss compat-probe --client codex --config-dir <temp> --plugin-root <plugin>",
       "notes": "isolated temporary CODEX_HOME registration is accepted for the JobSSS runtime, but a live JobSSS tool exchange could not be proven without provider authentication (probe keys are blank by design); labeled unverified until an authenticated isolated session proves the launch."
@@ -32,7 +38,9 @@
       "id": "hermes",
       "status": "verified",
       "loading": "native",
-      "version": "0.18.2",
+      "version": "0.21.0",
+      "versionObservedAt": "2026-09-07T03:00:00Z",
+      "versionNote": "availability observation only (binary present); not a new integration verification, status unchanged",
       "adapter": "compat/hermes/config.yaml.template",
       "probe": "./bin/jobsss compat-probe --client hermes --config-dir <temp> --plugin-root <plugin>",
       "verifiedBy": "real isolated launch: hermes mcp test jobsss connected to the bundled runtime in a temporary HERMES_HOME and discovered its tools",
@@ -43,6 +51,8 @@
       "status": "verified",
       "loading": "native",
       "version": "2.1.222",
+      "versionObservedAt": "2026-09-07T03:00:00Z",
+      "versionNote": "availability observation only (binary present); not a new integration verification, status unchanged",
       "adapter": "compat/claude/mcp.json.template",
       "probe": "./bin/jobsss compat-probe --client claude --config-dir <temp> --plugin-root <plugin>",
       "verifiedBy": "real isolated launch: claude mcp list reported the jobsss stdio server as Connected under a temporary CLAUDE_CONFIG_DIR",
@@ -70,5 +80,6 @@
     "language": "local preparation and local drafts stay local; an externally observed application status is human observation recorded via the trusted local surface and attributed to the human, never to JobSSS; unsupported behavior (external sending, submission, scheduling, browser automation) is blocked or unavailable and never claimed.",
     "never": "unproven clients and platforms are labeled unverified; nothing implies this plugin performed an external send, submission, or application action."
   },
-  "updated": "2026-08-31T22:20:00Z"
+  "updated": "2026-09-07T03:00:00Z",
+  "versionPolicy": "client version strings are last-observed availability notes, never integration proof; only a real isolated launch sets verified"
 }

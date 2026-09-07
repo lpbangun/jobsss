@@ -22,7 +22,7 @@
 // or drives a browser.
 import fs from 'node:fs';
 import path from 'node:path';
-import { id, now, loadStore, commitStore, ensureDataDir, activeProofIdsForStore } from './store.js';
+import { id, now, loadStore, commitStore, ensureDataDir, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
 
 const STORY_FIELDS = Object.freeze(['title', 'situation', 'task', 'action', 'result', 'reflection']);
 export const STORY_STATES = Object.freeze(['draft_needs_verification', 'verified', 'retired']);
@@ -688,7 +688,8 @@ export function getInterviewPrep(dataDir, args = {}) {
   if (jobId) requireOwnedJob(store, jobId, profileId);
   const preps = Object.values(store.interviewPrep || {})
     .filter(p => p.profileId === profileId && (!jobId || p.jobId === jobId))
-    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+    .map(prep => ({ ...prep, freshness: evidenceFreshnessForStore(store, prep) }));
   return { ok: true, profileId, prep: preps[preps.length - 1] || null, items: preps, count: preps.length };
 }
 

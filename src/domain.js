@@ -219,6 +219,9 @@ function historicalProofIdsFor(store, profile) {
     .map(proof => proof.id);
 }
 function resolveCollisionSafeProfileId(store, name) {
+  const matches = Object.values(store.profiles).filter(profile => profile.name === name);
+  if (matches.length > 1) throw error('ambiguous_profile', `Ambiguous profile name "${name}"; import cannot select between distinct identities`);
+  if (matches.length === 1) return matches[0].id;
   const base = slug(name);
   const existing = store.profiles[base];
   if (!existing) return base;
@@ -372,7 +375,13 @@ export function updateProfile(dataDir, args = {}) {
   return mutate(dataDir, args, store => {
     const profile = requireProfile(store, args.profileId);
     if (args.preferences && typeof args.preferences === 'object') profile.preferences = defaultPreferences(profile.name, { ...profile.preferences, ...args.preferences });
-    if (args.name) profile.name = String(args.name).trim();
+    if (args.name) {
+      const name = String(args.name).trim();
+      if (Object.values(store.profiles).some(other => other.id !== profile.id && other.name === name)) {
+        throw error('profile_conflict', `Profile name "${name}" already exists; rename cannot merge identities`);
+      }
+      profile.name = name;
+    }
     profile.updatedAt = now();
     return { ok: true, profileId: profile.id, profile: { ...profile, resumeText: undefined } };
   });
@@ -383,10 +392,21 @@ export function addProofPoint(dataDir, args = {}) {
     const profile = requireProfile(store, args.profileId);
     const summary = String(args.summary || '').trim();
     if (!summary) throw error('missing_summary', 'add_proof_point requires summary');
-    const proofId = id('proof', `${profile.id}:${summary}`);
-    const proof = { id: proofId, profileId: profile.id, summary,
+    const content = { profileId: profile.id, summary,
       skills: Array.isArray(args.skills) ? args.skills.map(String) : [], metrics: Array.isArray(args.metrics) ? args.metrics.map(String) : [],
-      source: 'inline', verification: 'human_required', status: 'needs_verification', createdAt: now() };
+      source: 'inline' };
+    // Compare only canonical content, never trusted status or timestamps. Keep
+    // legacy identities and full verified snapshots intact on identical retry.
+    const canonical = proof => JSON.stringify({ profileId: proof.profileId, summary: proof.summary,
+      skills: proof.skills, metrics: proof.metrics, source: proof.source });
+    const contentKey = canonical(content);
+    const existing = Object.values(store.proofPoints).find(proof => canonical(proof) === contentKey);
+    if (existing) return { ok: true, proofId: existing.id, id: existing.id, proofPoint: existing };
+    let proofId = id('proof', `${profile.id}:${summary}`);
+    if (store.proofPoints[proofId]) proofId = id('proof', contentKey);
+    if (store.proofPoints[proofId]) throw error('proof_conflict', 'Proof identity collision; existing evidence cannot be overwritten');
+    const proof = { id: proofId, ...content,
+      verification: 'human_required', status: 'needs_verification', createdAt: now() };
     store.proofPoints[proofId] = proof;
     profile.proofPointIds = [...new Set([...(profile.proofPointIds || []), proofId])];
     return { ok: true, proofId, id: proofId, proofPoint: proof };

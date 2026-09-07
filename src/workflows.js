@@ -16,7 +16,7 @@
 //   - answers are reusable, profile-owned, and never auto-filled
 //   - preview/export payloads are secret-safe (no resume text dumps, no env
 //     secrets) and never claim a sync or send happened
-import { id, now, hashText, tokenize, activeProofIdsForStore } from './store.js';
+import { id, now, hashText, tokenize, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
 
 // Local, human-reviewable application states. Anything that would attest an
 // external action (applied, submitted, sent, approved, ...) is rejected.
@@ -787,7 +787,8 @@ export function listReviewArtifacts(store, { profileId }) {
   requireProfile(store, profileId);
   const artifacts = Object.values(ensure(store, 'artifacts'))
     .filter(artifact => artifact.profileId === profileId && !artifact.retiredAt)
-    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    .map(artifact => ({ ...artifact, freshness: evidenceFreshnessForStore(store, artifact) }));
   return { ok: true, profileId, artifacts, items: artifacts, queue: artifacts, count: artifacts.length };
 }
 

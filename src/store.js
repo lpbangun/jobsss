@@ -90,6 +90,26 @@ export function activeProofIdsForStore(store, profileId) {
   return out;
 }
 
+/** Readback-only evidence currency; never persisted or included in decision hashes. */
+export function evidenceFreshnessForStore(store, record) {
+  const active = activeProofIdsForStore(store, record.profileId);
+  const reasons = new Set();
+  const checkProof = proofId => {
+    if (!active?.has(proofId)) reasons.add(`Proof ${proofId} is historical, retired, or unavailable`);
+  };
+  for (const proofId of record.proofPointIds || []) checkProof(proofId);
+  for (const storyId of record.storyIds || []) {
+    const story = store.interviewStories?.[storyId];
+    if (!story || story.profileId !== record.profileId) {
+      reasons.add(`Story ${storyId} is unavailable`);
+      continue;
+    }
+    if (story.state === 'retired' || story.retiredAt) reasons.add(`Story ${storyId} is retired`);
+    for (const proofId of story.proofPointIds || []) checkProof(proofId);
+  }
+  return { status: reasons.size ? 'stale' : 'current', reasons: [...reasons] };
+}
+
 export function ensureDataDir(dataDir) {
   if (!dataDir || typeof dataDir !== 'string') throw new Error('PLUGIN_DATA / --data directory is required');
   const abs = path.resolve(dataDir);

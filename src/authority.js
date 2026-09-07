@@ -22,7 +22,7 @@
 // change to the entity (or an already-completed decision) makes a previously
 // listed hash or revision stale.
 
-import { loadStore, commitStore, hashText, id, now, ensureDataDir, redactSecrets } from './store.js';
+import { loadStore, commitStore, hashText, id, now, ensureDataDir, redactSecrets, evidenceFreshnessForStore } from './store.js';
 
 export const TRUSTED_DECISION_ACTIONS = Object.freeze([
   'proof.verify',
@@ -180,6 +180,9 @@ export function pendingDecisionItems(store, { profileId } = {}) {
       allowedActions: ACTIONS_BY_TYPE[type],
       note: `Pending ${kind}; completion requires the trusted local CLI ./bin/jobsss decide with this exact id, revision, and content hash.`,
     };
+    if (type === 'artifact' || type === 'story' || type === 'debrief') {
+      item.freshness = evidenceFreshnessForStore(store, entity);
+    }
     if (type === 'application') item.applicationId = entity.id;
     if (type === 'artifact') item.artifactId = entity.id;
     if (type === 'contact') item.contactId = entity.id;

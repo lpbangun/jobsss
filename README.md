@@ -82,6 +82,30 @@ artifact for the review queue. Re-importing the same job deduplicates to one
 job id. Scoring and pursuit do not require credentials and never claim
 submitted/sent/applied/approved.
 
+Identical manual proof retries retain the original record and human verification;
+changed summary, skills, or metrics create a separate unverified proof while
+preserving prior evidence. Profile reimports resolve a unique exact current name,
+including after rename; conflicting renames and ambiguous imports reject rather
+than merge identities.
+
+Stored interview-prep readbacks, review-queue drafts, and pending artifact/story
+handoffs include computed `freshness: {status: 'current'|'stale', reasons: []}`.
+Stale reasons identify historical/retired supporting proof or retired stories.
+This is evidence currency, not approval: stored snapshots and trusted hashes are
+unchanged, and nothing is deleted or automatically regenerated.
+
+MCP validates JSON-RPC 2.0 envelopes before classifying notifications by absent
+`id`. Valid notifications stay silent and do not mutate state. Omitted tool
+arguments default to `{}`; explicit null rejects with `-32602`. Invalid envelopes
+receive `-32600`; business failures remain tool results with `isError: true`.
+`create_decision_handoff.expectedRevision` is an integer, not human authority.
+
+The separately authorized closure follow-up does not reset the historical
+five-round NOT CONVERGED result. Current exact-candidate full-suite, independent
+review, and real canonical-skill/model-driven mutation/restart acceptance remain
+separate gates; historical connectivity and native structural evidence do not
+establish a current host PASS.
+
 ## Boundaries
 
 Local contact/network research, outreach plans and drafts, interview story drafts,

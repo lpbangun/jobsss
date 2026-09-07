@@ -57,7 +57,7 @@ const TOOLS = [
   tool('interview_debrief_handoff', 'Return the trusted human-only debrief handoff without attesting an outcome.', schema(profile, ['profileId'])),
   tool('preview_sync', 'Return a secret-safe local sync/export preview; transmits nothing.', schema(profile, ['profileId'])),
   tool('list_decision_handoffs', 'List pending non-authoritative decision handoffs for a profile. Completion requires the trusted local CLI ./bin/jobsss decide; MCP never completes or forges human decisions.', schema(profile, ['profileId'])),
-  tool('create_decision_handoff', 'Create a non-authoritative local handoff marker for human review. Grants no authority, performs no action, and never completes a human decision.', schema({ ...profile, kind: string, note: string }, ['profileId'])),
+  tool('create_decision_handoff', 'Create a non-authoritative local handoff marker for human review. Grants no authority, performs no action, and never completes a human decision.', schema({ ...profile, kind: string, note: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
 ];
 
 const HANDLERS = Object.freeze({
@@ -137,12 +137,11 @@ function checkValueType(schema, value, path) {
 function validateToolInput(name, args) {
   const schema = toolSchemaFor(name);
   if (!schema) return;
-  // Absent arguments (undefined/null) mean no inputs; any other non-object
-  // (false, 0, strings, arrays) is a schema violation, never silently {}.
-  if (args !== undefined && args !== null && (typeof args !== 'object' || Array.isArray(args))) {
+  // Omission alone means no inputs; explicit null is not an object.
+  if (args !== undefined && (args === null || typeof args !== 'object' || Array.isArray(args))) {
     throw Object.assign(new Error(`Invalid params: arguments for ${name} must be an object`), { code: 'invalid_params' });
   }
-  const input = args ?? {};
+  const input = args === undefined ? {} : args;
   for (const key of (schema.required || [])) {
     // Required-field presence uses the declared schema; empty strings for
     // entity names remain domain errors, but missing keys fail here.
@@ -164,7 +163,7 @@ async function callTool(dataDir, name, args = {}) {
   // Central input-schema enforcement before any domain dispatch, so invalid
   // arguments never mutate canonical state.
   validateToolInput(name, args);
-  return result(await HANDLERS[name](dataDir, args ?? {}));
+  return result(await HANDLERS[name](dataDir, args));
 }
 function toolErrorResult(message, code) {
   const text = redactSecrets(String(message));
@@ -228,21 +227,36 @@ export function startMcp({ dataDir, input = process.stdin, sendResponse = send, 
 async function handleLine(dataDir, line, respond) {
   let msg;
   try { msg = JSON.parse(line); } catch (cause) { respond({ jsonrpc: '2.0', id: null, error: { code: -32700, message: cause.message } }); return; }
-  // JSON-RPC notifications (no id) receive no response, including known
-  // methods and failing tool calls; notification mutations are never
-  // executed as attested human actions.
-  const isNotification = msg == null || typeof msg !== 'object' || msg.id === undefined;
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const hasId = object(msg) && Object.prototype.hasOwnProperty.call(msg, 'id');
+  const validId = hasId && (msg.id === null || typeof msg.id === 'string' || (typeof msg.id === 'number' && Number.isFinite(msg.id)));
+  if (!object(msg) || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string' ||
+      (hasId && !validId) || (Object.prototype.hasOwnProperty.call(msg, 'params') &&
+        !(object(msg.params) || Array.isArray(msg.params)))) {
+    respond({ jsonrpc: '2.0', id: validId ? msg.id : null, error: { code: -32600, message: 'Invalid Request' } });
+    return;
+  }
+  // Only a valid envelope without id is a notification. Notifications remain
+  // silent and never dispatch mutations, regardless of their method name.
+  if (!hasId) return;
   try {
-    if (msg.method === 'initialize') { if (isNotification) return; respond({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2024-11-05', serverInfo: { name: 'jobsss-bundled', version: PRODUCT_VERSION }, capabilities: { tools: {} } } }); return; }
-    if (msg.method === 'notifications/initialized') return;
-    if (typeof msg.method === 'string' && msg.method.startsWith('notifications/')) return;
-    if (msg.method === 'ping') { if (isNotification) return; respond({ jsonrpc: '2.0', id: msg.id, result: {} }); return; }
-    if (msg.method === 'tools/list') { if (isNotification) return; respond({ jsonrpc: '2.0', id: msg.id, result: { tools: TOOLS } }); return; }
+    const methodSchemas = {
+      initialize: schema({ protocolVersion: string, capabilities: schema(), clientInfo: schema({ name: string, version: string }) }),
+      ping: schema(),
+      'tools/list': schema({ cursor: string }),
+      'tools/call': schema({ name: string }, ['name']),
+    };
+    if (Object.prototype.hasOwnProperty.call(methodSchemas, msg.method)) {
+      const problem = checkValueType(methodSchemas[msg.method], msg.params === undefined ? {} : msg.params, 'params');
+      if (problem) throw Object.assign(new Error(`Invalid params: ${problem}`), { code: 'invalid_params' });
+    }
+    if (msg.method === 'initialize') { respond({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2024-11-05', serverInfo: { name: 'jobsss-bundled', version: PRODUCT_VERSION }, capabilities: { tools: {} } } }); return; }
+    if (msg.method === 'ping') { respond({ jsonrpc: '2.0', id: msg.id, result: {} }); return; }
+    if (msg.method === 'tools/list') { respond({ jsonrpc: '2.0', id: msg.id, result: { tools: TOOLS } }); return; }
     if (msg.method === 'tools/call') {
-      if (isNotification) return;
-      const { name, arguments: args } = msg.params || {};
+      const { name, arguments: args } = msg.params;
       try {
-        respond({ jsonrpc: '2.0', id: msg.id, result: await callTool(dataDir, name, args ?? {}) });
+        respond({ jsonrpc: '2.0', id: msg.id, result: await callTool(dataDir, name, args) });
       } catch (cause) {
         // Genuine protocol errors (unknown tools, invalid params/schemas)
         // remain protocol errors; domain/business execution failures return
@@ -256,13 +270,11 @@ async function handleLine(dataDir, line, respond) {
       }
       return;
     }
-    if (isNotification) return;
-    respond({ jsonrpc: '2.0', id: msg.id ?? null, error: { code: -32601, message: 'Method not found' } });
+    respond({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Method not found' } });
   } catch (cause) {
-    if (isNotification) return;
     let message = cause?.code ? `${cause.code}: ${cause.message}` : cause.message;
     if (cause?.code === 'external_status_forbidden') message = 'external_status_forbidden: blocked human-only status is not available to MCP';
-    respond({ jsonrpc: '2.0', id: msg.id ?? null, error: { code: -32000, message } });
+    respond({ jsonrpc: '2.0', id: msg.id ?? null, error: { code: cause?.code === 'invalid_params' || cause?.code === 'mcp_tool_not_available' ? -32602 : -32000, message } });
   }
 }
 

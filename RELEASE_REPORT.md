@@ -2,6 +2,8 @@
 
 Historical release report retained from audited base `dd9497be2b973b6dd0316c826f22d4eafca65f39`, on published base `a380827d3cfd58c7c4dca014a109ead0326db18c`. The command results and reviewer verdict below are prior evidence, not acceptance of the current integrity candidate. Historical evidence identities: `803135995782e36cbf9427ac903a2e26d2952383`, `ba2123ef5f6f24bcf6ae994a125b67501b970785`, and `8b2db255e7868397d336f8b015c489552b84bf0e`. Published history is unchanged.
 
+Current candidate identity: the final corrective SHA is supplied in the final response; that identity does not turn the historical results below into current-candidate acceptance.
+
 Native artifact refresh (2026-09-07): the supported pinned evidence command regenerated the canonical artifact from runtime source at `76d75cabc34f7c14b1d254c96ff7e5861cd47ebf`. Integrity changes grow the embedded SEA payload and therefore change native output hashes and layout offsets; official inputs, injector and validator pins are unchanged. The artifact citation below describes this refresh only. Current-candidate full-suite results and independent behavioral acceptance are tracked separately; no new reviewer PASS or agent-host journey is claimed here.
 
 ## Release summary

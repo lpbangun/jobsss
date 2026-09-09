@@ -560,9 +560,36 @@ function linkGreenhouseDetail(job, detail, postingText, sourceUrl) {
     job.detailCoverage = { status: 'ok', source: detail.source, detailUrl: detail.detailUrl, fetchedAt: detail.fetchedAt };
     job.questionsStatus = { status: 'ok', count: detail.questions.length, detailUrl: detail.detailUrl };
   } else {
-    if (job.applicationDetail) delete job.applicationDetail;
+    // Degradation keeps a lightweight applicationDetail (empty ask list +
+    // today's listing fields + explicit marker) so the per-job folder still
+    // materializes jobs/<id>/application.json instead of vanishing.
     const failed = detail || { detailUrl: '', reason: 'detail_fetch_failed' };
-    job.detailCoverage = { status: 'degraded', reason: failed.reason || 'detail_fetch_failed', detailUrl: failed.detailUrl || '' };
+    const reason = String(failed.reason || 'detail_fetch_failed');
+    job.applicationDetail = {
+      board: String(failed.board || ''),
+      jobId: String(failed.id ?? failed.jobId ?? ''),
+      sourceUrl: job.url || sourceUrl || '',
+      detailUrl: String(failed.detailUrl || ''),
+      fetchedAt: failed.fetchedAt || now(),
+      hash: hashText(String(postingText || '')),
+      questions: [],
+      documents: [],
+      rawDetail: null,
+      source: 'degraded',
+      status: 'degraded',
+      degraded: true,
+      reason,
+      ...(failed.message ? { message: String(failed.message) } : {}),
+      listing: {
+        title: job.title || '',
+        company: job.company || '',
+        location: job.location || '',
+        compensation: job.compensation || '',
+        workModel: job.workModel || '',
+        url: job.url || sourceUrl || '',
+      },
+    };
+    job.detailCoverage = { status: 'degraded', reason, detailUrl: failed.detailUrl || '' };
     job.questionsStatus = { status: 'degraded', reason: failed.reason || 'detail_fetch_failed' };
   }
   job.updatedAt = now();

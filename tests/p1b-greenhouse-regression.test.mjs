@@ -41,7 +41,9 @@ Requirements:
 `;
 
 // Synthetic Greenhouse `?questions=true` detail shape, kept inline.
-// Raw vendor vernacular; the product must normalize it.
+// Raw vendor vernacular (Airbnb-class): attachment uploads arrive as
+// question rows — there is NO top-level vendor `documents` key on live
+// Greenhouse. documents[] is normalize OUTPUT derived from these rows.
 const GREENHOUSE_DETAIL = {
   board: BOARD,
   id: 1234567,
@@ -56,27 +58,25 @@ const GREENHOUSE_DETAIL = {
     { label: 'Email', required: true, type: 'input_text', options: [] },
     { label: 'Phone', required: true, type: 'input_text', options: [] },
     { label: 'Location (City)', required: true, type: 'input_text', options: [] },
+    { label: 'Resume/CV', required: true, type: 'input_file', options: [] },
+    { label: 'Cover Letter', required: true, type: 'input_file', options: [] },
+    { label: 'Portfolio / Work samples', required: false, type: 'input_file', options: [] },
+    { label: 'Additional attachments', required: false, type: 'attachment', options: [] },
     { label: 'Are you legally authorized to work in the EU?', required: true, type: 'single_select', options: ['Yes', 'No'] },
     { label: 'Will you now or in the future require sponsorship?', required: true, type: 'single_select', options: ['Yes', 'No'] },
     { label: 'Years of backend experience', required: true, type: 'single_select', options: ['0-1', '1-3', '3-5', '5+'] },
     { label: 'I agree to the privacy policy', required: true, type: 'boolean', options: [] },
     { label: 'LinkedIn URL', required: false, type: 'input_text', options: [] },
-    { label: 'GitHub URL', required: false, type: 'input_text', options: [] },
-    { label: 'Personal website', required: false, type: 'input_text', options: [] },
-    { label: 'Anything else we should know?', required: false, type: 'long_text', options: [] },
     { label: 'How did you hear about us?', required: false, type: 'single_select', options: ['Referral', 'Job board', 'Other'] },
-    { label: 'Employee referral name (if any)', required: false, type: 'input_text', options: [] },
-  ],
-  documents: [
-    { kind: 'resume', required: true },
-    { kind: 'cover_letter', required: true },
-    { kind: 'portfolio', required: false },
-    { kind: 'other', required: false },
   ],
 };
 
 const REQUIRED_LABELS = GREENHOUSE_DETAIL.questions.filter(q => q.required).map(q => q.label);
-const REQUIRED_DOCS = GREENHOUSE_DETAIL.documents.filter(d => d.required).map(d => d.kind);
+// documents[] is normalize OUTPUT derived from the question rows above
+// (Resume/CV → resume required, Cover Letter → cover_letter required,
+// Portfolio → portfolio, Additional attachments → other).
+const REQUIRED_DOCS = ['resume', 'cover_letter'];
+const EXPECTED_DOC_KINDS = ['resume', 'cover_letter', 'portfolio', 'other'];
 
 async function setupGreenhouseJob(t, label) {
   const ctx = isolate(t, label);
@@ -158,7 +158,7 @@ test('P1b-1 greenhouse detail normalizes 15 questions + documents and materializ
 
   const documents = app.documents || app.application?.documents || [];
   const kinds = new Map(documents.map(d => [d.kind, d.required]));
-  for (const want of ['resume', 'cover_letter', 'portfolio', 'other']) {
+  for (const want of EXPECTED_DOC_KINDS) {
     assert.ok(kinds.has(want), `documents must include kind ${want}: ${JSON.stringify(documents)}`);
   }
   assert.equal(kinds.get('resume'), true, 'resume must be required');
@@ -230,6 +230,25 @@ test('P1b-2 degraded import: detail fetch failure still imports and records degr
   const marker = job.detailCoverage || job.questionsStatus || job.detailFetch || job.applicationDetail || value.detailCoverage || value.questionsStatus;
   assert.ok(marker && (marker.status === 'degraded' || marker === 'degraded' || marker.ok === false || marker.failed === true),
     `import must record an explicit detail-degradation marker, not a blob regex: ${JSON.stringify(value).slice(0, 500)}`);
+
+  // Degraded pursue must still materialize jobs/<id>/application.json with
+  // today's listing fields plus an explicit degradation marker.
+  const pursued = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'pursue_job', { jobId, profileId }),
+  ]);
+  requireOk(pursued, 2, 'pursue_job on degraded job');
+  const appRaw = readJobFile(ctx.dataDir, jobId, 'application.json');
+  const app = JSON.parse(appRaw);
+  const listing = app.listing || app;
+  for (const field of ['title', 'company', 'location', 'compensation', 'workModel', 'url']) {
+    assert.ok(listing[field] !== undefined,
+      `degraded application.json must carry listing field ${field}: ${appRaw.slice(0, 500)}`);
+  }
+  assert.ok(listing.title && listing.company,
+    `degraded application.json must preserve title/company: ${appRaw.slice(0, 500)}`);
+  const blob = JSON.stringify(app);
+  assert.match(blob, /degraded/, 'degraded application.json must carry an explicit degradation marker');
 });
 
 test('P1b-3 required-unanswered gate blocks decide-ready until asks are answered', async t => {

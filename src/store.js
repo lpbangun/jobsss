@@ -352,12 +352,16 @@ export function deriveProjectionTargets(store) {
  */
 function greenhouseApplicationFile(store, job) {
   const detail = job.applicationDetail || {};
+  const listing = detail.listing && typeof detail.listing === 'object' ? detail.listing : {};
   return {
     id: job.id,
     jobId: job.id,
     profileId: job.profileId,
     title: job.title,
     company: job.company,
+    location: listing.location ?? job.location ?? '',
+    compensation: listing.compensation ?? job.compensation ?? '',
+    workModel: listing.workModel ?? job.workModel ?? '',
     board: detail.board || '',
     sourceUrl: job.url || detail.sourceUrl || '',
     detailUrl: detail.detailUrl || '',
@@ -365,6 +369,18 @@ function greenhouseApplicationFile(store, job) {
     revision: Number.isInteger(store.revision) ? store.revision : 1,
     hash: detail.hash || hashText(JSON.stringify(detail.rawDetail ?? null)),
     sourceHash: detail.hash || hashText(JSON.stringify(detail.rawDetail ?? null)),
+    status: detail.status || (detail.degraded ? 'degraded' : 'ok'),
+    degraded: Boolean(detail.degraded || detail.status === 'degraded'),
+    ...(detail.reason ? { reason: String(detail.reason) } : {}),
+    ...(detail.message ? { message: String(detail.message) } : {}),
+    listing: {
+      title: listing.title ?? job.title ?? '',
+      company: listing.company ?? job.company ?? '',
+      location: listing.location ?? job.location ?? '',
+      compensation: listing.compensation ?? job.compensation ?? '',
+      workModel: listing.workModel ?? job.workModel ?? '',
+      url: listing.url ?? job.url ?? detail.sourceUrl ?? '',
+    },
     questions: Array.isArray(detail.questions) ? detail.questions : [],
     documents: Array.isArray(detail.documents) ? detail.documents : [],
     detailCoverage: job.detailCoverage || null,

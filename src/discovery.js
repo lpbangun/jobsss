@@ -863,16 +863,36 @@ function normalizeGreenhouseDocKind(raw) {
  * Normalize a raw Greenhouse `?questions=true` payload into
  * questions[] { label, required, kind, options[] } and
  * documents[] { kind: resume|cover_letter|portfolio|other, required }.
- * The raw payload itself is never mutated; preserve it verbatim separately.
+ * Live Greenhouse emits NO top-level `documents` key: attachment uploads
+ * (Resume/CV, Cover Letter, …) arrive as question rows with file-ish
+ * types (input_file/attachment) or document-like labels. Documents are
+ * therefore DERIVED from the question rows; an explicit vendor
+ * `documents[]` is only merged when present (back-compat, deduped by
+ * kind with required OR-ed). The raw payload itself is never mutated;
+ * preserve it verbatim separately.
  */
 export function normalizeGreenhouseDetail(raw) {
   const detail = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const rows = Array.isArray(detail.questions) ? detail.questions : [];
   const questions = [];
+  const documents = [];
+  const seenDoc = new Map();
+  const noteDoc = (kind, required) => {
+    const prior = seenDoc.get(kind);
+    if (prior === undefined) {
+      seenDoc.set(kind, Boolean(required));
+      documents.push({ kind, required: Boolean(required) });
+    } else if (required && !prior) {
+      seenDoc.set(kind, true);
+      const entry = documents.find(item => item.kind === kind);
+      if (entry) entry.required = true;
+    }
+  };
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue;
     const label = String(row.label ?? row.name ?? row.title ?? '').trim();
     if (!label) continue;
+    const kind = String(row.kind ?? row.type ?? 'input_text');
     const options = Array.isArray(row.options)
       ? row.options.map(String)
       : Array.isArray(row.values)
@@ -881,18 +901,28 @@ export function normalizeGreenhouseDetail(raw) {
     questions.push({
       label,
       required: Boolean(row.required),
-      kind: String(row.kind ?? row.type ?? 'input_text'),
+      kind,
       options,
     });
+    // Derive document uploads from live question rows: file-ish field
+    // types, or strong document-like labels (Resume/CV, Cover Letter,
+    // portfolio/work samples, extra attachments).
+    const fileish = /file|attachment|upload/i.test(kind);
+    const lowered = label.toLowerCase().replace(/[\s-]+/g, '_');
+    const strongLabel = /resume|curriculum_vitae|\bcv\b|cover/.test(lowered)
+      || /portfolio|work_sample|writing_sample/.test(lowered)
+      || (/attach/.test(lowered) && !/^(linkedin|github|personal_website|personal|website)/.test(lowered));
+    if (fileish || strongLabel) {
+      noteDoc(normalizeGreenhouseDocKind(label), Boolean(row.required));
+    }
   }
   const docs = Array.isArray(detail.documents) ? detail.documents : [];
-  const documents = [];
   for (const row of docs) {
     if (!row || typeof row !== 'object') continue;
     const kind = GREENHOUSE_DOC_KINDS.has(String(row.kind).toLowerCase())
       ? String(row.kind).toLowerCase()
       : normalizeGreenhouseDocKind(row.kind ?? row.name ?? row.label);
-    documents.push({ kind, required: Boolean(row.required) });
+    noteDoc(kind, Boolean(row.required));
   }
   return { questions, documents };
 }

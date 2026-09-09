@@ -94,6 +94,15 @@ describe('packet contract', () => {
     }
   });
 
+  it('rejects a single backslash in component paths', () => {
+    const evil = ['a', 'b.pdf'].join(String.fromCharCode(92));
+    const p = goodPacket();
+    p.components = { ...p.components, resumePdf: evil };
+    const r = C.validatePacket(withHash(p));
+    assert.equal(r.ok, false, evil);
+    assert.ok(r.errors.some((e) => e.code === 'unsafe_path'));
+  });
+
   it('rejects stale contentHash', () => {
     const p = withHash(goodPacket());
     p.revision = 99;
@@ -231,9 +240,9 @@ describe('schemas, examples, docs', () => {
     for (const f of examples) {
       const full = path.join(exDir, f);
       const text = readFileSync(full, 'utf8');
-      if (f.startsWith('packet-complete')) assert.equal(C.validatePacket(withHash(JSON.parse(text))).ok, true, f);
+      if (f.startsWith('packet-complete')) assert.equal(C.validatePacket(JSON.parse(text)).ok, true, f);
       else if (f.startsWith('packet-incomplete')) {
-        const r = C.validatePacket(withHash(JSON.parse(text)));
+        const r = C.validatePacket(JSON.parse(text));
         assert.equal(r.ok, true, f);
         assert.equal(r.completeness, 'incomplete', f);
       } else if (f.startsWith('outcome-')) assert.equal(C.validateOutcome(JSON.parse(text)).ok, true, f);

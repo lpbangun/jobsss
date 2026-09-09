@@ -2,7 +2,7 @@
   "format": "jobsss.packet/v1",
   "jobId": "job-synth-001",
   "revision": 2,
-  "contentHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "contentHash": "d137bfa9454e7010733561528e6c2c136ccd1094bada92769af699774ef4f515",
   "components": {
     "resumePdf": "packet/resume.pdf",
     "coverLetter": "packet/cover-letter.md",

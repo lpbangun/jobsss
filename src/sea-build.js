@@ -57,6 +57,8 @@ export const SEA_BUILD_REL = path.join('.tmp', 'jobsss' + '-productization', 'se
 const MODULES = Object.freeze([
   'version.js',
   'store.js',
+  'compensation.js',
+  'documents.js',
   'scoring.js',
   'workflows.js',
   'relationships.js',

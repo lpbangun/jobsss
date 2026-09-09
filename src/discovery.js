@@ -18,6 +18,7 @@
 //   - discovered jobs are normalized and deduplicated into the canonical store
 //     object as database-only records; this module never creates any files,
 //     folders, or application artifacts (save/pursue is owned by the parent)
+import { parseCompensation } from './compensation.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import dns from 'node:dns/promises';
@@ -207,6 +208,27 @@ export function urlImportFallbackJob({ profileId, url, source = 'url', note = ''
 // Job text parsing (B16/B19) — port of JobOS jobs.js parseJob().
 // ---------------------------------------------------------------------------
 
+function companyName(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (text.length > 90 || /;/.test(text)) return '';
+  if (/^(fictional|unknown company)\b/i.test(text)) return '';
+  if (/\b(supports product|workflow software business|its fictional)\b/i.test(text)) return '';
+  return text;
+}
+
+function headingIdentity(lines) {
+  const heading = lines.find(line => /^#{1,6}\s+/.test(line));
+  if (!heading) return { title: '', company: '' };
+  const body = heading.replace(/^#{1,6}\s+/, '').trim();
+  const withoutId = body.replace(/^[A-Z]?\d+\s*[—–-]\s*/, '');
+  const parts = withoutId.split(/\s+[—–-]\s+/).map(part => part.trim()).filter(Boolean);
+  if (parts.length >= 2) return { title: parts[0], company: parts.slice(1).join(' — ') };
+  const at = withoutId.match(/^(.+?)\s+at\s+(.+)$/i);
+  if (at) return { title: at[1].trim(), company: at[2].trim() };
+  return { title: withoutId, company: '' };
+}
+
 export function parseJobText(text, fallback = {}) {
   const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const find = key => {
@@ -214,17 +236,20 @@ export function parseJobText(text, fallback = {}) {
     const line = lines.find(value => re.test(value));
     return line ? line.replace(re, '').trim() : '';
   };
-  const heading = lines.find(line => /^#\s+/.test(line));
+  const heading = headingIdentity(lines);
   const workModelText = String(fallback.workModel || find('work model') || '').trim().toLowerCase();
   const workModel = /\bremote\b/.test(workModelText) ? 'remote'
     : /\bhybrid\b/.test(workModelText) ? 'hybrid'
       : /\b(on[- ]?site|in office)\b/.test(workModelText) ? 'onsite' : 'unknown';
   const sourceUrl = find('source url');
+  const labeledCompany = companyName(find('company'));
+  const headingCompany = companyName(heading.company);
   return {
-    title: fallback.title || find('title') || (heading ? heading.replace(/^#\s+/, '').trim() : 'Imported role'),
-    company: fallback.company || find('company') || 'Unknown company',
-    location: fallback.location || find('location') || '',
-    compensation: fallback.compensation || find('compensation') || '',
+    title: fallback.title || find('title') || heading.title || 'Imported role',
+    company: fallback.company || labeledCompany || headingCompany || 'Unknown company',
+    location: fallback.location || find('location') || find('location/authorization') || '',
+    compensation: fallback.compensation || find('compensation') || find('base salary') || find('salary') || '',
+    compensationJson: parseCompensation(fallback.compensation || find('compensation') || find('base salary') && `Base salary: ${find('base salary')}` || find('salary') && `Salary: ${find('salary')}` || text),
     workModel,
     url: fallback.url || sourceUrl || '',
     description: text,
@@ -451,31 +476,7 @@ function metadataValue(metadata, names) {
   return null;
 }
 
-function parseCompensationText(value) {
-  const text = String(value || '').trim();
-  const match = text.match(/\$?\s*([\d,.]+)\s*-\s*\$?\s*([\d,.]+)/);
-  let min = null;
-  let max = null;
-  if (match) {
-    min = Number(match[1].replaceAll(',', ''));
-    max = Number(match[2].replaceAll(',', ''));
-  } else {
-    const single = text.match(/\$?\s*([\d,.]+)/);
-    if (single) max = Number(single[1].replaceAll(',', ''));
-  }
-  let interval = 'unknown';
-  if (/\b(salary|annual|year|per year|\/yr)/i.test(text)) interval = 'year';
-  else if (/\bhour\b/i.test(text)) interval = 'hour';
-  else if (/\bmonth\b/i.test(text)) interval = 'month';
-  else if (/\bweek\b/i.test(text)) interval = 'week';
-  return {
-    text,
-    min,
-    max,
-    currency: /\b(USD|US\$|dollars?)\b/i.test(text) ? 'USD' : '',
-    interval,
-  };
-}
+function parseCompensationText(value) { return parseCompensation(value); }
 
 function workModelFromLocation(location, description = '') {
   const locationText = String(location || '').toLowerCase();

@@ -41,7 +41,7 @@ What JobSSS does, and what it never claims:
 | `/jobsss` | base — Help / next-action menu. Never fabricate execution or authority. |
 | `/jobsss doctor` | MCP `doctor` — diagnose the bundled `./bin/jobsss` launcher and `PLUGIN_DATA` readability/writability. No JobOS on PATH is required. |
 | `/jobsss start` | MCP `start` — initialize durable state under `PLUGIN_DATA`. Creates the local store if absent. |
-| `/jobsss profile` or `create_profile` | MCP `create_profile` — create or import a local profile/resume (`name` plus optional resume text or a path under `PLUGIN_DATA`), extracting proof-point candidates for human verification. Returns `profileId`. |
+| `/jobsss profile` or `create_profile` | MCP `create_profile` — create or import a local profile/resume (`name` plus optional resume text or a path under `PLUGIN_DATA`), extracting proof-point candidates for human verification. Returns `profileId`. Pass the source resume text unchanged (keep `Name:`, employment/skills/education headings, and dated role lines). Do not reformat into unlabeled pipe-only prose; the parser still accepts reasonable unlabeled variants. |
 | `/jobsss find` or `import_job` | MCP `import_job` and `list_jobs` — import job content inline (`text`/`content`) or from a path under `PLUGIN_DATA`, then list imported jobs. Re-importing the same job deduplicates to a single job id. |
 | `/jobsss score` or `score_job` | MCP `score_job` (`jobId`, `profileId`) — deterministic local scoring returning `overall` and/or `scoreStatus`. No API key required. |
 | `/jobsss pursue` | MCP `pursue_job` (`jobId`, `profileId`) — record local pursuit and prepare a basic readiness artifact for review; never submits, sends, or applies. |
@@ -78,17 +78,55 @@ and browser actions stay blocked or human-only.
 | --- | --- | --- |
 | Secure intake | `import_job` (inline `text`/`content` or a path under `PLUGIN_DATA`), `import_job_url` (fetches public HTTP(S), rejects `file:`/private URLs), `import_contact` (inline card or `PLUGIN_DATA` path), `list_contacts` | No arbitrary absolute filesystem paths are read. Re-importing the same job deduplicates to one id. |
 | Migration & state | `start` | A legacy `store.json` migrates losslessly into versioned persistence with an audit trail; never drop or rewrite ids. |
-| Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `add_proof_point` | Versioned structured resumes, preferences, and proof candidates remain profile-owned and require human verification. |
+| Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `get_resume`, `add_proof_point` | Versioned structured resumes, preferences, and proof candidates remain profile-owned and require human verification. `get_resume` is a read-only restart readback that returns the full current resume text and identity. |
 | Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`, `save_job`, `skip_job`, `archive_job`, `list_jobs` | Fetch public Greenhouse ATS boards by `boardToken`, or run against staged offline search data under `PLUGIN_DATA`; no API keys. Discoveries stay database-only until saved/pursued. |
-| Scoring | `score_job` | Offline deterministic multidimensional fit (`jobos.fit-score.v1`) with all seven weighted dimensions; no API key. |
+| Scoring | `score_job`, `get_score` | Offline deterministic multidimensional fit (`jobos.fit-score.v1`) with all seven weighted dimensions; no API key. `get_score` is a read-only restart readback of the stored fit/eligibility/constraints for an owned job. |
 | Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` — it cannot attest submission. |
-| Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Tailoring extracts posting requirements, selects relevant owned proof, and reports coverage gaps. Answers use exact owned proof wording; never arbitrary claims, invented metrics, auto-fill, or send. |
+| Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Tailoring extracts posting requirements, selects relevant owned proof, and reports coverage gaps. Answers use exact owned proof wording; never arbitrary claims, invented metrics, auto-fill, or send. `save_answer` accepts only `sensitivity: public \| personal \| sensitive \| restricted` (default `personal`) and `reuseScope: global \| employer_specific \| never_auto_fill`; other values fail with typed `invalid_sensitivity`/`invalid_reuse_scope` for the caller to correct. |
 | Networking drafts | `record_research`, `list_research`, `map_reachable_network`, `plan_outreach`, `draft_outreach`, `list_outreach` | Local people/company research, maps, plans, follow-ups, and drafts only. Sending stays human-only; `mark_outreach_sent` is not MCP. |
 | Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep`, `get_interview_prep`, `interview_debrief_handoff` | Local story drafting, preparation, coverage gaps, and a non-attesting handoff. Verification/debrief confirmation stays human-only via trusted CLI/TUI. |
 | Sync preview | `preview_sync` | Dry-run, secret-safe preview of derived/export data. No automatic or cloud sync. |
 
 See `references/standalone-journey.md` for argument shapes and the frozen
 human-only catalog.
+
+### Applicant documents and fit/contact evidence
+
+For a requested PDF, call `tailor_resume` or `draft_cover_letter` with
+`{profileId, jobId, format: "pdf"}`. The native runtime writes real searchable
+PDF bytes under `PLUGIN_DATA`; return the actual `document.path`, page count,
+and layout metadata, not Markdown relabeled as PDF or an external conversion.
+Export is bundled in standalone releases and needs no browser, system converter,
+font installation, or network. Letter pages use 44pt margins and body text of
+10–11pt; longer sources paginate rather than clip or hide content. Latin/WinAnsi
+text is supported; unsupported scripts return `pdf_unsupported_character`
+instead of silently dropping characters. Inspect every exported page before
+sharing. Searchable single-column text is an ATS-readability proxy, not a
+proprietary ATS score or guarantee.
+
+Keep the imported resume as the fact source. Change preferences with
+`update_profile`; never replace achievements with formatting instructions.
+A real preference revision (for example the target role family) flows into
+the tailored resume focus line, so successive native `tailor_resume` PDFs
+stay distinct truthful revisions and both are kept under `PLUGIN_DATA`;
+formatting-only changes regenerate the identical file.
+Applicant copy excludes proof IDs, posting inventories, and human-review notes;
+those remain in the returned metadata and review artifact. Cover letters use
+supported contributions, never copied posting requirements as candidate claims.
+
+Use native `score_job.eligibility` and its grounded hard failures when making a
+shortlist: excluded roles are not actionable high-fit recommendations. Missing
+pay/currency/authorization evidence is not permission to assume eligibility;
+preferred skills are not mandatory exclusions. Never invent exchange rates or
+count bonus/equity toward a guaranteed-base floor.
+
+Preserve contact relationship/source notes with `import_contact` and
+`record_research`. Maps and plans distinguish cold professional email access,
+weak acquaintance, and channel-pending stakeholders. A profile URL is not a
+messaging channel, and same-name people at different companies are not merged.
+Recipient-facing subject/body stay separate from internal notes. All drafts
+remain UNSENT; only trusted human actions approve/suppress contacts or attest
+external outcomes.
 
 ## PLUGIN_DATA and bundled launcher
 

@@ -1,0 +1,46 @@
+{
+  "targetRoleFamilies": [
+    "Analytics Engineer",
+    "Data Engineer"
+  ],
+  "locations": [
+    "Illinois",
+    "United States"
+  ],
+  "salary": {
+    "min": 130000,
+    "max": 160000,
+    "currency": "USD"
+  },
+  "workModel": "remote",
+  "skills": [
+    "SQL",
+    "Python",
+    "pandas",
+    "dbt",
+    "Snowflake",
+    "Git",
+    "GitHub Actions",
+    "dimensional modeling",
+    "Looker",
+    "data quality",
+    "documentation"
+  ],
+  "dealbreakers": [
+    "Remote US from Illinois only; no office attendance or relocation",
+    "US citizen; US authorized without sponsorship; no UK/EU authorization",
+    "09:00\u201317:00 Central; no permanent overnight shift",
+    "Up to 10% planned travel",
+    "Full-time guaranteed USD base minimum 130000, excluding bonus/equity; desired 145000\u2013160000",
+    "Mid-level IC; senior only if five years accepted, no management; no staff/principal/lead accountability",
+    "Avoid primary infrastructure/platform and Java streaming specialist roles"
+  ],
+  "values": [
+    "small collaborative teams",
+    "accessible documentation"
+  ],
+  "industries": [
+    "subscription software",
+    "product analytics"
+  ]
+}

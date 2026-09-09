@@ -41,9 +41,12 @@ Requirements:
 `;
 
 // Synthetic Greenhouse `?questions=true` detail shape, kept inline.
-// Raw vendor vernacular (Airbnb-class): attachment uploads arrive as
-// question rows — there is NO top-level vendor `documents` key on live
-// Greenhouse. documents[] is normalize OUTPUT derived from these rows.
+// Live vendor vernacular is NESTED: each question row carries
+// fields: [{ type, values: [{ label }] }]. There is NO row.type /
+// row.options and NO top-level vendor `documents` key on live
+// Greenhouse. documents[] is normalize OUTPUT derived from these rows
+// (Resume/CV → resume required, Cover Letter → cover_letter required,
+// Portfolio → portfolio, Additional attachments → other).
 const GREENHOUSE_DETAIL = {
   board: BOARD,
   id: 1234567,
@@ -53,21 +56,21 @@ const GREENHOUSE_DETAIL = {
   location: { name: 'Remote (EU)' },
   content: '<p>Synthetic posting body for regression use only.</p>',
   questions: [
-    { label: 'First Name', required: true, type: 'input_text', options: [] },
-    { label: 'Last Name', required: true, type: 'input_text', options: [] },
-    { label: 'Email', required: true, type: 'input_text', options: [] },
-    { label: 'Phone', required: true, type: 'input_text', options: [] },
-    { label: 'Location (City)', required: true, type: 'input_text', options: [] },
-    { label: 'Resume/CV', required: true, type: 'input_file', options: [] },
-    { label: 'Cover Letter', required: true, type: 'input_file', options: [] },
-    { label: 'Portfolio / Work samples', required: false, type: 'input_file', options: [] },
-    { label: 'Additional attachments', required: false, type: 'attachment', options: [] },
-    { label: 'Are you legally authorized to work in the EU?', required: true, type: 'single_select', options: ['Yes', 'No'] },
-    { label: 'Will you now or in the future require sponsorship?', required: true, type: 'single_select', options: ['Yes', 'No'] },
-    { label: 'Years of backend experience', required: true, type: 'single_select', options: ['0-1', '1-3', '3-5', '5+'] },
-    { label: 'I agree to the privacy policy', required: true, type: 'boolean', options: [] },
-    { label: 'LinkedIn URL', required: false, type: 'input_text', options: [] },
-    { label: 'How did you hear about us?', required: false, type: 'single_select', options: ['Referral', 'Job board', 'Other'] },
+    { label: 'First Name', required: true, fields: [{ type: 'input_text', values: [] }] },
+    { label: 'Last Name', required: true, fields: [{ type: 'input_text', values: [] }] },
+    { label: 'Email', required: true, fields: [{ type: 'input_text', values: [] }] },
+    { label: 'Phone', required: true, fields: [{ type: 'input_text', values: [] }] },
+    { label: 'Location (City)', required: true, fields: [{ type: 'input_text', values: [] }] },
+    { label: 'Resume/CV', required: true, fields: [{ type: 'input_file', values: [] }, { type: 'textarea', values: [] }] },
+    { label: 'Cover Letter', required: true, fields: [{ type: 'input_file', values: [] }, { type: 'textarea', values: [] }] },
+    { label: 'Portfolio / Work samples', required: false, fields: [{ type: 'input_file', values: [] }] },
+    { label: 'Additional attachments', required: false, fields: [{ type: 'attachment', values: [] }] },
+    { label: 'Are you legally authorized to work in the EU?', required: true, fields: [{ type: 'multi_value_single_select', values: [{ label: 'Yes' }, { label: 'No' }] }] },
+    { label: 'Will you now or in the future require sponsorship?', required: true, fields: [{ type: 'multi_value_single_select', values: [{ label: 'Yes' }, { label: 'No' }] }] },
+    { label: 'Years of backend experience', required: true, fields: [{ type: 'select', values: [{ label: '0-1' }, { label: '1-3' }, { label: '3-5' }, { label: '5+' }] }] },
+    { label: 'Gender', required: false, fields: [{ type: 'multi_value_single_select', values: [{ label: 'Woman' }, { label: 'Man' }, { label: 'Non-binary' }, { label: 'Prefer not to say' }] }] },
+    { label: 'I agree to the privacy policy', required: true, fields: [{ type: 'multi_value_multi_select', values: [{ label: 'I agree' }, { label: 'I do not agree' }] }] },
+    { label: 'How did you hear about us?', required: false, fields: [{ type: 'select', values: [{ label: 'Referral' }, { label: 'Job board' }, { label: 'Other' }] }] },
   ],
 };
 
@@ -155,6 +158,32 @@ test('P1b-1 greenhouse detail normalizes 15 questions + documents and materializ
   for (const want of REQUIRED_LABELS) assert.ok(labels.includes(want), `missing required question ${want}`);
   const select = questions.find(q => q.label === 'Years of backend experience');
   assert.deepEqual(select.options, ['0-1', '1-3', '3-5', '5+'], 'select options must be preserved');
+
+  // Nested fields/values kind mapping (RED: current normalize copies the
+  // missing row.type and defaults to input_text with [] options).
+  const resumeQ = questions.find(q => q.label === 'Resume/CV');
+  assert.equal(resumeQ.kind, 'input_file', `Resume/CV kind must be input_file, not input_text: ${JSON.stringify(resumeQ)}`);
+  const coverQ = questions.find(q => q.label === 'Cover Letter');
+  assert.ok(['input_file', 'textarea'].includes(coverQ.kind),
+    `Cover Letter kind must be input_file or textarea: ${JSON.stringify(coverQ)}`);
+  assert.notEqual(coverQ.kind, 'input_text', 'Cover Letter kind must not be input_text');
+  const genderQ = questions.find(q => q.label === 'Gender');
+  assert.equal(genderQ.kind, 'multi_value_single_select', `Gender kind must be multi_value_single_select: ${JSON.stringify(genderQ)}`);
+  assert.deepEqual(genderQ.options, ['Woman', 'Man', 'Non-binary', 'Prefer not to say'],
+    'Gender options must match the 4 nested values labels');
+  const consentQ = questions.find(q => q.label === 'I agree to the privacy policy');
+  assert.equal(consentQ.kind, 'multi_value_multi_select', `consent kind must be multi_value_multi_select: ${JSON.stringify(consentQ)}`);
+  assert.ok(consentQ.options.length > 0, `consent options must be nonempty: ${JSON.stringify(consentQ)}`);
+  const fixtureByLabel = new Map(GREENHOUSE_DETAIL.questions.map(q => [q.label, q]));
+  for (const q of questions) {
+    if (!q.required) continue;
+    const fixture = fixtureByLabel.get(q.label);
+    const fieldTypes = (fixture.fields || []).map(f => f.type);
+    if (fieldTypes.some(t => t !== 'input_text')) {
+      assert.notEqual(q.kind, 'input_text',
+        `required question ${q.label} with fields [${fieldTypes}] must not normalize to input_text`);
+    }
+  }
 
   const documents = app.documents || app.application?.documents || [];
   const kinds = new Map(documents.map(d => [d.kind, d.required]));

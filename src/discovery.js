@@ -892,12 +892,35 @@ export function normalizeGreenhouseDetail(raw) {
     if (!row || typeof row !== 'object') continue;
     const label = String(row.label ?? row.name ?? row.title ?? '').trim();
     if (!label) continue;
-    const kind = String(row.kind ?? row.type ?? 'input_text');
-    const options = Array.isArray(row.options)
-      ? row.options.map(String)
-      : Array.isArray(row.values)
-        ? row.values.map(String)
-        : [];
+    // Live Greenhouse nests field types/values: fields: [{ type, values: [{ label }] }].
+    // Derive kind/options from the nested fields; fall back to row-level only
+    // when no fields are present.
+    const fields = Array.isArray(row.fields) ? row.fields.filter(f => f && typeof f === 'object') : [];
+    let kind;
+    let options;
+    if (fields.length > 0) {
+      const fileishField = fields.find(f => /^(input_file|attachment|upload)$/i.test(String(f.type ?? '')));
+      const picked = fileishField
+        ?? fields.find(f => String(f.type ?? '') !== 'input_hidden');
+      if (picked) {
+        kind = String(picked.type ?? row.kind ?? row.type ?? 'input_text') || 'input_text';
+        const values = Array.isArray(picked.values) ? picked.values : [];
+        options = values.map(v => {
+          if (v && typeof v === 'object') return String(v.label ?? v.value ?? v.name ?? '');
+          return String(v ?? '');
+        }).filter(s => s !== '');
+      } else {
+        kind = String(row.kind ?? row.type ?? 'input_text');
+        options = [];
+      }
+    } else {
+      kind = String(row.kind ?? row.type ?? 'input_text');
+      options = Array.isArray(row.options)
+        ? row.options.map(String)
+        : Array.isArray(row.values)
+          ? row.values.map(String)
+          : [];
+    }
     questions.push({
       label,
       required: Boolean(row.required),

@@ -123,24 +123,51 @@ function readIntakeText(dataDir, args, kind, inlineKeys) {
 
 function defaultPreferences(name, input = {}) {
   const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const excludeRoles = Array.isArray(supplied.excludeRoles) ? supplied.excludeRoles.map(String) : [];
+  // Replace, never accumulate: the dealbreaker synthesized from a previous
+  // excludeRoles value is dropped before the current one is appended. The
+  // synthesized marker round-trips through update_profile merges so a
+  // retracted role list stops hard-excluding those levels.
+  const priorExclusion = String(supplied.excludeRolesDealbreaker || '');
+  const dealbreakers = (Array.isArray(supplied.dealbreakers) ? supplied.dealbreakers.map(String) : [])
+    .filter(item => item !== priorExclusion);
+  let excludeRolesDealbreaker = null;
+  if (excludeRoles.length) {
+    const exclusion = `No ${excludeRoles.join(', ')} roles`;
+    if (!dealbreakers.some(item => item === exclusion)) dealbreakers.push(exclusion);
+    excludeRolesDealbreaker = exclusion;
+  }
+  const salary = supplied.salary && typeof supplied.salary === 'object'
+    ? { min: supplied.salary.min ?? null, max: supplied.salary.max ?? null, currency: supplied.salary.currency || 'USD' }
+    : { min: null, max: null, currency: String(supplied.salaryCurrency || 'USD') };
+  if (salary.min == null && supplied.minBaseSalary != null && Number.isFinite(Number(supplied.minBaseSalary))) {
+    salary.min = Number(supplied.minBaseSalary);
+  }
+  if (salary.max == null && supplied.desiredBaseSalaryMax != null && Number.isFinite(Number(supplied.desiredBaseSalaryMax))) {
+    salary.max = Number(supplied.desiredBaseSalaryMax);
+  }
+  const locations = Array.isArray(supplied.locations) ? supplied.locations : [];
+  if (!locations.length && supplied.location) locations.push(String(supplied.location));
   return {
     targetRoleFamilies: Array.isArray(supplied.targetRoleFamilies) ? supplied.targetRoleFamilies : [name],
     industries: Array.isArray(supplied.industries) ? supplied.industries : [],
     companyStages: Array.isArray(supplied.companyStages) ? supplied.companyStages : [],
-    locations: Array.isArray(supplied.locations) ? supplied.locations : [],
-    salary: supplied.salary && typeof supplied.salary === 'object' ? supplied.salary : { min: null, max: null, currency: 'USD' },
-    dealbreakers: Array.isArray(supplied.dealbreakers) ? supplied.dealbreakers : [],
+    locations,
+    salary,
+    dealbreakers,
+    excludeRoles,
+    excludeRolesDealbreaker,
     skills: Array.isArray(supplied.skills) ? supplied.skills : slug(name).split('-').filter(Boolean),
     missionKeywords: Array.isArray(supplied.missionKeywords) ? supplied.missionKeywords : [],
     values: Array.isArray(supplied.values) ? supplied.values : [],
-    workModel: String(supplied.workModel || ''),
+    workModel: String(supplied.workModel || (supplied.remoteOnly ? 'remote' : '')),
     communicationStyle: String(supplied.communicationStyle || 'concise, warm, evidence-grounded'),
     searchStrategy: String(supplied.searchStrategy || 'focused'),
   };
 }
 
 function extractProofPoints(profileId, resumeText) {
-  const action = /\b(built|led|managed|created|designed|improved|launched|reduced|increased|owned|shipped|analyzed|implemented|taught|researched|coordinated|facilitated|developed)\b/i;
+  const action = /\b(automated|reconciled|added|defined|built|led|managed|created|designed|improved|launched|reduced|increased|owned|shipped|analyzed|implemented|taught|researched|coordinated|facilitated|developed)\b/i;
   return String(resumeText || '').split(/\r?\n/)
     .map(line => line.trim().replace(/^[-*•]\s*/, ''))
     .filter(line => line.length >= 20 && action.test(line)).slice(0, 24)
@@ -158,7 +185,7 @@ function resumeDocument(profileId, text) {
   return {
     schemaVersion: 1,
     profileId,
-    identity: { name: lines[0]?.replace(/^#\s*/, '') || '', email, verificationStatus: 'needs_verification' },
+    identity: { name: lines.find(line => /^Name:/i.test(line))?.replace(/^Name:\s*/i, '') || lines[0]?.replace(/^#\s*/, '') || '', email, verificationStatus: 'needs_verification' },
     sourceHash: hashText(text),
     verificationStatus: 'needs_verification',
     importedAt: now(),
@@ -371,6 +398,34 @@ export function listResumes(dataDir, args = {}) {
     resumes, items: resumes, count: resumes.length };
 }
 
+export function getResume(dataDir, args = {}) {
+  const store = loadStore(dataDir);
+  const profile = requireProfile(store, args.profileId);
+  const resume = profile.currentResumeId && store.resumes?.[profile.currentResumeId]
+    ? store.resumes[profile.currentResumeId]
+    : Object.values(store.resumes || {}).find(item => item.profileId === profile.id)
+      || { id: profile.currentResumeId, revision: 0, sourceName: null, document: profile.resume, sourceHash: null, verificationStatus: 'needs_verification' };
+  return { ok: true, profileId: profile.id, currentResumeId: profile.currentResumeId || null,
+    resume: { ...resume, document: resume.document || null },
+    resumeText: profile.resumeText ?? '', identity: profile.resume?.identity || resume.document?.identity || null,
+    verificationStatus: resume.verificationStatus || 'needs_verification' };
+}
+
+export function getScore(dataDir, args = {}) {
+  const jobId = String(args.jobId || args.id || '').trim();
+  const profileId = String(args.profileId || '').trim();
+  const store = loadStore(dataDir);
+  requireProfile(store, profileId);
+  if (!jobId) throw error('missing_job', 'get_score requires jobId');
+  const fit = store.scores?.[jobId] || null;
+  if (!fit) return { ok: true, profileId, jobId, score: null, hasScore: false, message: 'No stored score for this job yet; run score_job first.' };
+  const owned = store.jobs?.[jobId] && store.jobs[jobId].profileId === profileId;
+  if (!owned) throw error('job_not_owned', `Job ${jobId} is not owned by profile ${profileId}`);
+  return { ok: true, profileId, jobId, hasScore: true,
+    score: { overall: fit.overall, baseOverall: fit.baseOverall, scoreStatus: fit.scoreStatus,
+      eligibility: fit.eligibility, constraints: fit.constraints, dimensions: fit.dimensions } };
+}
+
 export function updateProfile(dataDir, args = {}) {
   return mutate(dataDir, args, store => {
     const profile = requireProfile(store, args.profileId);
@@ -505,14 +560,15 @@ export function applicationsPlan(dataDir, args = {}) {
   const tasks = Object.values(store.tasks || {}).filter(task => task.profileId === profileId && task.jobId === jobId && task.status === 'open');
   const terminal = new Set(['skipped', 'archived', 'withdrawn', 'rejected', 'ghosted']);
   const isTerminal = terminal.has(application.status);
-  const nextActions = isTerminal
+  const excluded = fit?.eligibility?.status === 'excluded';
+  const nextActions = isTerminal || excluded
     ? []
     : [...new Set(tasks.map(task => task.text).concat(['human review', 'verify proof-grounded materials']))];
   return { ok: true, jobId, profileId, application,
-    plan: { jobId, profileId, status: application.status, readiness: isTerminal ? 'closed' : fit ? 'ready_for_review' : 'needs_score',
+    plan: { jobId, profileId, status: application.status, readiness: isTerminal ? 'closed' : excluded ? 'excluded' : fit ? 'ready_for_review' : 'needs_score',
       score: fit ? { overall: fit.overall, scoreStatus: fit.scoreStatus } : null,
       nextActions },
-    blockers: [], warnings: [], message: 'Local pipeline plan; no external action was performed.' };
+    blockers: excluded ? fit.eligibility.hardFailures : [], warnings: [], message: 'Local pipeline plan; no external action was performed.' };
 }
 
 export function reviewQueue(dataDir, args = {}) {
@@ -566,8 +622,8 @@ export async function dailyDiscovery(dataDir, args = {}) {
 
 export function listTasks(dataDir, args = {}) { return tasksForProfile(loadStore(dataDir), args); }
 export function updateTask(dataDir, args = {}) { return mutate(dataDir, args, store => updateLocalTask(store, args)); }
-export function tailorResume(dataDir, args = {}) { return mutate(dataDir, args, store => tailorLocal(store, args)); }
-export function draftCoverLetter(dataDir, args = {}) { return mutate(dataDir, args, store => coverLocal(store, args)); }
+export function tailorResume(dataDir, args = {}) { return mutate(dataDir, args, store => tailorLocal(store, { ...args, dataDir })); }
+export function draftCoverLetter(dataDir, args = {}) { return mutate(dataDir, args, store => coverLocal(store, { ...args, dataDir })); }
 export function saveAnswer(dataDir, args = {}) { return mutate(dataDir, args, store => addAnswer(store, args)); }
 export function answersList(dataDir, args = {}) { return listAnswers(loadStore(dataDir), args); }
 export function answersMatch(dataDir, args = {}) { return matchAnswers(loadStore(dataDir), args); }

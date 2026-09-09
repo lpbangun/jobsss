@@ -17,6 +17,7 @@
 //   - preview/export payloads are secret-safe (no resume text dumps, no env
 //     secrets) and never claim a sync or send happened
 import { id, now, hashText, tokenize, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
+import { resumeCopy, coverLetterCopy, exportPdf, supportedAchievement } from './documents.js';
 
 // Local, human-reviewable application states. Anything that would attest an
 // external action (applied, submitted, sent, approved, ...) is rejected.
@@ -416,10 +417,6 @@ function proofPointsFor(store, profileId) {
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
 }
 
-function profileSummary(profile) {
-  return String(profile?.summary || '');
-}
-
 // ---------------------------------------------------------------------------
 // Job-specific requirement extraction and proof selection.
 // Attributed port: deterministic inventory/coverage concepts from JobOS
@@ -607,7 +604,9 @@ function buildCoverage(requirements, selected) {
  * present in profile proof points may appear as achievements; no metrics are
  * invented. Persists a review artifact and returns the document content.
  */
-function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown' }) {
+function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir }) {
+  format = String(format).toLowerCase();
+  if (!['markdown', 'md', 'text', 'pdf'].includes(format)) throw Object.assign(new Error('Supported document formats: markdown, text, pdf.'), { code: 'unsupported_document_format' });
   const job = requireJobOwned(store, jobId, profileId);
   const profile = requireProfile(store, profileId);
   const proofs = proofPointsFor(store, profileId);
@@ -622,57 +621,23 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   const selected = ranked.selected;
   const selectedIds = selected.map(entry => entry.proof.id);
   const coverage = buildCoverage(requirements, selected);
-  const selectedById = new Map(selected.map(entry => [entry.proof.id, entry.proof]));
-
-  const metricNote = proof => {
-    if (Array.isArray(proof.metrics) && proof.metrics.length) {
-      return ` Metrics shown are copied verbatim from the stored proof (${proof.metrics.slice(0, 3).join(', ')}).`;
-    }
-    return ' No metric was added: this draft only restates the stored proof.';
-  };
-
-  const heading = kind === 'cover_letter'
-    ? `Cover letter draft — ${job.title} at ${job.company}`
-    : `Resume draft tailored toward ${job.title} at ${job.company}`;
-  const requirementLines = coverage.items.map(item =>
-    `- ${item.sourceText}${item.status === 'gap' ? ' _(no owned proof matches yet; evidence required)_' : ''}`
-  ).join('\n');
-  const matchedBlocks = coverage.matches.map(match => {
-    const proofLines = match.proofPointIds
-      .map(id => selectedById.get(id)).filter(Boolean)
-      .map(proof => `- ${proof.summary} _(proof: ${proof.id}; human verification required)_${metricNote(proof)}`)
-      .join('\n');
-    return [`### ${match.sourceText}`, '', proofLines].join('\n');
-  }).join('\n\n');
-  const gapLines = coverage.gaps.map(gap => `- ${gap.sourceText}`).join('\n');
-  const body = [
-    `# ${heading}`,
-    '',
-    `Profile: ${profile.name}`,
-    '',
-    kind === 'cover_letter'
-      ? `This cover-letter draft for the ${job.title} role at ${job.company} uses only the stored proof candidates below.`
-      : profileSummary(profile) || 'Professional summary draft from the stored profile; human verification is required.',
-    '',
-    `## Requirements extracted from the posting (${coverage.items.length})`,
-    '',
-    requirementLines,
-    '',
-    `## Matched owned proof (${coverage.matches.length} requirement${coverage.matches.length === 1 ? '' : 's'})`,
-    '',
-    matchedBlocks || '_No owned proof matched any extracted requirement; evidence must be verified before use._',
-    '',
-    `## Coverage gaps (${coverage.gaps.length})`,
-    '',
-    gapLines || '_None._',
-    '',
-    'This draft cites only stored proof point ids and copies their summaries or metrics verbatim.',
-    'Selected proof candidates require explicit human verification before this material may be shared with anyone.',
-    'No submission, sending, or external action was performed.',
-    '',
-  ].join('\n');
-
-  const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${hashText(body).slice(0, 12)}`);
+  const body = kind === 'cover_letter'
+    ? coverLetterCopy(profile, job, proofs)
+    : resumeCopy(profile, selected.map(entry => entry.proof), Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)), { preferences: profile.preferences, job });
+  // Draft metadata must record the owned selected proofs the copy was built
+  // from, even after display cleanup/paraphrase strips proof labels: match
+  // normalized claim tokens against the rendered copy and fall back to the
+  // requirement-selected proof ids rather than ever reporting an empty list.
+  // Historical/retired proof status can then be computed from the artifact.
+  const normClaim = text => tokenize(String(text || '')).join(' ');
+  const usedProofIds = proofs.filter(proof => {
+    const claim = normClaim(supportedAchievement(proof.summary));
+    if (claim.split(' ').length < 4) return false;
+    return ` ${normClaim(body)} `.includes(` ${claim} `);
+  }).map(proof => proof.id);
+  const proofPointIds = usedProofIds.length ? usedProofIds : selectedIds;
+  const pdf = format === 'pdf' ? exportPdf(dataDir, body) : null;
+  const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${format}:${hashText(body).slice(0, 12)}`);
   const nowIso = now();
   const existingArtifact = ensure(store, 'artifacts')[artifactId];
   // Unchanged regeneration must retain trusted artifact approvals/rejections,
@@ -687,20 +652,21 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
       artifactId,
       artifact: existingArtifact,
       requirements,
-      selectedProofPointIds: existingArtifact.proofPointIds || selectedIds,
-      selectedProofIds: existingArtifact.proofPointIds || selectedIds,
+      selectedProofPointIds: selectedIds,
+      selectedProofIds: selectedIds,
       coverage: { matches: coverage.matches, gaps: coverage.gaps },
       gaps: coverage.gaps,
       document: {
         content: body,
+        ...(pdf || {}),
         format: existingArtifact.format || format,
         kind,
-        proofPointIds: existingArtifact.proofPointIds || selectedIds,
-        selectedProofPointIds: existingArtifact.proofPointIds || selectedIds,
+        proofPointIds: existingArtifact.proofPointIds || proofPointIds,
+        selectedProofPointIds: selectedIds,
         requirements,
         gaps: coverage.gaps,
       },
-      proofPointIds: existingArtifact.proofPointIds || selectedIds,
+      proofPointIds: existingArtifact.proofPointIds || proofPointIds,
       format: existingArtifact.format || format,
       message: 'Unchanged draft already exists; trusted human review state was preserved with no overwrite.',
     };
@@ -712,8 +678,10 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     kind: kind === 'resume' ? 'resume_draft' : 'cover_letter_draft',
     title: kind === 'resume' ? `Resume draft: ${job.title}` : `Cover letter draft: ${job.title}`,
     status: 'draft_needs_human_review',
-    proofPointIds: selectedIds,
+    proofPointIds,
     contentHash: hashText(body),
+    ...(pdf ? { export: pdf } : {}),
+    reviewNote: 'human verification required',
     format,
     content: body,
     createdAt: nowIso,
@@ -738,26 +706,27 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     gaps: coverage.gaps,
     document: {
       content: body,
+      ...(pdf || {}),
       format,
       kind,
-      proofPointIds: selectedIds,
+      proofPointIds,
       selectedProofPointIds: selectedIds,
       requirements,
       gaps: coverage.gaps,
     },
-    proofPointIds: selectedIds,
+    proofPointIds,
     format,
     message:
       'Draft selected the owned proof candidates most relevant to the extracted posting requirements. No invention of metrics, no submission, no sending; human verification required before any outside step.',
   };
 }
 
-export function tailorResume(store, { jobId, profileId, format = 'markdown' }) {
-  return buildMaterialDraft(store, { jobId, profileId, kind: 'resume', format });
+export function tailorResume(store, { jobId, profileId, format = 'markdown', dataDir }) {
+  return buildMaterialDraft(store, { jobId, profileId, kind: 'resume', format, dataDir });
 }
 
-export function draftCoverLetter(store, { jobId, profileId, format = 'markdown' }) {
-  return buildMaterialDraft(store, { jobId, profileId, kind: 'cover_letter', format });
+export function draftCoverLetter(store, { jobId, profileId, format = 'markdown', dataDir }) {
+  return buildMaterialDraft(store, { jobId, profileId, kind: 'cover_letter', format, dataDir });
 }
 
 export function createArtifact(store, { jobId, profileId, kind = 'note', title, content = '', proofPointIds = [], format = 'md' }) {

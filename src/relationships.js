@@ -22,13 +22,13 @@
 // or drives a browser.
 import fs from 'node:fs';
 import path from 'node:path';
-import { id, now, loadStore, commitStore, ensureDataDir, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
+import { id, now, loadStore, commitStore, ensureDataDir, activeProofIdsForStore, evidenceFreshnessForStore, tokenize } from './store.js';
+import { supportedAchievement } from './documents.js';
 
 const STORY_FIELDS = Object.freeze(['title', 'situation', 'task', 'action', 'result', 'reflection']);
 export const STORY_STATES = Object.freeze(['draft_needs_verification', 'verified', 'retired']);
 export const COVERAGE_STATUSES = Object.freeze(['covered', 'gap']);
 export const OUTREACH_GOALS = Object.freeze(['informational', 'referral', 'interview_prep']);
-export const WARMTH_DAYS = Object.freeze({ hot: 30, warm: 90, cool: 180 });
 
 function ownerError(message) {
   return Object.assign(new Error(message), { code: 'profile_mismatch' });
@@ -92,17 +92,6 @@ function normalizeCompany(value) {
   return field(value).toLowerCase().replace(/\s+/g, ' ');
 }
 
-function warmthFromLastContact(lastContactAt, asOf = new Date()) {
-  if (!lastContactAt) return 'unknown';
-  const last = new Date(lastContactAt);
-  if (!Number.isFinite(last.getTime())) return 'unknown';
-  const days = Math.max(0, Math.floor((asOf.getTime() - last.getTime()) / 86400000));
-  if (days <= WARMTH_DAYS.hot) return 'hot';
-  if (days <= WARMTH_DAYS.warm) return 'warm';
-  if (days <= WARMTH_DAYS.cool) return 'cool';
-  return 'cold';
-}
-
 function parseContactCard(text) {
   const parsed = {};
   if (!text || typeof text !== 'string') return parsed;
@@ -114,7 +103,8 @@ function parseContactCard(text) {
     if (key === 'name') parsed.name = value;
     else if (key === 'role') parsed.role = value;
     else if (key === 'company') parsed.company = value;
-    else if (key === 'email') parsed.email = value;
+    else if (key === 'email' || key === 'known professional channel' || key === 'known email') parsed.email = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || null;
+    else if (key === 'relationship') parsed.relationship = value;
   }
   return parsed;
 }
@@ -150,7 +140,8 @@ export function importContact(dataDir, args = {}) {
   const parsed = parseContactCard(sourceText);
   const name = field(args.name, parsed.name);
   if (!name) throw Object.assign(new Error('import_contact requires name'), { code: 'missing_name' });
-  const email = field(args.email, parsed.email).toLowerCase() || null;
+  const suppliedEmail = field(args.email, parsed.email || '').toLowerCase();
+  const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(suppliedEmail) ? suppliedEmail : null;
   const company = field(args.company, parsed.company) || null;
   const role = field(args.role, parsed.role) || null;
   const source = requested ? 'staged_file' : sourceText ? 'inline_text' : 'mcp_inline';
@@ -178,6 +169,10 @@ export function importContact(dataDir, args = {}) {
       company,
       email,
       source,
+      sourceText,
+      provenance: field(args.source, source),
+      relationshipEvidence: field(args.relationship, parsed.relationship),
+      notes: field(args.notes),
       humanApproved: false,
       doNotUse: false,
       lastContactAt: null,
@@ -255,6 +250,28 @@ export function listResearch(dataDir, args = {}) {
   return { ok: true, profileId, research, items: research, count: research.length };
 }
 
+function contactContext(store, contact) {
+  if (!contact) return { pathType: 'channel_pending', channel: 'unknown', warmth: 'unknown', reachable: false, researchIds: [] };
+  const research = Object.values(store.research || {}).filter(record => record.profileId === contact.profileId
+    && field(record.subjectName).toLowerCase() === field(contact.name).toLowerCase()
+    && normalizeCompany(record.subjectCompany || record.company) === normalizeCompany(contact.company));
+  const evidence = [contact.relationshipEvidence, contact.notes, contact.sourceText,
+    ...research.map(record => [record.notes, ...(record.findings || [])].join(' '))].filter(Boolean).join('\n');
+  const weak = /spoke once|met once|acquaintance|(?:we|they) (?:met|discussed)|study session|meetup/i.test(evidence)
+    && !/no prior interaction/i.test(evidence);
+  const cold = /no prior|relationship:\s*(?:none|no)|no (?:relationship|connection)|cold/i.test(evidence);
+  const reachable = Boolean(contact.email) && !contact.doNotUse;
+  return { pathType: !reachable ? 'channel_pending' : weak ? 'weak_acquaintance' : 'cold_professional_contact',
+    channel: reachable ? 'email' : 'unknown', warmth: weak ? 'weak_acquaintance' : cold ? 'cold' : 'unknown',
+    reachable, relationshipEvidence: evidence, researchIds: research.map(record => record.id),
+    provenance: contact.provenance || contact.source };
+}
+function assertContactRelevant(contact, job) {
+  if (!contact) return;
+  if (contact.doNotUse) throw Object.assign(new Error('This contact is suppressed by a human decision.'), { code: 'contact_suppressed' });
+  if (normalizeCompany(contact.company) !== normalizeCompany(job.company)) throw Object.assign(new Error('Contact company does not match the hiring company; a shared name is not identity evidence.'), { code: 'contact_company_mismatch' });
+}
+
 /**
  * Local reachability map for one owned job: profile-owned contacts and research
  * records that mention the job's company become reachable paths. This is a map
@@ -269,7 +286,7 @@ export function mapReachableNetwork(dataDir, args = {}) {
   const companyKey = normalizeCompany(job.company);
   const people = [];
   for (const contact of Object.values(store.contacts || {})) {
-    if (contact.profileId !== profileId) continue;
+    if (contact.profileId !== profileId || contact.doNotUse) continue;
     if (!companyKey || normalizeCompany(contact.company) === companyKey) {
       people.push({
         id: contact.id,
@@ -277,8 +294,7 @@ export function mapReachableNetwork(dataDir, args = {}) {
         role: contact.role || null,
         company: contact.company || job.company,
         email: contact.email || null,
-        pathType: 'direct_connection',
-        warmth: warmthFromLastContact(contact.lastContactAt),
+        ...contactContext(store, contact),
         humanApproved: Boolean(contact.humanApproved),
         createdAt: contact.createdAt,
       });
@@ -292,8 +308,8 @@ export function mapReachableNetwork(dataDir, args = {}) {
     }
   }
   const paths = [
-    ...people.map(p => ({ type: 'direct_connection', personId: p.id, company: p.company, strength: 'direct', reason: `Contact at ${p.company || 'the hiring company'}` })),
-    ...research.map(r => ({ type: 'research', personId: null, company: r.subjectCompany, strength: 'moderate', reason: `Research record ${r.subjectName || r.subjectCompany || 'for the company'}` })),
+    ...people.map(p => ({ type: p.pathType, personId: p.id, company: p.company, strength: p.warmth, reachable: p.reachable, reason: p.reachable ? 'Supplied professional email; no permission, deliverability or referral is inferred.' : 'Channel pending; profile/research citation is not a messaging route.' })),
+    ...research.map(r => ({ type: 'research', personId: null, company: r.subjectCompany, strength: 'unknown', reachable: false, reason: `Research record ${r.subjectName || r.subjectCompany || 'for the company'}` })),
   ];
   return {
     ok: true,
@@ -303,7 +319,7 @@ export function mapReachableNetwork(dataDir, args = {}) {
     people,
     research,
     paths,
-    reachable: paths.length > 0,
+    reachable: paths.some(item => item.reachable),
     message: 'Local reachability map. No outreach was composed or transmitted.',
   };
 }
@@ -355,6 +371,8 @@ export function planOutreach(dataDir, args = {}) {
     } else {
       contact = preferredContact(store, profileId, job);
     }
+    assertContactRelevant(contact, job);
+    const access = contactContext(store, contact);
     const at = now();
     const planId = id('plan', `${profileId}:${jobId}:${goal}:${contactId || ''}:${at}`);
     const plan = {
@@ -363,11 +381,12 @@ export function planOutreach(dataDir, args = {}) {
       profileId,
       contactId: contact ? contact.id : null,
       goal,
-      channel: contact ? 'direct_connection' : 'unknown',
-      recommended: Boolean(contact),
+      ...access,
+      recommended: access.reachable,
+      internalNotes: 'Unsent planning only. Supplied channels are not verified deliverable; permission and any referral remain unknown. Human approval required.',
       steps: outreachSteps(goal, contact, job),
       reason: contact
-        ? `Selected ${contact.name} at ${contact.company || job.company} as the local warm path for review.`
+        ? `${contact.name} at ${contact.company || job.company}: ${access.pathType}; ${access.reachable ? 'review the supplied professional channel before use' : 'obtain an appropriate channel or consensual introduction first'}.`
         : 'No profile-owned contact at the hiring company is available yet.',
       status: 'draft_plan',
       delivered: false,
@@ -385,21 +404,39 @@ export function planOutreach(dataDir, args = {}) {
   };
 }
 
-function outreachDraftBody(goal, contact, job, kind) {
-  const lines = [];
-  lines.push(`Subject: ${kind === 'follow_up' ? 'Following up — ' : ''}${contact ? `Hi ${contact.name.split(' ')[0]}` : 'Hello'} — ${job.title} at ${job.company || 'your company'}`);
-  lines.push('');
-  lines.push(contact ? `Hello ${contact.name},` : 'Hello,');
-  if (goal === 'referral') {
-    lines.push(`I am preparing an application for the ${job.title} role at ${job.company || 'your company'} and would value your perspective on whether a referral or warm introduction is appropriate.`);
-  } else if (goal === 'interview_prep') {
-    lines.push(`I have an upcoming conversation about the ${job.title} role at ${job.company || 'your company'} and would value your insight on the team and priorities.`);
-  } else {
-    lines.push(`I am exploring the ${job.title} role at ${job.company || 'your company'} and would welcome an informational conversation about the team and the problems they are solving.`);
-  }
-  lines.push('This is a local draft for review. I will send nothing until you explicitly approve it.');
-  if (kind === 'follow_up') lines.push('This is a follow-up to an earlier draft; it remains unsent pending your approval.');
-  return lines.join('\n');
+function outreachDraftBody(goal, contact, job, store, profileId) {
+  const context = contactContext(store, contact);
+  const evidence = `${context.relationshipEvidence || ''} ${job.description || ''}`;
+  const role = contact?.role || '';
+  const peer = /analytics|engineer|analyst/i.test(role) && !/manager|head|lead|director/i.test(role);
+  const topic = /product manager/i.test(role)
+    ? 'Which product metrics or self-service reporting questions most need attention from this role?'
+    : peer
+      ? 'How does the team review and test model changes before they reach shared reporting?'
+      : /warehouse.*cost|transformation cost/i.test(evidence) && /metric|revenue definition/i.test(evidence)
+        ? 'How is the team balancing consistent metric definitions with warehouse-cost improvements?'
+        : 'What are the most important problems this role would help the team address?';
+  const relationship = context.relationshipEvidence || '';
+  const recalledTopic = /incremental[- ]model testing/i.test(relationship) ? 'incremental-model testing'
+    : /tests for late.arriving/i.test(relationship) ? 'tests for late-arriving events' : null;
+  const recollection = context.pathType === 'weak_acquaintance' && /spoke once|met once|we (?:met|discussed)/i.test(relationship)
+    ? /study session/i.test(relationship)
+      ? `We spoke${/once/i.test(relationship) ? ' once' : ''} at a study session${recalledTopic ? ` about ${recalledTopic}` : ''}; I would value a brief follow-up perspective.`
+      : 'We spoke previously; I would value a brief follow-up perspective.'
+    : '';
+  const active = activeProofIdsForStore(store, profileId);
+  const terms = new Set(tokenize(topic));
+  const proofs = Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && active.has(proof.id));
+  const score = proof => tokenize(proof.summary).filter(word => terms.has(word)).length;
+  const proof = proofs.sort((a,b) => score(b) - score(a))[0];
+  const lines = [contact ? `Hello ${contact.name},` : 'Hello,', '',
+    `I am exploring the ${job.title} role at ${job.company || 'your company'}.`,
+    recollection,
+    contact?.role ? `Given your work as ${contact.role}, I would value your perspective.` : '',
+    proof ? `In my previous work, I ${supportedAchievement(proof.summary).replace(/^([A-Z])/, letter => letter.toLowerCase()).replace(/[.]+$/, '')}.` : '', '', topic,
+    goal === 'interview_prep' ? 'I would appreciate any context that could help me prepare for a possible conversation with the team.' : 'If you are open to a brief reply, I would appreciate your perspective.', '',
+    'Thank you,', store.profiles[profileId].resume?.identity?.name || store.profiles[profileId].name];
+  return { body: lines.filter((line,index,all) => line || all[index - 1]).join('\n'), proofPointIds: proof ? [proof.id] : [], context };
 }
 
 /**
@@ -430,9 +467,11 @@ export function draftOutreach(dataDir, args = {}) {
     } else {
       contact = preferredContact(store, profileId, job);
     }
+    assertContactRelevant(contact, job);
+    const generated = outreachDraftBody(goal, contact, job, store, profileId);
     const at = now();
     const draftId = id('draft', `${profileId}:${jobId}:${goal}:${kind}:${at}`);
-    const body = field(args.body, outreachDraftBody(goal, contact, job, kind));
+    const body = field(args.body, generated.body);
     const draft = {
       id: draftId,
       jobId,
@@ -440,8 +479,13 @@ export function draftOutreach(dataDir, args = {}) {
       contactId: contact ? contact.id : null,
       kind,
       goal,
-      subject: field(args.subject, body.split('\n')[0].replace(/^Subject:\s*/, '')),
+      subject: field(args.subject, `Question about ${job.title} at ${job.company}`),
       body,
+      channel: generated.context.channel,
+      pathType: generated.context.pathType,
+      proofPointIds: args.body ? [] : generated.proofPointIds,
+      researchIds: generated.context.researchIds,
+      internalNotes: ['UNSENT. Human approval required; no prior send, interview, referral or recipient permission is assumed.', ...(generated.context.reachable ? [] : ['Channel pending: obtain an appropriate professional channel or consensual introduction before use.']), ...(args.body ? ['User-supplied copy requires factual review.'] : [])],
       status: 'draft_not_delivered',
       delivered: false,
       deliveredAt: null,

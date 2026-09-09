@@ -23,7 +23,7 @@ All tools operate locally under `PLUGIN_DATA` via the bundled runtime.
 | --- | --- | --- |
 | `doctor` | none | Diagnoses bundled `./bin/jobsss` and `PLUGIN_DATA`; succeeds without credentials. Do not claim, invent, or fabricate jobs/scores. |
 | `start` | none | Initializes durable state under `PLUGIN_DATA`. |
-| `create_profile` | `name`, optional resume text or a path under `PLUGIN_DATA` | Creates a profile and extracts proof-point candidates marked for human verification; returns `profileId` or `id`. No arbitrary filesystem paths are read. |
+| `create_profile` | `name`, optional resume text or a path under `PLUGIN_DATA` | Creates a profile and extracts proof-point candidates marked for human verification; returns `profileId` or `id`. Pass source resume text unchanged (headings and dated roles). No arbitrary filesystem paths are read. |
 | `import_job` | `profileId` plus inline `text`/`content` or a path under `PLUGIN_DATA` | Imports job content locally; returns `jobId`. Offline; re-importing the same job deduplicates to a single id. |
 | `list_jobs` | `profileId` | Lists imported jobs for that profile. |
 | `score_job` | `jobId`, `profileId` | Local deterministic scoring; returns `overall` number and/or `scoreStatus`. No API key. |

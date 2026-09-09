@@ -1,0 +1,27 @@
+{
+  "targetRoleFamilies": [
+    "Analytics Engineer",
+    "Data Engineer"
+  ],
+  "targetLevel": "mid-level IC",
+  "remoteOnly": true,
+  "location": "Chicago, Illinois, United States",
+  "timezone": "America/Chicago",
+  "workAuthorization": "US citizen; US authorized without sponsorship; no UK/EU authorization",
+  "workingHours": "09:00\u201317:00 Central",
+  "maxTravelPercent": 10,
+  "minBaseSalary": 130000,
+  "salaryCurrency": "USD",
+  "desiredBaseSalaryMin": 145000,
+  "desiredBaseSalaryMax": 160000,
+  "employmentType": "full-time",
+  "noRelocation": true,
+  "excludeRoles": [
+    "staff",
+    "principal",
+    "management",
+    "lead",
+    "primary infrastructure/platform",
+    "Java streaming specialist"
+  ]
+}

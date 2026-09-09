@@ -813,3 +813,246 @@ export function runAllSearches(store, { profileId, dataDir, sourceResults = {}, 
     message: 'Daily discovery completed. Discovered jobs remain database-only until explicitly saved or pursued; no folder or external action was created.',
   };
 }
+
+// ---------------------------------------------------------------------------
+// P1b Greenhouse per-job application detail (Greenhouse ONLY).
+// Same trust level as the existing public board fetch: public
+// boards-api.greenhouse.io JSON, no auth/keys/login. No other ATS, no
+// crawlers, no browser automation (host fetches; plugin parses).
+// ---------------------------------------------------------------------------
+
+export const GREENHOUSE_DETAIL_FIXTURE_NAME = 'greenhouse-detail-fixture.json';
+
+/**
+ * Parse a Greenhouse board/job reference from a job URL or posting text.
+ * Accepts boards.greenhouse.io and boards-api.greenhouse.io URLs.
+ * Returns { board, id } or null when the job is not a Greenhouse job.
+ */
+export function parseGreenhouseRef(job = {}, postingText = '') {
+  const haystack = [
+    job && job.detailUrl,
+    job && job.greenhouseDetailUrl,
+    job && job.greenhouseUrl,
+    job && job.url,
+    postingText,
+  ].filter(value => value != null && String(value).trim() !== '').map(String).join('\n');
+  if (!haystack) return null;
+  let match = haystack.match(/boards-api\.greenhouse\.io\/v1\/boards\/([A-Za-z0-9_-]+)\/jobs\/(\d+)/i);
+  if (match) return { board: match[1], id: match[2] };
+  match = haystack.match(/boards\.greenhouse\.io\/([A-Za-z0-9_-]+)\/jobs\/(\d+)/i);
+  if (match) return { board: match[1], id: match[2] };
+  return null;
+}
+
+/** Build the public per-job Greenhouse detail URL (`?questions=true`). */
+export function greenhouseDetailUrl(board, jobId) {
+  return `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(String(board))}/jobs/${encodeURIComponent(String(jobId))}?questions=true`;
+}
+
+const GREENHOUSE_DOC_KINDS = new Set(['resume', 'cover_letter', 'portfolio', 'other']);
+
+function normalizeGreenhouseDocKind(raw) {
+  const text = String(raw == null ? '' : raw).toLowerCase().replace(/[\s-]+/g, '_');
+  if (/resume|curriculum_vitae|\bcv\b/.test(text)) return 'resume';
+  if (/cover/.test(text)) return 'cover_letter';
+  if (/portfolio|work_sample|writing_sample/.test(text)) return 'portfolio';
+  return 'other';
+}
+
+/**
+ * Normalize a raw Greenhouse `?questions=true` payload into
+ * questions[] { label, required, kind, options[] } and
+ * documents[] { kind: resume|cover_letter|portfolio|other, required }.
+ * Live Greenhouse emits NO top-level `documents` key: attachment uploads
+ * (Resume/CV, Cover Letter, …) arrive as question rows with file-ish
+ * types (input_file/attachment) or document-like labels. Documents are
+ * therefore DERIVED from the question rows; an explicit vendor
+ * `documents[]` is only merged when present (back-compat, deduped by
+ * kind with required OR-ed). The raw payload itself is never mutated;
+ * preserve it verbatim separately.
+ */
+export function normalizeGreenhouseDetail(raw) {
+  const detail = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const rows = Array.isArray(detail.questions) ? detail.questions : [];
+  const questions = [];
+  const documents = [];
+  const seenDoc = new Map();
+  const noteDoc = (kind, required) => {
+    const prior = seenDoc.get(kind);
+    if (prior === undefined) {
+      seenDoc.set(kind, Boolean(required));
+      documents.push({ kind, required: Boolean(required) });
+    } else if (required && !prior) {
+      seenDoc.set(kind, true);
+      const entry = documents.find(item => item.kind === kind);
+      if (entry) entry.required = true;
+    }
+  };
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const label = String(row.label ?? row.name ?? row.title ?? '').trim();
+    if (!label) continue;
+    // Live Greenhouse nests field types/values: fields: [{ type, values: [{ label }] }].
+    // Derive kind/options from the nested fields; fall back to row-level only
+    // when no fields are present.
+    const fields = Array.isArray(row.fields) ? row.fields.filter(f => f && typeof f === 'object') : [];
+    let kind;
+    let options;
+    if (fields.length > 0) {
+      const fileishField = fields.find(f => /^(input_file|attachment|upload)$/i.test(String(f.type ?? '')));
+      const picked = fileishField
+        ?? fields.find(f => String(f.type ?? '') !== 'input_hidden');
+      if (picked) {
+        kind = String(picked.type ?? row.kind ?? row.type ?? 'input_text') || 'input_text';
+        const values = Array.isArray(picked.values) ? picked.values : [];
+        options = values.map(v => {
+          if (v && typeof v === 'object') return String(v.label ?? v.value ?? v.name ?? '');
+          return String(v ?? '');
+        }).filter(s => s !== '');
+      } else {
+        kind = String(row.kind ?? row.type ?? 'input_text');
+        options = [];
+      }
+    } else {
+      kind = String(row.kind ?? row.type ?? 'input_text');
+      options = Array.isArray(row.options)
+        ? row.options.map(String)
+        : Array.isArray(row.values)
+          ? row.values.map(String)
+          : [];
+    }
+    questions.push({
+      label,
+      required: Boolean(row.required),
+      kind,
+      options,
+    });
+    // Derive document uploads from live question rows: file-ish field
+    // types, or strong document-like labels (Resume/CV, Cover Letter,
+    // portfolio/work samples, extra attachments).
+    const fileish = /file|attachment|upload/i.test(kind);
+    const lowered = label.toLowerCase().replace(/[\s-]+/g, '_');
+    const strongLabel = /resume|curriculum_vitae|\bcv\b|cover/.test(lowered)
+      || /portfolio|work_sample|writing_sample/.test(lowered)
+      || (/attach/.test(lowered) && !/^(linkedin|github|personal_website|personal|website)/.test(lowered));
+    if (fileish || strongLabel) {
+      noteDoc(normalizeGreenhouseDocKind(label), Boolean(row.required));
+    }
+  }
+  const docs = Array.isArray(detail.documents) ? detail.documents : [];
+  for (const row of docs) {
+    if (!row || typeof row !== 'object') continue;
+    const kind = GREENHOUSE_DOC_KINDS.has(String(row.kind).toLowerCase())
+      ? String(row.kind).toLowerCase()
+      : normalizeGreenhouseDocKind(row.kind ?? row.name ?? row.label);
+    noteDoc(kind, Boolean(row.required));
+  }
+  return { questions, documents };
+}
+
+function greenhouseDetailOk({ board, refId, raw, rawText, source }) {
+  const { questions, documents } = normalizeGreenhouseDetail(raw);
+  return {
+    ok: true,
+    status: 'ok',
+    board,
+    id: refId,
+    detailUrl: greenhouseDetailUrl(board, refId),
+    questions,
+    documents,
+    rawDetail: raw,
+    rawText: String(rawText),
+    fetchedAt: now(),
+    source,
+  };
+}
+
+function greenhouseDetailDegraded(ref, reason, message) {
+  return {
+    ok: false,
+    status: 'degraded',
+    board: ref ? ref.board : '',
+    id: ref ? ref.id : '',
+    detailUrl: ref ? greenhouseDetailUrl(ref.board, ref.id) : '',
+    questions: [],
+    documents: [],
+    rawDetail: null,
+    reason: String(reason || 'detail_fetch_failed'),
+    ...(message ? { message: String(message) } : {}),
+    fetchedAt: now(),
+    source: 'none',
+  };
+}
+
+/**
+ * Synchronously read a staged Greenhouse detail fixture from inside
+ * PLUGIN_DATA (same trust model as offline board fixtures). Returns the
+ * parsed raw payload, or null when absent/unreadable. Never throws, never
+ * touches the network. `fixtureName` must be a bare file name confined to
+ * the data dir.
+ */
+export function readGreenhouseDetailFixture(dataDir, fixtureName = GREENHOUSE_DETAIL_FIXTURE_NAME) {
+  try {
+    const name = String(fixtureName || '').trim() || GREENHOUSE_DETAIL_FIXTURE_NAME;
+    if (name.includes('/') || name.includes('\\') || name !== path.basename(name)) return null;
+    const dir = ensureDataDir(dataDir);
+    const abs = path.join(dir, name);
+    let real;
+    try { real = fs.realpathSync(abs); } catch { return null; }
+    const dataReal = fs.realpathSync(dir);
+    if (real !== dataReal && !real.startsWith(`${dataReal}${path.sep}`)) return null;
+    const rawText = fs.readFileSync(abs, 'utf8');
+    return { raw: JSON.parse(rawText), rawText };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch and normalize the Greenhouse per-job application detail.
+ * Greenhouse-only. Resolution order: staged PLUGIN_DATA fixture (no
+ * network) → public boards-api URL via fetchPublicResource (accepts
+ * fetchImpl for tests). Missing fixture or failed fetch returns a degraded
+ * result; never throws.
+ */
+export async function fetchApplicationDetail(job = {}, { dataDir = null, fetchImpl = globalThis.fetch, lookupImpl = dns.lookup, postingText = '', fixtureName = null } = {}) {
+  const ref = parseGreenhouseRef(job, postingText);
+  if (!ref) return greenhouseDetailDegraded(null, 'not_a_greenhouse_job');
+  if (dataDir) {
+    const staged = readGreenhouseDetailFixture(dataDir, fixtureName || GREENHOUSE_DETAIL_FIXTURE_NAME);
+    if (staged) return greenhouseDetailOk({ board: ref.board, refId: ref.id, raw: staged.raw, rawText: staged.rawText, source: 'fixture' });
+  }
+  try {
+    const url = greenhouseDetailUrl(ref.board, ref.id);
+    const resource = await fetchPublicResource(url, { fetchImpl, lookupImpl, maxBytes: 2 * 1024 * 1024 });
+    let raw;
+    try { raw = JSON.parse(resource.text); }
+    catch { return greenhouseDetailDegraded(ref, 'ats_invalid_response', 'Public Greenhouse job returned invalid JSON.'); }
+    return greenhouseDetailOk({ board: ref.board, refId: ref.id, raw, rawText: resource.text, source: 'public_api' });
+  } catch (cause) {
+    return greenhouseDetailDegraded(ref, (cause && cause.code) || 'detail_fetch_failed', cause && cause.message);
+  }
+}
+
+/**
+ * Synchronous variant used on the import/pursue path (which must stay
+ * synchronous for in-process callers): staged fixture or inline detail
+ * only, never network. Returns { ok, ...detail } or a degraded result.
+ */
+export function resolveGreenhouseDetailSync(job = {}, { dataDir = null, postingText = '', inlineDetail = null, fixtureName = null } = {}) {
+  const ref = parseGreenhouseRef(job, postingText);
+  if (inlineDetail && typeof inlineDetail === 'object') {
+    const board = String(inlineDetail.board || (ref && ref.board) || '').trim();
+    const refId = String(inlineDetail.id || (ref && ref.id) || '').trim();
+    if (board && refId) {
+      return greenhouseDetailOk({ board, refId, raw: inlineDetail, rawText: JSON.stringify(inlineDetail), source: 'inline' });
+    }
+  }
+  if (dataDir && ref) {
+    const staged = readGreenhouseDetailFixture(dataDir, fixtureName || GREENHOUSE_DETAIL_FIXTURE_NAME);
+    if (staged) return greenhouseDetailOk({ board: ref.board, refId: ref.id, raw: staged.raw, rawText: staged.rawText, source: 'fixture' });
+    return greenhouseDetailDegraded(ref, 'detail_fetch_failed', 'No staged Greenhouse detail fixture; live fetch is not performed on the sync import path.');
+  }
+  if (ref) return greenhouseDetailDegraded(ref, 'detail_fetch_failed', 'Greenhouse detail is unavailable.');
+  return greenhouseDetailDegraded(null, 'not_a_greenhouse_job');
+}

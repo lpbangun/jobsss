@@ -1,0 +1,23 @@
+{
+  "format": "jobsss.packet/v1",
+  "jobId": "job-synth-002",
+  "revision": 1,
+  "contentHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "components": {
+    "resumePdf": null,
+    "coverLetter": "packet/cover-letter.md",
+    "answers": "packet/answers.json",
+    "checklist": null
+  },
+  "asks": [
+    { "id": "ask-1", "label": "Why does this fictional role interest you?" },
+    { "id": "ask-2", "label": "Unanswered synthetic question." }
+  ],
+  "answers": [
+    { "askId": "ask-1", "text": "Synthetic partial answer." }
+  ],
+  "checklist": [
+    { "label": "Proofread", "status": "open" }
+  ],
+  "readiness": "incomplete"
+}

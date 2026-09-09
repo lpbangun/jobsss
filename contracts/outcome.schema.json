@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jobsss.local/contracts/outcome.schema.json",
+  "title": "JobSSS portable outcome record",
+  "description": "Portable observation record for trusted CLI decide only. Action must be one of the existing trusted decision actions; actor must be trusted_local. These validators never grant authority; live decide remains src/authority.js. Never claims send/submit/apply as plugin-performed.",
+  "type": "object",
+  "required": ["action", "id", "revision", "contentHash", "actor"],
+  "properties": {
+    "action": {
+      "enum": ["proof.verify", "artifact.approve", "artifact.reject", "contact.approve", "contact.suppress", "story.verify", "story.retire", "debrief.record", "debrief.correct", "outreach.sent", "outreach.outcome", "application.observe_status"]
+    },
+    "id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "contentHash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "Lowercase SHA-256; uppercase input is lowercased before checking, mirroring authority.js." },
+    "actor": { "const": "trusted_local" },
+    "note": { "type": "string" },
+    "outcome": { "type": "string" },
+    "status": { "type": "string" }
+  },
+  "not": { "anyOf": [{ "required": ["sent"] }, { "required": ["submitted"] }, { "required": ["applied"] }, { "required": ["tool"] }, { "required": ["expectedRevision"] }] }
+}

@@ -325,7 +325,95 @@ export function deriveProjectionTargets(store) {
     }
     targets.push({ segments: ['applications', String(jobId), 'application.json'], value: app });
   }
+  // P1b per-job Greenhouse application folders (additive): only for jobs
+  // that explicitly carry a verbatim posting and/or linked application
+  // detail. Discovery-only rows (no postingText/detail) emit nothing extra,
+  // so unsaved discovery still creates no job folder.
+  for (const job of Object.values(store.jobs || {})) {
+    if (!job || !job.id) continue;
+    const explicit = job.saved === true || Boolean(applications[job.id]);
+    if (!explicit) continue;
+    if (typeof job.postingText === 'string' && job.postingText) {
+      targets.push({ segments: ['jobs', String(job.id), 'posting.md'], text: job.postingText });
+    }
+    const detail = job.applicationDetail;
+    if (detail && Array.isArray(detail.questions)) {
+      targets.push({ segments: ['jobs', String(job.id), 'application.json'], value: greenhouseApplicationFile(store, job) });
+      targets.push({ segments: ['jobs', String(job.id), 'questions.md'], text: greenhouseQuestionsChecklist(job) });
+    }
+  }
   return targets;
+}
+
+/**
+ * P1b `jobs/<id>/application.json` payload: normalized questions[] +
+ * documents[] with Greenhouse provenance (board/detail URL), fetchedAt,
+ * id, revision, hash, and the verbatim raw detail response.
+ */
+function greenhouseApplicationFile(store, job) {
+  const detail = job.applicationDetail || {};
+  return {
+    id: job.id,
+    jobId: job.id,
+    profileId: job.profileId,
+    title: job.title,
+    company: job.company,
+    board: detail.board || '',
+    sourceUrl: job.url || detail.sourceUrl || '',
+    detailUrl: detail.detailUrl || '',
+    fetchedAt: detail.fetchedAt || null,
+    revision: Number.isInteger(store.revision) ? store.revision : 1,
+    hash: detail.hash || hashText(JSON.stringify(detail.rawDetail ?? null)),
+    sourceHash: detail.hash || hashText(JSON.stringify(detail.rawDetail ?? null)),
+    questions: Array.isArray(detail.questions) ? detail.questions : [],
+    documents: Array.isArray(detail.documents) ? detail.documents : [],
+    detailCoverage: job.detailCoverage || null,
+    questionsStatus: job.questionsStatus || null,
+    rawDetail: detail.rawDetail ?? null,
+  };
+}
+
+/**
+ * P1b `jobs/<id>/questions.md`: human-readable checklist derived from
+ * application.json with required questions and documents flagged.
+ */
+function greenhouseQuestionsChecklist(job) {
+  const detail = job.applicationDetail || {};
+  const questions = Array.isArray(detail.questions) ? detail.questions : [];
+  const documents = Array.isArray(detail.documents) ? detail.documents : [];
+  const required = questions.filter(item => item.required);
+  const optional = questions.filter(item => !item.required);
+  const lines = [
+    `# Application questions: ${job.title || job.id}`,
+    '',
+    `Source: ${detail.detailUrl || job.url || ''}`,
+    `Board: ${detail.board || ''} — fetched ${detail.fetchedAt || 'unknown'}`,
+    '',
+    '## Required questions',
+    '',
+  ];
+  for (const item of required) {
+    const options = Array.isArray(item.options) && item.options.length ? ` [options: ${item.options.join(', ')}]` : '';
+    lines.push(`- [ ] ${item.label} (required)${options}`);
+  }
+  if (!required.length) lines.push('- [ ] (none)');
+  lines.push('', '## Optional questions', '');
+  for (const item of optional) lines.push(`- [ ] ${item.label}`);
+  if (!optional.length) lines.push('- [ ] (none)');
+  lines.push('', '## Required documents', '');
+  const requiredDocs = documents.filter(item => item.required);
+  for (const item of requiredDocs) {
+    const spelled = String(item.kind).replace(/_/g, ' ');
+    lines.push(`- [ ] ${item.kind} (${spelled}) (required)`);
+  }
+  if (!requiredDocs.length) lines.push('- [ ] (none)');
+  const optionalDocs = documents.filter(item => !item.required);
+  if (optionalDocs.length) {
+    lines.push('', '## Optional documents', '');
+    for (const item of optionalDocs) lines.push(`- [ ] ${item.kind} (${String(item.kind).replace(/_/g, ' ')})`);
+  }
+  lines.push('', 'Human verification required before any outside step.', '');
+  return lines.join('\n');
 }
 
 /**
@@ -711,7 +799,9 @@ export function commitStore(dataDir, { expectedRevision = null } = {}, mutate = 
       ...targets.map(target => ({
         segments: target.segments,
         abs: path.join(dir, ...target.segments),
-        content: redactSecrets(JSON.stringify(target.value, null, 2)),
+        content: target.text != null
+          ? redactSecrets(String(target.text))
+          : redactSecrets(JSON.stringify(target.value, null, 2)),
       })),
       // Canonical store is the last file renamed: it is the logical commit point.
       { segments: [], abs: p, content: redactSecrets(JSON.stringify(result, null, 2)) },

@@ -13,6 +13,7 @@ import { localScore } from './scoring.js';
 import {
   assertPublicJobUrl, fetchPublicJob, parseJobText, createSavedSearch as createSearch,
   getSavedSearch, listSavedSearches as savedSearches, fetchSavedSearchSource, runSavedSearch, runAllSearches,
+  parseGreenhouseRef, resolveGreenhouseDetailSync, fetchApplicationDetail,
 } from './discovery.js';
 import {
   requireJobOwned, pursueJob as pursueLocal, saveJob as saveLocal, skipJob as skipLocal,
@@ -473,19 +474,135 @@ export function importJob(dataDir, args = {}) {
   const input = readIntakeText(dataDir, args, 'job', ['text', 'content']);
   if (!input.text) throw error('missing_content', 'import_job requires inline text/content or a staged path');
   const parsed = parseJobText(input.text);
+  // Verbatim posting for jobs/<id>/posting.md: inline intake trims, so
+  // prefer the raw inline arg when present (parse/store still use input).
+  const verbatimPosting = String(args.text || args.content || '').trim() !== ''
+    ? String(args.text || args.content)
+    : input.text;
+  // P1b Greenhouse detail (additive, sync sources only: inline detail or a
+  // staged PLUGIN_DATA fixture; never network, never blocking). Plain
+  // non-Greenhouse imports keep their exact prior shape.
+  const greenhouseArgs = greenhouseImportArgs(args);
+  const greenhouseJob = greenhouseArgs.involved ? { ...parsed, url: greenhouseArgs.url || parsed.url } : null;
+  const detail = greenhouseJob
+    ? resolveGreenhouseDetailSync(greenhouseJob, {
+        dataDir,
+        postingText: input.text,
+        inlineDetail: greenhouseArgs.detail,
+        fixtureName: greenhouseArgs.fixtureName,
+      })
+    : null;
   const resultValue = mutate(dataDir, args, store => {
     requireProfile(store, profileId);
     const sourceHash = hashText(input.text);
     const duplicate = Object.values(store.jobs).find(job => job.profileId === profileId && job.sourceHash === sourceHash);
-    if (duplicate) return { jobId: duplicate.id, id: duplicate.id, job: duplicate, deduped: true };
+    if (duplicate) {
+      if (greenhouseJob) linkGreenhouseDetail(duplicate, detail, verbatimPosting, greenhouseArgs.url);
+      return {
+        jobId: duplicate.id, id: duplicate.id, job: duplicate, deduped: true,
+        ...(greenhouseJob ? greenhouseMarkers(duplicate) : {}),
+      };
+    }
     const jobId = id('job', `${profileId}:${sourceHash}`);
     const job = { id: jobId, jobId, profileId, ...parsed, source: input.real ? 'staged_file' : 'inline_text',
       sourceName: input.sourceName, sourceHash, dedupeKey: dedupeKeyForJob(parsed), discovered: false, saved: true,
       status: 'imported', createdAt: now(), updatedAt: now() };
+    if (greenhouseJob) {
+      if (greenhouseArgs.url && !job.url) job.url = greenhouseArgs.url;
+      linkGreenhouseDetail(job, detail, verbatimPosting, greenhouseArgs.url);
+    }
     store.jobs[jobId] = job;
-    return { jobId, id: jobId, job, created: true };
+    return { jobId, id: jobId, job, created: true, ...(greenhouseJob ? greenhouseMarkers(job) : {}) };
   });
   return resultValue;
+}
+
+/**
+ * P1b: collect Greenhouse-specific import inputs (all optional/additive).
+ * `involved` is true when the caller supplied Greenhouse inputs or the
+ * posting text/URL parses as a Greenhouse reference.
+ */
+function greenhouseImportArgs(args = {}) {
+  const url = String(args.greenhouseUrl || args.greenhouseDetailUrl || args.url || '').trim();
+  const detail = args.greenhouseDetail && typeof args.greenhouseDetail === 'object' ? args.greenhouseDetail : null;
+  const fixtureName = String(args.greenhouseDetailFixture || '').trim() || null;
+  const involved = Boolean(
+    String(args.greenhouseUrl || '').trim()
+    || String(args.greenhouseDetailUrl || '').trim()
+    || detail
+    || fixtureName
+    || parseGreenhouseRef({ url }, String(args.text || args.content || ''))
+  );
+  return { url, detail, fixtureName, involved };
+}
+
+/**
+ * P1b: persist/link Greenhouse application detail on a job record.
+ * Success stores the verbatim posting plus normalized questions/documents
+ * with provenance; degradation records an explicit marker and still keeps
+ * the posting. Never throws.
+ */
+function linkGreenhouseDetail(job, detail, postingText, sourceUrl) {
+  job.postingText = String(postingText || '');
+  if (detail && detail.ok) {
+    job.applicationDetail = {
+      board: detail.board,
+      jobId: detail.id,
+      sourceUrl: job.url || sourceUrl || '',
+      detailUrl: detail.detailUrl,
+      fetchedAt: detail.fetchedAt,
+      hash: hashText(detail.rawText),
+      questions: detail.questions,
+      documents: detail.documents,
+      rawDetail: detail.rawDetail,
+      source: detail.source,
+    };
+    job.detailCoverage = { status: 'ok', source: detail.source, detailUrl: detail.detailUrl, fetchedAt: detail.fetchedAt };
+    job.questionsStatus = { status: 'ok', count: detail.questions.length, detailUrl: detail.detailUrl };
+  } else {
+    if (job.applicationDetail) delete job.applicationDetail;
+    const failed = detail || { detailUrl: '', reason: 'detail_fetch_failed' };
+    job.detailCoverage = { status: 'degraded', reason: failed.reason || 'detail_fetch_failed', detailUrl: failed.detailUrl || '' };
+    job.questionsStatus = { status: 'degraded', reason: failed.reason || 'detail_fetch_failed' };
+  }
+  job.updatedAt = now();
+  return job;
+}
+
+function greenhouseMarkers(job) {
+  return { detailCoverage: job.detailCoverage, questionsStatus: job.questionsStatus };
+}
+
+/**
+ * P1b: compute the pre-decide readiness gate for a job with linked
+ * application detail: required questions (minus saved answers) plus
+ * required documents (minus produced drafts). Returns null when the job
+ * has no linked ask list.
+ */
+export function unansweredRequiredFor(store, job) {
+  const detail = job && job.applicationDetail;
+  if (!detail || !Array.isArray(detail.questions)) return null;
+  const norm = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const answered = new Set(
+    Object.values(store.answers || {})
+      .filter(item => item && item.profileId === job.profileId)
+      .map(item => norm(item.question))
+  );
+  const unanswered = [];
+  for (const item of detail.questions) {
+    if (item && item.required && item.label && !answered.has(norm(item.label))) unanswered.push(String(item.label));
+  }
+  const artifacts = Object.values(store.artifacts || {})
+    .filter(item => item && item.jobId === job.id && item.profileId === job.profileId && !item.retiredAt);
+  const hasResume = artifacts.some(item => item.kind === 'resume_draft');
+  const hasCover = artifacts.some(item => item.kind === 'cover_letter_draft');
+  for (const item of Array.isArray(detail.documents) ? detail.documents : []) {
+    if (!item || !item.required) continue;
+    if (item.kind === 'resume' && hasResume) continue;
+    if (item.kind === 'cover_letter' && hasCover) continue;
+    unanswered.push(`Required document: ${item.kind}`);
+  }
+  return unanswered;
 }
 
 export async function importJobUrl(dataDir, args = {}) {
@@ -496,17 +613,38 @@ export async function importJobUrl(dataDir, args = {}) {
   const prior = Object.values(snapshot.jobs).find(job => job.profileId === profileId && job.url === url && job.fetchStatus === 'fetched');
   if (prior) return { ok: true, jobId: prior.id, id: prior.id, job: prior, deduped: true, revision: snapshot.revision };
   const fetched = await fetchPublicJob(url);
+  // P1b: link Greenhouse application detail when the URL is a Greenhouse
+  // reference (fixture first, then the same public API trust level as the
+  // listing fetch). Degradation never blocks the import.
+  let urlDetail = null;
+  let urlGreenhouse = false;
+  try {
+    const ref = parseGreenhouseRef({ url });
+    urlGreenhouse = Boolean(ref);
+    if (ref) {
+      urlDetail = await fetchApplicationDetail({ url }, { dataDir, postingText: fetched.description || '' });
+    }
+  } catch {
+    urlDetail = null;
+  }
   return mutate(dataDir, args, store => {
     requireProfile(store, profileId);
     const duplicate = Object.values(store.jobs).find(job => job.profileId === profileId && job.url === fetched.url && job.fetchStatus === 'fetched');
-    if (duplicate) return { ok: true, jobId: duplicate.id, id: duplicate.id, job: duplicate, deduped: true };
+    if (duplicate) {
+      if (urlGreenhouse) {
+        linkGreenhouseDetail(duplicate, urlDetail && urlDetail.ok ? urlDetail : (urlDetail || { ok: false, reason: 'detail_fetch_failed', detailUrl: '' }),
+          typeof duplicate.postingText === 'string' && duplicate.postingText ? duplicate.postingText : fetched.description, url);
+      }
+      return { ok: true, jobId: duplicate.id, id: duplicate.id, job: duplicate, deduped: true, ...(urlGreenhouse ? greenhouseMarkers(duplicate) : {}) };
+    }
     const sourceHash = hashText(fetched.description);
     const jobId = id('job', `${profileId}:url:${fetched.url}`);
     const job = { ...fetched, id: jobId, jobId, profileId, sourceHash,
       discovered: false, saved: false, status: 'imported_url', dedupeKey: dedupeKeyForJob(fetched),
       createdAt: now(), updatedAt: now() };
+    if (urlGreenhouse) linkGreenhouseDetail(job, urlDetail && urlDetail.ok ? urlDetail : (urlDetail || { ok: false, reason: 'detail_fetch_failed', detailUrl: '' }), fetched.description, url);
     store.jobs[jobId] = job;
-    return { ok: true, jobId, id: jobId, job, created: true,
+    return { ok: true, jobId, id: jobId, job, created: true, ...(urlGreenhouse ? greenhouseMarkers(job) : {}),
       message: 'Public job URL fetched and stored locally for review. No application or other external action was performed.' };
   });
 }
@@ -537,7 +675,26 @@ export function scoreJob(dataDir, args = {}) {
 }
 
 export function pursueJob(dataDir, args = {}) {
-  return mutate(dataDir, args, store => pursueLocal(store, { jobId: String(args.jobId || args.id || ''), profileId: String(args.profileId || '') }));
+  // P1b: ensure linked Greenhouse detail exists before the pursuit commit
+  // so the per-job folder materializes with the ask list. Sync sources
+  // only (inline args or staged fixture); never network, never blocking.
+  const greenhouseArgs = greenhouseImportArgs(args);
+  return mutate(dataDir, args, store => {
+    const jobId = String(args.jobId || args.id || '');
+    const profileId = String(args.profileId || '');
+    const job = store.jobs?.[jobId] || null;
+    if (job && job.profileId === profileId && !job.applicationDetail
+      && (greenhouseArgs.involved || parseGreenhouseRef(job, job.description || ''))) {
+      const detail = resolveGreenhouseDetailSync(
+        { ...job, url: greenhouseArgs.url || job.url },
+        { dataDir, postingText: job.description || '', inlineDetail: greenhouseArgs.detail, fixtureName: greenhouseArgs.fixtureName }
+      );
+      linkGreenhouseDetail(job, detail,
+        typeof job.postingText === 'string' && job.postingText ? job.postingText : String(job.description || ''),
+        greenhouseArgs.url || job.url);
+    }
+    return pursueLocal(store, { jobId: String(args.jobId || args.id || ''), profileId: String(args.profileId || '') });
+  });
 }
 
 export function saveJob(dataDir, args = {}) {
@@ -564,10 +721,25 @@ export function applicationsPlan(dataDir, args = {}) {
   const nextActions = isTerminal || excluded
     ? []
     : [...new Set(tasks.map(task => task.text).concat(['human review', 'verify proof-grounded materials']))];
+  // P1b: packet coverage cites the real ask list (persisted questions[] +
+  // required documents) instead of a generic template.
+  const detail = job.applicationDetail && Array.isArray(job.applicationDetail.questions) ? job.applicationDetail : null;
+  const askList = detail ? detail.questions.map(item => String(item.label || '')).filter(Boolean) : [];
+  const requiredQuestions = detail ? detail.questions.filter(item => item && item.required).map(item => String(item.label)) : [];
+  const requiredDocuments = detail
+    ? (Array.isArray(detail.documents) ? detail.documents : []).filter(item => item && item.required).map(item => String(item.kind))
+    : [];
+  const unansweredRequired = unansweredRequiredFor(store, job) || [];
   return { ok: true, jobId, profileId, application,
     plan: { jobId, profileId, status: application.status, readiness: isTerminal ? 'closed' : excluded ? 'excluded' : fit ? 'ready_for_review' : 'needs_score',
       score: fit ? { overall: fit.overall, scoreStatus: fit.scoreStatus } : null,
       nextActions },
+    coverage: detail ? {
+      source: 'application_detail',
+      detailUrl: detail.detailUrl || '',
+      askList, questions: askList, requiredQuestions, requiredDocuments,
+      gaps: unansweredRequired, unansweredRequired,
+    } : null,
     blockers: excluded ? fit.eligibility.hardFailures : [], warnings: [], message: 'Local pipeline plan; no external action was performed.' };
 }
 
@@ -587,7 +759,17 @@ export function reviewQueue(dataDir, args = {}) {
   // fallback for an already represented job.
   const represented = new Set(artifacts.map(item => item.jobId || item.id));
   const queue = [...artifacts, ...fallback.filter(item => !represented.has(item.jobId))];
-  return { ok: true, profileId, queue, items: queue, artifacts, count: queue.length,
+  // P1b: per pursued job, surface the pre-decide readiness gate —
+  // unansweredRequired[] covering required questions AND required
+  // documents. Entries without a linked ask list keep their prior shape.
+  const gated = queue.map(item => {
+    const job = store.jobs?.[item.jobId || item.id] || null;
+    if (!job || job.profileId !== profileId) return item;
+    const unanswered = unansweredRequiredFor(store, job);
+    if (!unanswered) return item;
+    return { ...item, unansweredRequired: unanswered, unanswered_required: unanswered };
+  });
+  return { ok: true, profileId, queue: gated, items: gated, artifacts: gated, count: gated.length,
     message: 'Local review queue; human decision required for any external step.' };
 }
 

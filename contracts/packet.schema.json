@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jobsss.local/contracts/packet.schema.json",
+  "title": "JobSSS portable application packet",
+  "description": "Offline portable packet: identity plus portable relative component paths, linked answers, and checklist. Incomplete packets are valid with readiness 'incomplete'. Never carries send/submit/apply attestation. Hash rule: contentHash is lowercase SHA-256 of the stable key-ordered serialization of format/jobId/revision/components/asks/answers/checklist.",
+  "type": "object",
+  "required": ["format", "jobId", "revision", "contentHash", "components", "asks", "answers", "readiness"],
+  "properties": {
+    "format": { "const": "jobsss.packet/v1" },
+    "jobId": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 1, "description": "Packet/job revision for the portable format, not MCP authority." },
+    "contentHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "components": {
+      "type": "object",
+      "required": ["resumePdf", "coverLetter", "answers", "checklist"],
+      "properties": {
+        "resumePdf": { "type": ["string", "null"] },
+        "coverLetter": { "type": ["string", "null"] },
+        "answers": { "type": ["string", "null"] },
+        "checklist": { "type": ["string", "null"] }
+      },
+      "description": "Portable posix-style relative paths only (no leading /, no ..); null means missing."
+    },
+    "asks": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" }, "label": { "type": "string" } } }
+    },
+    "answers": {
+      "type": "array",
+      "items": { "type": "object", "required": ["askId"], "properties": { "askId": { "type": "string" }, "text": { "type": "string" } } },
+      "description": "Every answer must link to a real ask id; missing questions stay missing, never fabricated."
+    },
+    "checklist": {
+      "type": "array",
+      "items": { "type": "object", "required": ["label"], "properties": { "label": { "type": "string" }, "status": { "type": "string" } } }
+    },
+    "readiness": { "enum": ["ready", "incomplete"], "description": "'ready' with missing coverage is fabricated_readiness." }
+  },
+  "not": { "anyOf": [{ "required": ["sent"] }, { "required": ["submitted"] }, { "required": ["applied"] }] }
+}

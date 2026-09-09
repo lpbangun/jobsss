@@ -1,0 +1,25 @@
+{
+  "format": "jobsss.packet/v1",
+  "jobId": "job-synth-001",
+  "revision": 2,
+  "contentHash": "d137bfa9454e7010733561528e6c2c136ccd1094bada92769af699774ef4f515",
+  "components": {
+    "resumePdf": "packet/resume.pdf",
+    "coverLetter": "packet/cover-letter.md",
+    "answers": "packet/answers.json",
+    "checklist": "packet/checklist.json"
+  },
+  "asks": [
+    { "id": "ask-1", "label": "Why does this fictional role interest you?" },
+    { "id": "ask-2", "label": "Describe a synthetic project you are proud of." }
+  ],
+  "answers": [
+    { "askId": "ask-1", "text": "Synthetic answer one." },
+    { "askId": "ask-2", "text": "Synthetic answer two." }
+  ],
+  "checklist": [
+    { "label": "Proofread", "status": "done" },
+    { "label": "Local review", "status": "done" }
+  ],
+  "readiness": "ready"
+}

@@ -1,0 +1,8 @@
+{
+  "action": "artifact.approve",
+  "id": "artifact-synth-1",
+  "revision": 3,
+  "contentHash": "6e18b6745110292f715b1c40a3283cbef6cdf4fa9e4c3dd66fab3ac4dbbb2465",
+  "actor": "trusted_local",
+  "note": "Synthetic observation recorded locally."
+}

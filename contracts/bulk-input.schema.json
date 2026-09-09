@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jobsss.local/contracts/bulk-input.schema.json",
+  "$title": "JobSSS bulk file-drop input record",
+  "$comment": "One JSON object per line (JSONL). Limits: max 100 records, max 1048576 bytes per drop, max 100000 chars of text per record.",
+  "description": "One record of a bulk file-drop. Host supplies content (text and/or public http/https url); the plugin never fetches in this validator. Provenance is always host_provided. Dedup key is SHA-256 of posting text. Drops stage under PLUGIN_DATA; relative staged paths only.",
+  "type": "object",
+  "required": ["provenance"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 100000 },
+    "url": { "type": "string", "description": "Public http/https only: rejects file:, credentials, non-public hosts." },
+    "provenance": { "const": "host_provided" },
+    "stagedPath": { "type": "string", "description": "Portable relative path only; no traversal, no absolute paths." }
+  },
+  "anyOf": [{ "required": ["text"] }, { "required": ["url"] }]
+}

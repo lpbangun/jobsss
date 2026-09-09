@@ -123,10 +123,19 @@ function readIntakeText(dataDir, args, kind, inlineKeys) {
 
 function defaultPreferences(name, input = {}) {
   const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
-  const dealbreakers = Array.isArray(supplied.dealbreakers) ? supplied.dealbreakers.map(String) : [];
-  if (Array.isArray(supplied.excludeRoles) && supplied.excludeRoles.length) {
-    const exclusion = `No ${supplied.excludeRoles.map(String).join(', ')} roles`;
+  const excludeRoles = Array.isArray(supplied.excludeRoles) ? supplied.excludeRoles.map(String) : [];
+  // Replace, never accumulate: the dealbreaker synthesized from a previous
+  // excludeRoles value is dropped before the current one is appended. The
+  // synthesized marker round-trips through update_profile merges so a
+  // retracted role list stops hard-excluding those levels.
+  const priorExclusion = String(supplied.excludeRolesDealbreaker || '');
+  const dealbreakers = (Array.isArray(supplied.dealbreakers) ? supplied.dealbreakers.map(String) : [])
+    .filter(item => item !== priorExclusion);
+  let excludeRolesDealbreaker = null;
+  if (excludeRoles.length) {
+    const exclusion = `No ${excludeRoles.join(', ')} roles`;
     if (!dealbreakers.some(item => item === exclusion)) dealbreakers.push(exclusion);
+    excludeRolesDealbreaker = exclusion;
   }
   const salary = supplied.salary && typeof supplied.salary === 'object'
     ? { min: supplied.salary.min ?? null, max: supplied.salary.max ?? null, currency: supplied.salary.currency || 'USD' }
@@ -146,6 +155,8 @@ function defaultPreferences(name, input = {}) {
     locations,
     salary,
     dealbreakers,
+    excludeRoles,
+    excludeRolesDealbreaker,
     skills: Array.isArray(supplied.skills) ? supplied.skills : slug(name).split('-').filter(Boolean),
     missionKeywords: Array.isArray(supplied.missionKeywords) ? supplied.missionKeywords : [],
     values: Array.isArray(supplied.values) ? supplied.values : [],

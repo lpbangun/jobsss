@@ -417,10 +417,6 @@ function proofPointsFor(store, profileId) {
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
 }
 
-function profileSummary(profile) {
-  return String(profile?.summary || '');
-}
-
 // ---------------------------------------------------------------------------
 // Job-specific requirement extraction and proof selection.
 // Attributed port: deterministic inventory/coverage concepts from JobOS

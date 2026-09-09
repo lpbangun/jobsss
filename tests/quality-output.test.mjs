@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { parseCompensation } from '../src/compensation.js';
+import { parseJobText } from '../src/discovery.js';
 import { renderPdf, coverLetterCopy, resumeCopy } from '../src/documents.js';
 import { localScore } from '../src/scoring.js';
 import * as domain from '../src/domain.js';
@@ -371,6 +372,73 @@ test('scoring.js reads "up to X%" travel limits and "core collaboration" windows
   assert.equal(over.eligibility.status, 'excluded');
   assert.equal(over.overall, 0);
   assert.ok(over.constraints.some(c => c.status === 'confirmed' && /travel cap exceeds/i.test(c.reason)));
+});
+
+test('compensation.js anchors salary parsing and ignores non-salary ranges', () => {
+  const flat = parseCompensation('Level: mid-level IC, 3-6 years; no direct reports. Base salary: USD 135,000-150,000. Required: SQL, dbt, Snowflake.');
+  assert.equal(flat.min, 135000); assert.equal(flat.max, 150000); assert.equal(flat.currency, 'USD');
+  const unlabeled = parseCompensation('We are hiring for someone with 3-5 years of experience in analytics. Salary in USD 130,000-150,000 range depending on experience. Bonus available.');
+  assert.equal(unlabeled.min, 130000); assert.equal(unlabeled.max, 150000); assert.equal(unlabeled.currency, 'USD');
+  assert.equal(parseCompensation('3-5 years of experience required; total compensation competitive.').min, null);
+  assert.equal(parseCompensation('Salary: undisclosed\nBase salary: USD 135,000-150,000.').max, 150000);
+  assert.equal(parseCompensation('USD 80–95k').min, 80000);
+  assert.equal(parseCompensation('USD 80–95k').max, 95000);
+});
+
+test('compensation.js false "3-5 years" parse no longer excludes a qualified job', () => {
+  const profile = { id: 'p', name: 'Avery', resumeText: resume, preferences: { salary: { min: 110000, currency: 'USD' } } };
+  const unlabeled = 'We are hiring for someone with 3-5 years of experience in analytics. Salary in USD 130,000-150,000 range depending on experience. Bonus available.';
+  const fit = localScore({ profile, job: { id: 'j', title: 'Analytics Engineer', company: 'Bay Software', location: 'remote US', description: unlabeled } });
+  assert.equal(fit.eligibility.status, 'eligible_for_review');
+  assert.equal(fit.dimensions.compensation.status, 'scored');
+});
+
+test('scoring.js keeps required skills mandatory when preferred shares the flattened line', () => {
+  const missing = { id: 'p', name: 'Jordan', resumeText: 'Jordan Blake\nMissing: no production Java, Kafka or Flink.\nRemote only.', preferences: { salary: { min: 120000, currency: 'USD' }, workModel: 'Remote only', locations: ['Texas'], dealbreakers: ['Mandatory production stack absent from my experience'] } };
+  const supported = { id: 'p', name: 'Jordan', resumeText: 'Jordan Blake\nProduction: Java, Flink.\nRemote only.', preferences: { salary: { min: 120000, currency: 'USD' }, workModel: 'Remote only', locations: ['Texas'], dealbreakers: ['Mandatory production stack absent from my experience'] } };
+  const score = (profile, description) => localScore({ profile, job: { id: 'j', title: 'Data Engineer', company: 'Cedar Harbor', location: 'remote US', description } });
+  const flat = 'Base salary: USD 130,000-150,000. Required: Java. Preferred, not required: Flink.';
+  const flatFit = score(missing, flat);
+  assert.equal(flatFit.eligibility.status, 'excluded');
+  assert.ok(flatFit.constraints.some(c => c.id.endsWith('required-java') && c.status === 'confirmed'));
+  assert.equal(score(supported, flat).eligibility.status, 'eligible_for_review');
+  const multi = 'Base salary: USD 130,000-150,000.\nRequired: Java.\nPreferred, not required: Flink.';
+  assert.equal(score(missing, multi).eligibility.status, 'excluded');
+});
+
+test('scoring.js never counts a non-travel percentage as the travel cap', () => {
+  const profile = { id: 'p', name: 'Avery', resumeText: 'Avery Chen\nUp to 10% planned business travel.\nHard minimum: USD 130,000 annual guaranteed base salary.\nRemote only.', preferences: { salary: { min: 130000, currency: 'USD' }, workModel: 'Remote only', locations: ['Illinois'], dealbreakers: ['Up to 10% planned travel'] } };
+  const score = description => localScore({ profile, job: { id: 'j', title: 'Analytics Engineer', company: 'Bay Software', location: 'remote US', description } });
+  const base = 'Title: Analytics Engineer\nCompany: Bay Software\nLocation/authorization: remote US including Illinois; US work authorization required.\nLevel: mid-level IC; no direct reports.\nBase salary: USD 140,000-160,000.\nRequired: SQL, dbt, Snowflake.\n';
+  const within = score(`${base}Travel 5% for team events; annual performance bonus up to 20% of base salary.`);
+  assert.equal(within.eligibility.status, 'eligible_for_review');
+  assert.ok(within.constraints.some(c => c.status === 'cleared' && /travel cap is within/i.test(c.reason)));
+  const over = score(`${base}Travel up to 25% for on-site rotations; annual performance bonus up to 20% of base salary.`);
+  assert.equal(over.eligibility.status, 'excluded');
+  assert.ok(over.constraints.some(c => c.id.endsWith('travel-cap') && c.status === 'confirmed'));
+});
+
+test('discovery.js keeps hyphenated title prefixes such as 24-7 intact', () => {
+  const parsed = parseJobText('## 24-7 Support Engineer at Alertly\nLocation: remote US\nSalary: USD 70,000');
+  assert.equal(parsed.title, '24-7 Support Engineer');
+  assert.equal(parsed.company, 'Alertly');
+  const emdash = parseJobText('## J03 — Analytics Engineer — Lattice Orchard Software\nLocation: remote US');
+  assert.equal(emdash.title, 'Analytics Engineer');
+  assert.equal(emdash.company, 'Lattice Orchard Software');
+});
+
+test('domain.js excludeRoles replaces, never accumulates, dealbreakers', t => {
+  const data = workspace(t);
+  const { profileId } = domain.createProfile(data, { name: 'Casey profile', resumeText: resume, preferences: { excludeRoles: ['staff'] } });
+  const prefs = () => domain.listProfiles(data, { profileId }).profiles[0].preferences;
+  assert.ok(prefs().dealbreakers.some(item => /No staff roles/.test(item)));
+  domain.updateProfile(data, { profileId, preferences: { excludeRoles: ['principal'] } });
+  assert.ok(prefs().dealbreakers.some(item => /No principal roles/.test(item)));
+  assert.ok(!prefs().dealbreakers.some(item => /No staff roles/.test(item)));
+  domain.updateProfile(data, { profileId, preferences: { excludeRoles: [] } });
+  assert.equal(prefs().dealbreakers.length, 0);
+  domain.updateProfile(data, { profileId, preferences: { communicationStyle: 'formal' } });
+  assert.equal(prefs().dealbreakers.length, 0);
 });
 
 test('canonical handlers resolve flattened travel/hours natively and keep paired native resumes distinct', async t => {

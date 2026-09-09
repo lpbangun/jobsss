@@ -221,7 +221,10 @@ function headingIdentity(lines) {
   const heading = lines.find(line => /^#{1,6}\s+/.test(line));
   if (!heading) return { title: '', company: '' };
   const body = heading.replace(/^#{1,6}\s+/, '').trim();
-  const withoutId = body.replace(/^[A-Z]?\d+\s*[—–-]\s*/, '');
+  // Strip a leading posting id ("J03 — Analytics Engineer ...") only when the
+  // id is separated by a spaced dash: a hyphen inside a real title ("24-7
+  // Support Engineer", "3-6 years") is never an id prefix.
+  const withoutId = body.replace(/^[A-Z]{0,2}\d{1,4}\s+[—–-]\s+/, '');
   const parts = withoutId.split(/\s+[—–-]\s+/).map(part => part.trim()).filter(Boolean);
   if (parts.length >= 2) return { title: parts[0], company: parts.slice(1).join(' — ') };
   const at = withoutId.match(/^(.+?)\s+at\s+(.+)$/i);

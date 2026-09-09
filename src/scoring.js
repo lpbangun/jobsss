@@ -101,6 +101,21 @@ function requiresOffice(text) {
     || (/\b(?:on[- ]?site|in office|five days|5 days)\b/i.test(stated) && !/remote work is available/i.test(stated));
 }
 
+// Travel cap from posting evidence: only a percentage inside the travel
+// clause counts. On flattened one-line postings a phrase such as "annual
+// performance bonus up to 20%" must never override the stated "Travel 5%".
+function postingTravelCap(travelLine) {
+  const clause = String(travelLine).split(/[.;]\s*/).find(part => /\btravel\b/i.test(part)) || String(travelLine);
+  const qualified = clause.match(/\btravel\b[^.\n]{0,80}?\b(?:up to|cap(?:ped)?(?: at)?|max(?:imum)?|at most|within)\s*(\d+)\s*%/i)
+    || clause.match(/\b(?:up to|cap(?:ped)?(?: at)?|max(?:imum)?|at most|within)\s*(\d+)\s*%/i)
+    || clause.match(/\b(\d+)\s*%/i);
+  if (qualified) return Number(qualified[1]);
+  // Percent-less travel mention: accept an explicit cap clause elsewhere on
+  // the line only when it is travel-shaped, not a pay/per-diem figure.
+  const elsewhere = String(travelLine).match(/\b(?:up to|cap(?:ped)?(?: at)?|max(?:imum)?|at most|within)\s*(\d+)\s*%\s*(?:travel|on[- ]?site|rotation|per\s+(?:quarter|month|week|year))/i);
+  return elsewhere ? Number(elsewhere[1]) : NaN;
+}
+
 function deterministicProposal({ profile, job }) {
   const { prefs, proofs, proofText } = proofSignals(profile);
   const resume = String(profile?.resumeText || '');
@@ -295,12 +310,17 @@ function deterministicProposal({ profile, job }) {
   const seenRequired = new Set();
   // An explicit negation (`not required`, `no ... requirement`) removes a
   // technology from the mandatory stack even when an earlier section named it;
-  // preferred and negated requirements are never exclusions.
+  // preferred and negated requirements are never exclusions. Scope the
+  // negation to its own clause so a flattened posting line like
+  // "Required: Java. Preferred, not required: Flink." keeps Java mandatory.
+  const NEGATED_CLAUSE = /(?:not\s+(?:required|mandatory|needed|necessary|a requirement)|can learn|\bno\s+[^.\n]{0,50}\brequirement\b|\bwithout\s+[^.\n]{0,40}\brequirement\b)/i;
   const explicitlyNotRequired = new Set();
   for (const line of jobText.split(/\r?\n/)) {
-    if (!/(?:not\s+(?:required|mandatory|needed|necessary)|no\s+[^.\n]{0,50}\brequirement\b|without\s+[^.\n]{0,40}\brequirement\b)/i.test(line)) continue;
-    for (const skill of stack) {
-      if (new RegExp(`\\b${skill}\\b`, 'i').test(line)) explicitlyNotRequired.add(skill);
+    for (const clause of line.split(/[.;]\s*/)) {
+      if (!NEGATED_CLAUSE.test(clause)) continue;
+      for (const skill of stack) {
+        if (new RegExp(`\\b${skill}\\b`, 'i').test(clause)) explicitlyNotRequired.add(skill);
+      }
     }
   }
   let requiredSection = false;
@@ -312,9 +332,14 @@ function deterministicProposal({ profile, job }) {
     if (/^(?:preferred|nice to have|bonus)/i.test(line)) requiredSection = false;
     if (/^(?:required|mandatory|minimum qualifications|requirements)[:\s]/i.test(line)) requiredSection = true;
     if (!requiredSection && !/\b(?:mandatory|required|must have)\b/i.test(line)) continue;
-    if (/preferred|not required|no .{0,70}requirement|can learn|not mandatory/i.test(line)) continue;
+    // A flattened posting fuses sections into one line ("Required: Java.
+    // Preferred: Flink."): scan only the required prefix so a later
+    // preferred/negated clause cannot suppress mandatory skills.
+    const scanStop = line.search(/\b(?:preferred|nice to have|a plus)\b|not\s+(?:required|mandatory|needed|necessary|a requirement)|\bcan learn\b|\bno\s+[^.\n]{0,50}\brequirement\b|\bwithout\s+[^.\n]{0,40}\brequirement\b/i);
+    const requiredPart = scanStop >= 0 ? line.slice(0, scanStop) : line;
+    if (!requiredPart.trim()) continue;
     for (const skill of stack) {
-      if (!new RegExp(`\\b${skill}\\b`, 'i').test(line)) continue;
+      if (!new RegExp(`\\b${skill}\\b`, 'i').test(requiredPart)) continue;
       if (seenRequired.has(skill)) continue;
       if (explicitlyNotRequired.has(skill)) continue;
       seenRequired.add(skill);
@@ -400,9 +425,7 @@ function deterministicProposal({ profile, job }) {
   // clear only when the posting states compatible evidence, exceed only on
   // a stated over-limit cap, otherwise unknown. No numeric constants.
   const travelLine = jobText.split(/\r?\n/).find(line => /\btravel\b/i.test(line)) || null;
-  const travelCap = travelLine && !/\bno travel\b/i.test(travelLine)
-    ? Number(travelLine.match(/(?:up to|cap(?:ped)?(?: at)?|max(?:imum)?|within[^.\n]{0,24}?|\(+\s*)\s*(\d+)\s*%|(\d+)\s*%\s*(?:travel|cap|max)/i)?.[1] ?? travelLine.match(/(\d+)\s*%/)?.[1] ?? NaN)
-    : (/\bno travel\b/i.test(String(travelLine || '')) ? 0 : NaN);
+  const travelCap = travelLine == null ? NaN : /\bno travel\b/i.test(travelLine) ? 0 : postingTravelCap(travelLine);
   const travelLimitSource = [...(Array.isArray(prefs.dealbreakers) ? prefs.dealbreakers : []), resume]
     .map(entry => String(entry || ''))
     .find(entry => /\btravel\b/i.test(entry) && (/\bno travel\b/i.test(entry) || /\d+\s*%/.test(entry)));

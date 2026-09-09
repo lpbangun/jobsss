@@ -29,7 +29,6 @@ const STORY_FIELDS = Object.freeze(['title', 'situation', 'task', 'action', 'res
 export const STORY_STATES = Object.freeze(['draft_needs_verification', 'verified', 'retired']);
 export const COVERAGE_STATUSES = Object.freeze(['covered', 'gap']);
 export const OUTREACH_GOALS = Object.freeze(['informational', 'referral', 'interview_prep']);
-export const WARMTH_DAYS = Object.freeze({ hot: 30, warm: 90, cool: 180 });
 
 function ownerError(message) {
   return Object.assign(new Error(message), { code: 'profile_mismatch' });
@@ -91,17 +90,6 @@ function field(value, fallback = '') {
 
 function normalizeCompany(value) {
   return field(value).toLowerCase().replace(/\s+/g, ' ');
-}
-
-function warmthFromLastContact(lastContactAt, asOf = new Date()) {
-  if (!lastContactAt) return 'unknown';
-  const last = new Date(lastContactAt);
-  if (!Number.isFinite(last.getTime())) return 'unknown';
-  const days = Math.max(0, Math.floor((asOf.getTime() - last.getTime()) / 86400000));
-  if (days <= WARMTH_DAYS.hot) return 'hot';
-  if (days <= WARMTH_DAYS.warm) return 'warm';
-  if (days <= WARMTH_DAYS.cool) return 'cool';
-  return 'cold';
 }
 
 function parseContactCard(text) {

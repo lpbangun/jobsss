@@ -217,19 +217,50 @@ function companyName(value) {
   return text;
 }
 
+function identityCompany(value) {
+  const text = companyName(value);
+  if (!text || !/^\p{Lu}/u.test(text)) return '';
+  const descriptor = text.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^(?:remote|remote only|hybrid|onsite|on site|in office|full time|part time|contract|contractor|freelance|temporary|permanent|intern|internship|volunteer)$/.test(descriptor)) return '';
+  const connector = /^(?:of|the|and|for|at|de|du|van|von|la|le)$/i;
+  const words = text.split(/\s+/).filter(word => word !== '&');
+  if (words.some(word => !connector.test(word) && !/^\p{Lu}[\p{L}\p{M}\p{N}'().,/&-]*$/u.test(word))) return '';
+  return text;
+}
+
+function identityLocation(value) {
+  const text = String(value || '').trim();
+  if (!text || text.length > 120 || /[.!?;:]/.test(text)) return '';
+  const parts = text.split(/\s*,\s*/);
+  if (parts.length < 2 || parts.some(part => !/^\p{Lu}[\p{L}\p{M}\p{N}'()./ -]*$/u.test(part))) return '';
+  return text;
+}
+
 function headingIdentity(lines) {
-  const heading = lines.find(line => /^#{1,6}\s+/.test(line));
-  if (!heading) return { title: '', company: '' };
+  const headingIndex = lines.findIndex(line => /^#{1,6}\s+/.test(line));
+  if (headingIndex < 0) return { title: '', company: '', location: '' };
+  const heading = lines[headingIndex];
   const body = heading.replace(/^#{1,6}\s+/, '').trim();
   // Strip a leading posting id ("J03 — Analytics Engineer ...") only when the
   // id is separated by a spaced dash: a hyphen inside a real title ("24-7
   // Support Engineer", "3-6 years") is never an id prefix.
   const withoutId = body.replace(/^[A-Z]{0,2}\d{1,4}\s+[—–-]\s+/, '');
+  // A title-only Markdown heading followed immediately by one em-dash
+  // identity line is the narrowly supported company/location form. Requiring
+  // a comma-separated, title-cased location keeps ordinary prose out.
+  if (!/\s+[—–-]\s+/.test(withoutId) && !/\s+at\s+/i.test(withoutId)) {
+    const identity = lines[headingIndex + 1]?.match(/^([^—\n]{1,90}?)\s+—\s+([^—\n]{1,120})$/);
+    const identityCompanyName = identityCompany(identity?.[1]);
+    const identityPlace = identityLocation(identity?.[2]);
+    if (identityCompanyName && identityPlace) {
+      return { title: withoutId, company: identityCompanyName, location: identityPlace };
+    }
+  }
   const parts = withoutId.split(/\s+[—–-]\s+/).map(part => part.trim()).filter(Boolean);
-  if (parts.length >= 2) return { title: parts[0], company: parts.slice(1).join(' — ') };
+  if (parts.length >= 2) return { title: parts[0], company: parts.slice(1).join(' — '), location: '' };
   const at = withoutId.match(/^(.+?)\s+at\s+(.+)$/i);
-  if (at) return { title: at[1].trim(), company: at[2].trim() };
-  return { title: withoutId, company: '' };
+  if (at) return { title: at[1].trim(), company: at[2].trim(), location: '' };
+  return { title: withoutId, company: '', location: '' };
 }
 
 export function parseJobText(text, fallback = {}) {
@@ -241,18 +272,33 @@ export function parseJobText(text, fallback = {}) {
   };
   const heading = headingIdentity(lines);
   const workModelText = String(fallback.workModel || find('work model') || '').trim().toLowerCase();
-  const workModel = /\bremote\b/.test(workModelText) ? 'remote'
-    : /\bhybrid\b/.test(workModelText) ? 'hybrid'
+  const workModel = /\bhybrid\b/.test(workModelText) ? 'hybrid'
+    : /\bremote\b/.test(workModelText) ? 'remote'
       : /\b(on[- ]?site|in office)\b/.test(workModelText) ? 'onsite' : 'unknown';
   const sourceUrl = find('source url');
   const labeledCompany = companyName(find('company'));
   const headingCompany = companyName(heading.company);
+  const labeledCompensation = find('compensation');
+  const baseSalary = find('base salary');
+  const salary = find('salary');
+  const pay = find('pay');
+  const payFallback = Boolean(!fallback.compensation && !labeledCompensation && !baseSalary && !salary && pay);
+  const compensation = fallback.compensation || labeledCompensation || baseSalary || salary || pay || '';
+  const compensationSource = fallback.compensation || labeledCompensation
+    || (baseSalary ? `Base salary: ${baseSalary}` : '')
+    || (salary ? `Salary: ${salary}` : '')
+    || (pay ? `Pay: ${pay}` : '')
+    || text;
+  const parsedCompensation = parseCompensation(compensationSource);
+  const compensationJson = payFallback && parsedCompensation.min === null && parsedCompensation.max === null
+    ? parseCompensation(text)
+    : parsedCompensation;
   return {
     title: fallback.title || find('title') || heading.title || 'Imported role',
     company: fallback.company || labeledCompany || headingCompany || 'Unknown company',
-    location: fallback.location || find('location') || find('location/authorization') || '',
-    compensation: fallback.compensation || find('compensation') || find('base salary') || find('salary') || '',
-    compensationJson: parseCompensation(fallback.compensation || find('compensation') || find('base salary') && `Base salary: ${find('base salary')}` || find('salary') && `Salary: ${find('salary')}` || text),
+    location: fallback.location || find('location') || find('location/authorization') || heading.location || '',
+    compensation,
+    compensationJson,
     workModel,
     url: fallback.url || sourceUrl || '',
     description: text,

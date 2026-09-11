@@ -537,6 +537,50 @@ function greenhouseImportArgs(args = {}) {
 }
 
 /**
+ * P1b (RC-1): the listing copy of a posting is the least authoritative
+ * identity JobSSS holds — a page <title>, a board fallback, or the machine
+ * placeholders below. A successful Greenhouse detail read carries the vendor's
+ * own identity, so it fills ONLY the empty/generic top-level fields; authored
+ * listing values are never replaced. sourceId, sourceHash, dedupeKey, URL and
+ * the stored ask list keep their existing semantics.
+ */
+const GENERIC_LISTING_TITLES = new Set(['Imported role', 'Imported URL role']);
+// Machine page-title wrappers public ATS pages emit; never a requisition title.
+const PAGE_TITLE_LISTING_TITLE = /^(?:job application for .+|.+\s[-–—|]\s+careers at .+)$/i;
+
+function isGenericListingTitle(value) {
+  const text = String(value ?? '').trim();
+  if (text === '' || GENERIC_LISTING_TITLES.has(text)) return true;
+  return PAGE_TITLE_LISTING_TITLE.test(text);
+}
+
+function isGenericListingCompany(value) {
+  const text = String(value ?? '').trim();
+  return text === '' || text.toLowerCase() === 'unknown company';
+}
+
+function isGenericListingLocation(value) {
+  const text = String(value ?? '').trim();
+  return text === '' || text.toLowerCase() === 'unknown';
+}
+
+function isGenericWorkModel(value) {
+  const text = String(value ?? '').trim().toLowerCase();
+  return text === '' || text === 'unknown';
+}
+
+/** Fill only empty/generic listing identity fields from the normalized detail. */
+function promoteGreenhouseListing(job, detail) {
+  const listing = detail && detail.listing;
+  if (!listing || typeof listing !== 'object') return job;
+  if (listing.title && isGenericListingTitle(job.title)) job.title = listing.title;
+  if (listing.company && isGenericListingCompany(job.company)) job.company = listing.company;
+  if (listing.location && isGenericListingLocation(job.location)) job.location = listing.location;
+  if (listing.workModel && listing.workModel !== 'unknown' && isGenericWorkModel(job.workModel)) job.workModel = listing.workModel;
+  return job;
+}
+
+/**
  * P1b: persist/link Greenhouse application detail on a job record.
  * Success stores the verbatim posting plus normalized questions/documents
  * with provenance; degradation records an explicit marker and still keeps
@@ -559,6 +603,9 @@ function linkGreenhouseDetail(job, detail, postingText, sourceUrl) {
     };
     job.detailCoverage = { status: 'ok', source: detail.source, detailUrl: detail.detailUrl, fetchedAt: detail.fetchedAt };
     job.questionsStatus = { status: 'ok', count: detail.questions.length, detailUrl: detail.detailUrl };
+    // RC-1: the detail payload is the authoritative listing identity; fill
+    // only the empty/generic top-level fields, never an authored value.
+    promoteGreenhouseListing(job, detail);
   } else {
     // Degradation keeps a lightweight applicationDetail (empty ask list +
     // today's listing fields + explicit marker) so the per-job folder still

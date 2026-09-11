@@ -996,6 +996,40 @@ export function normalizeGreenhouseDetail(raw) {
   return { questions, documents };
 }
 
+// Greenhouse per-job payloads carry the AUTHORITATIVE listing identity:
+// `title` (vendor requisition title, sometimes padded for presentation),
+// `company_name`, `location.name` and a `metadata[]` row named
+// "Workplace Type". Values are trimmed; a key the vendor does not state stays
+// empty so callers promote only what the source actually claims.
+const GREENHOUSE_WORKPLACE_METADATA = /^(?:workplace|work|location)[\s_-]*(?:type|model)|^remote[\s_-]*status$/i;
+
+function greenhouseWorkplaceText(metadata) {
+  for (const row of Array.isArray(metadata) ? metadata : []) {
+    if (!row || typeof row !== 'object') continue;
+    const name = String(row.name ?? row.label ?? row.key ?? '').trim();
+    if (!GREENHOUSE_WORKPLACE_METADATA.test(name)) continue;
+    const value = row.value ?? row.values ?? row.text ?? null;
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (text) return text;
+  }
+  return '';
+}
+
+/**
+ * Normalize the authoritative listing fields of a Greenhouse detail payload.
+ * Never throws; a non-object payload yields empty fields.
+ */
+export function greenhouseListingFields(rawDetail) {
+  const detail = rawDetail && typeof rawDetail === 'object' && !Array.isArray(rawDetail) ? rawDetail : {};
+  const rawLocation = detail.location && typeof detail.location === 'object' ? detail.location.name : detail.location;
+  return {
+    title: String(detail.title ?? '').trim(),
+    company: String(detail.company_name ?? '').trim(),
+    location: String(rawLocation ?? '').trim(),
+    workModel: workModelFromLocation(greenhouseWorkplaceText(detail.metadata), ''),
+  };
+}
+
 function greenhouseDetailOk({ board, refId, raw, rawText, source }) {
   const { questions, documents } = normalizeGreenhouseDetail(raw);
   return {
@@ -1007,6 +1041,7 @@ function greenhouseDetailOk({ board, refId, raw, rawText, source }) {
     questions,
     documents,
     rawDetail: raw,
+    listing: greenhouseListingFields(raw),
     rawText: String(rawText),
     fetchedAt: now(),
     source,

@@ -621,16 +621,21 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   const selected = ranked.selected;
   const selectedIds = selected.map(entry => entry.proof.id);
   const coverage = buildCoverage(requirements, selected);
+  const selectedProofs = selected.map(entry => entry.proof);
   const body = kind === 'cover_letter'
-    ? coverLetterCopy(profile, job, proofs)
-    : resumeCopy(profile, selected.map(entry => entry.proof), Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)), { preferences: profile.preferences, job });
+    ? coverLetterCopy(profile, job, selectedProofs)
+    : resumeCopy(profile, selectedProofs, Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)), { preferences: profile.preferences, job });
   // Draft metadata must record the owned selected proofs the copy was built
   // from, even after display cleanup/paraphrase strips proof labels: match
   // normalized claim tokens against the rendered copy and fall back to the
   // requirement-selected proof ids rather than ever reporting an empty list.
   // Historical/retired proof status can then be computed from the artifact.
+  // rc6: the citation pool is the proof set the copy was actually built from —
+  // for a cover letter that is the requirement-selected proofs only — so a
+  // draft never cites a proof outside selectedProofPointIds.
   const normClaim = text => tokenize(String(text || '')).join(' ');
-  const usedProofIds = proofs.filter(proof => {
+  const citationPool = kind === 'cover_letter' ? selectedProofs : proofs;
+  const usedProofIds = citationPool.filter(proof => {
     const claim = normClaim(supportedAchievement(proof.summary));
     if (claim.split(' ').length < 4) return false;
     return ` ${normClaim(body)} `.includes(` ${claim} `);
@@ -844,7 +849,7 @@ export function listAnswers(store, { profileId, category = null, status = null }
   return { ok: true, profileId, answers, items: answers, count: answers.length };
 }
 
-export function matchAnswers(store, { profileId, questions = [], employer = '' }) {
+export function matchAnswers(store, { profileId, questions = [], employer = '', jobId = null } = {}) {
   requireProfile(store, profileId);
   const active = activeProofIdsFor(store, profileId);
   const pool = Object.values(ensure(store, 'answers'))
@@ -857,7 +862,33 @@ export function matchAnswers(store, { profileId, questions = [], employer = '' }
       if (!active) return true;
       return ids.every(pid => active.has(pid));
     });
-  const asked = Array.isArray(questions) ? questions.map(String).filter(Boolean) : [];
+  // P1b additive ask list: when jobId names a profile-owned job with linked
+  // Greenhouse application detail, its persisted questions[] drive matching
+  // alongside any explicit questions arg (which is never removed). An
+  // unknown or foreign job never errors; matching falls back to the
+  // explicit list.
+  let asked = Array.isArray(questions) ? questions.map(String).filter(Boolean) : [];
+  let requiredDocuments = [];
+  let askSource = 'explicit';
+  const ownedJobId = String(jobId || '').trim();
+  const detailJob = ownedJobId && store.jobs?.[ownedJobId] && store.jobs[ownedJobId].profileId === profileId
+    ? store.jobs[ownedJobId]
+    : null;
+  const detail = detailJob && detailJob.applicationDetail && Array.isArray(detailJob.applicationDetail.questions)
+    ? detailJob.applicationDetail
+    : null;
+  if (detail) {
+    const detailLabels = detail.questions.map(item => String(item.label || '')).filter(Boolean);
+    const seen = new Set(detailLabels);
+    for (const item of asked) {
+      if (!seen.has(item)) { detailLabels.push(item); seen.add(item); }
+    }
+    asked = detailLabels;
+    requiredDocuments = (Array.isArray(detail.documents) ? detail.documents : [])
+      .filter(item => item && item.required)
+      .map(item => String(item.kind));
+    askSource = 'application_detail';
+  }
   const matches = asked.map(question => {
     const questionTokens = new Set(tokenize(question));
     let best = null;
@@ -886,7 +917,27 @@ export function matchAnswers(store, { profileId, questions = [], employer = '' }
         : { answer: null, matchScore: 0, note: 'No stored answer matched; do not fabricate one.' }),
     };
   });
-  return { ok: true, profileId, employer, matches, items: matches, count: matches.length };
+  // Coverage gaps cite the real ask list (questions + required documents).
+  const gaps = matches
+    .filter(item => !item.answer)
+    .map(item => ({ question: item.question, status: 'unanswered', note: 'No stored answer covers this required ask yet.' }));
+  if (detail) {
+    const artifacts = Object.values(ensure(store, 'artifacts'))
+      .filter(item => item.jobId === detailJob.id && item.profileId === profileId && !item.retiredAt);
+    const hasResume = artifacts.some(item => item.kind === 'resume_draft');
+    const hasCover = artifacts.some(item => item.kind === 'cover_letter_draft');
+    for (const kind of requiredDocuments) {
+      if (kind === 'resume' && hasResume) continue;
+      if (kind === 'cover_letter' && hasCover) continue;
+      gaps.push({ question: `Required document: ${kind}`, kind: 'document', document: kind, status: 'unanswered', note: 'Required application document has no draft yet.' });
+    }
+  }
+  return {
+    ok: true, profileId, employer, matches, items: matches, count: matches.length,
+    gaps, coverageGaps: gaps, requirementGaps: gaps,
+    coverage: { matches: matches.filter(item => item.answer), gaps },
+    ...(detail ? { jobId: detailJob.id, askSource, askList: asked, requiredDocuments } : {}),
+  };
 }
 
 function safePublic(store, profileId) {

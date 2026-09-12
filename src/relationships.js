@@ -255,7 +255,11 @@ function contactContext(store, contact) {
   const research = Object.values(store.research || {}).filter(record => record.profileId === contact.profileId
     && field(record.subjectName).toLowerCase() === field(contact.name).toLowerCase()
     && normalizeCompany(record.subjectCompany || record.company) === normalizeCompany(contact.company));
-  const evidence = [contact.relationshipEvidence, contact.notes, contact.sourceText,
+  // rc6: relationship evidence is the relationship/channel facts (the labeled
+  // relationship, the contact notes, and matching research), never the whole
+  // raw staged record. `contact.sourceText` is still stored verbatim as source
+  // provenance; concatenating it here made reachability evidence a raw dump.
+  const evidence = [contact.relationshipEvidence, contact.notes,
     ...research.map(record => [record.notes, ...(record.findings || [])].join(' '))].filter(Boolean).join('\n');
   const weak = /spoke once|met once|acquaintance|(?:we|they) (?:met|discussed)|study session|meetup/i.test(evidence)
     && !/no prior interaction/i.test(evidence);

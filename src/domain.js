@@ -7,12 +7,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   slug, id, now, loadStore, commitStore, hashText, dedupeKeyForJob, tokenize,
-  ensureDataDir, STORE_SCHEMA_VERSION, activeProofIdsForStore,
+  ensureDataDir, STORE_SCHEMA_VERSION, activeProofIdsForStore, storeSchemaVersionOnDisk,
 } from './store.js';
 import { localScore } from './scoring.js';
 import {
   assertPublicJobUrl, fetchPublicJob, parseJobText, createSavedSearch as createSearch,
   getSavedSearch, listSavedSearches as savedSearches, fetchSavedSearchSource, runSavedSearch, runAllSearches,
+  parseGreenhouseRef, resolveGreenhouseDetailSync, fetchApplicationDetail,
 } from './discovery.js';
 import {
   requireJobOwned, pursueJob as pursueLocal, saveJob as saveLocal, skipJob as skipLocal,
@@ -121,7 +122,216 @@ function readIntakeText(dataDir, args, kind, inlineKeys) {
   catch (cause) { throw error(`${kind}_read_error`, `Cannot read staged ${kind}: ${cause.message}`); }
 }
 
-function defaultPreferences(name, input = {}) {
+// ---------------------------------------------------------------------------
+// Resume-derived profile intake.
+//
+// create_profile used to seed preferences.targetRoleFamilies with the
+// candidate's name and preferences.skills with name tokens, which fabricated
+// targeting and search vocabulary, while proof extraction kept only lines that
+// happened to contain an allowlisted action verb (most experience bullets were
+// dropped) and recorded empty metrics for quantified claims. Preferences are
+// now derived from what the resume actually states — role titles from the
+// experience headings and the target/objective line, skills from the Skills
+// section — and every experience bullet becomes a proof candidate with its
+// evident metrics. An explicit `preferences` argument always wins; a resume
+// that states nothing leaves the arrays empty rather than inventing values
+// from the name.
+// ---------------------------------------------------------------------------
+
+// Section labels: Markdown headings plus bare ALL-CAPS record labels such as
+// "EXPERIENCE" or "SKILLS [P01-SKILLS]". Anything else that looks like a
+// heading ends the current section without claiming its lines.
+const EXPERIENCE_HEADING = /\b(?:experience|employment|work history)\b/i;
+const ACHIEVEMENT_HEADING = /\b(?:achievements|accomplishments)\b/i;
+const SKILLS_HEADING = /\b(?:skills|competencies|technologies|tech stack)\b/i;
+const TARGET_HEADING = /^(?:target(?:\s+role)?|desired\s+role|role\s+target|objective|headline|position\s+sought)$/i;
+const TARGET_LABEL = /^(?:target(?:\s+role)?|desired\s+role|role\s+target|objective|headline|position\s+sought)\s*[:\u2013\u2014-]/i;
+const ACTION_VERB = /\b(automated|reconciled|added|defined|built|led|managed|created|designed|improved|launched|reduced|increased|owned|shipped|analyzed|implemented|taught|researched|coordinated|facilitated|developed)\b/i;
+const PAST_TENSE_OPENER = /^[A-Z][a-z]+ed\b/;
+const BULLET_PREFIX = /^(?:[-*\u2022\u00b7]\s+|[A-Za-z]{1,4}\d{1,3}[:.)]\s+)/;
+const DATED_ROLE_LINE = /^(?:\d{4}[-/]\d{1,2}|\w+\s+\d{4})\s*(?:-|\u2013|\u2014|to|through)\s*(?:\d{4}[-/]\d{1,2}|\w+\s+\d{4}|\d{4}|present|current)/i;
+// Context prose that sits under an experience heading but is not a claim.
+const PROOF_NOISE = /^(?:fixed-term|no subsequent|\W*available\b|\W*all human|\W*references|\W*notes?:|\W*disclaimer)|\bnot human-attested\b|\bpending human\b|\bhuman-only\b/i;
+const ROLE_NOUN = /\b(?:engineer|analyst|developer|programmer|manager|designer|scientist|architect|consultant|specialist|administrator|coordinator|director|supervisor|technician|strategist|planner|producer|editor|recruiter|marketer|writer|researcher|accountant|teacher|professor|officer|attorney|paralegal|translator|librarian|intern)\b/i;
+const ROLE_TITLE = /(?:[A-Za-z][A-Za-z/&.+-]*\s+){0,2}(?:engineer|analyst|developer|programmer|manager|designer|scientist|architect|consultant|specialist|administrator|coordinator|director|supervisor|technician|strategist|planner|producer|editor|recruiter|marketer|writer|researcher|accountant|teacher|professor|officer|attorney|paralegal|translator|librarian)s?\b/gi;
+const ROLE_LEVEL = /^(?:junior|senior|staff|principal|lead|mid-level|entry-level|associate|intern|apprentice|trainee|chief|head of|vp of|vice president of)\s+/i;
+const SKILL_LABEL_NOISE = /^(?:missing|exposure only|exposure|none|no|not|without|avoid|education|degree|certifications? status|references|notes?)$/i;
+const SKILL_ENTRY_NOISE = /\b(?:university|college|school|completed|degree|gpa|honors|sandbox|listed|certification)\b/i;
+
+function headingKeyFor(line) {
+  const raw = String(line || '').trim();
+  if (!raw || raw.length > 90) return null;
+  if (/^[-*\u2022\u00b7]/.test(raw)) return null;
+  const md = raw.match(/^#{1,6}\s*(.+?)\s*#*$/);
+  let text = md ? md[1] : raw;
+  text = text.replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[:\u2013\u2014-]\s*$/, '').trim();
+  if (!text) return null;
+  const words = text.split(/\s+/);
+  const bareLabel = words.length <= 5 && text.length <= 48 && /^[A-Z][A-Z0-9 &/+-]*$/.test(text);
+  if (!md && !bareLabel) return null;
+  if (TARGET_HEADING.test(text)) return 'target';
+  if (ACHIEVEMENT_HEADING.test(text)) return 'achievements';
+  if (EXPERIENCE_HEADING.test(text)) return 'experience';
+  if (SKILLS_HEADING.test(text)) return 'skills';
+  return 'other';
+}
+
+// True for a dated role header ("2022-01 through 2024-06: Data Analyst, Co."),
+// which names a role instead of claiming an outcome.
+function isRoleHeaderLine(line) {
+  const text = String(line || '').trim();
+  if (!DATED_ROLE_LINE.test(text)) return false;
+  return !ACTION_VERB.test(text) && !PAST_TENSE_OPENER.test(text.replace(BULLET_PREFIX, ''));
+}
+
+function resumeSections(resumeText) {
+  const sections = [];
+  let key = null;
+  let lines = [];
+  const flush = () => { sections.push({ key, lines }); key = null; lines = []; };
+  for (const raw of String(resumeText || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const found = headingKeyFor(line);
+    if (found) {
+      // A dated role heading inside an achievement block opens a role, not a
+      // new section: keep scanning the same block.
+      const keepsSection = found === 'other' && (key === 'experience' || key === 'achievements')
+        && /\b(?:19|20)\d{2}\b/.test(line);
+      if (!keepsSection) { flush(); key = found; }
+      continue;
+    }
+    lines.push(line);
+  }
+  flush();
+  return sections.filter(section => section.lines.length);
+}
+
+function roleParts(line) {
+  return String(line || '').replace(/^#{1,6}\s*/, '').replace(/\[[^\]]*\]/g, ' ')
+    .split(/[|,:]|\s{2,}/);
+}
+
+function normalizeRole(raw) {
+  let role = String(raw || '').replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/[.,;:\u2013\u2014-]+$/, '').trim();
+  if (!role || /\d/.test(role)) return null;
+  role = role.replace(ROLE_LEVEL, '').trim();
+  if (!role || role.length > 48 || role.split(/\s+/).length > 5) return null;
+  if (!ROLE_NOUN.test(role)) return null;
+  return role;
+}
+
+// Role families come from stated target/objective lines and from role titles in
+// the experience headings. The candidate's name is never a role family.
+function roleFamiliesFromResume(resumeText) {
+  const out = [];
+  const seen = new Set();
+  const push = raw => {
+    const role = normalizeRole(raw);
+    if (!role) return;
+    const key = role.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key); out.push(role);
+  };
+  const pushTargetLine = line => {
+    for (const match of String(line || '').matchAll(ROLE_TITLE)) push(match[0]);
+  };
+  let section = null;
+  for (const raw of String(resumeText || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const key = headingKeyFor(line);
+    if (key) {
+      const datedRoleHeading = key === 'other' && (section === 'experience' || section === 'achievements')
+        && /\b(?:19|20)\d{2}\b/.test(line);
+      if (datedRoleHeading) for (const part of roleParts(line)) push(part);
+      else section = key;
+      continue;
+    }
+    if (TARGET_LABEL.test(line)) pushTargetLine(line);
+    else if (section === 'target') pushTargetLine(line);
+    if ((section === 'experience' || section === 'achievements') && isRoleHeaderLine(line)) {
+      for (const part of roleParts(line)) push(part);
+    }
+  }
+  return out.slice(0, 6);
+}
+
+// Skills come from the Skills section only. A `Missing:`/`Exposure only:`
+// inventory names what the candidate does not have, so those labels are
+// dropped instead of being promoted into skills.
+function skillsFromResume(resumeText) {
+  const out = [];
+  const seen = new Set();
+  for (const section of resumeSections(resumeText)) {
+    if (section.key !== 'skills') continue;
+    for (const line of section.lines) {
+      const text = line.replace(BULLET_PREFIX, '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      const label = text.match(/^([A-Za-z][A-Za-z /&+-]{0,24})\s*:/);
+      if (label && SKILL_LABEL_NOISE.test(label[1].trim())) continue;
+      const body = label ? text.slice(label[0].length) : text;
+      if (/^(?:missing|exposure only|no|not|without|avoid)\b/i.test(body.trim())) continue;
+      for (const entry of body.split(/[,;|\u2022\u00b7]/)) {
+        const skill = entry.replace(/^[\s\-*]+/, '').replace(/\s+/g, ' ').replace(/\.$/, '')
+          .replace(/^(?:and|plus|including|with)\s+/i, '').trim();
+        if (skill.length < 2 || skill.length > 48 || !/[a-z]/i.test(skill)) continue;
+        if (skill.split(/\s+/).length > 6 || SKILL_ENTRY_NOISE.test(skill)) continue;
+        const key = skill.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key); out.push(skill);
+      }
+    }
+  }
+  return out.slice(0, 32);
+}
+
+// Evident metrics only: numbers carrying a unit (currency, percent, scale,
+// count of things, duration). A bare four-digit year is a date, not a metric.
+const METRIC_PATTERN = /(?:\$\s?\d[\d,]*(?:\.\d+)?\s?(?:k|m|bn|b)?|\b(?:usd|eur|gbp|cad|aud)\s?\d[\d,]*(?:\.\d+)?|\b\d[\d,]*(?:\.\d+)?\s?%|\b\d[\d,]*(?:\.\d+)?\s?x\b|\b\d[\d,]*(?:\.\d+)?\s?(?:k|m|bn|b)\b|\b\d[\d,]*(?:\.\d+)?\s+(?:services?|users?|customers?|events?|records?|rows?|requests?|reports?|dashboards?|models?|tests?|pipelines?|jobs?|meetings?|runs?|hours?|minutes?|mins?|seconds?|secs?|days?|weeks?|months?|quarters?|years?|colleagues?|engineers?|analysts?|teams?|people|projects?|tickets?|incidents?|stakeholders?|mentors?|students?|educators?)\b|\b\d{2,}(?:,\d{3})*\b)/gi;
+
+function metricsFromText(text) {
+  const out = [];
+  for (const match of String(text || '').matchAll(METRIC_PATTERN)) {
+    const value = match[0].trim();
+    if (/^(?:19|20)\d{2}$/.test(value)) continue;
+    if (!out.includes(value)) out.push(value);
+  }
+  return out.slice(0, 12);
+}
+
+// Every experience bullet is a proof candidate; outside an experience block a
+// line qualifies on an allowlisted action verb (unchanged behaviour). Plain
+// prose inside an experience block qualifies when it opens with a past-tense
+// verb, so unlabeled resumes keep their achievements without swallowing
+// preference or boundary prose.
+function proofCandidatesFromResume(resumeText) {
+  const candidates = [];
+  let section = null;
+  for (const raw of String(resumeText || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const key = headingKeyFor(line);
+    if (key) {
+      const keepsSection = key === 'other' && (section === 'experience' || section === 'achievements')
+        && /\b(?:19|20)\d{2}\b/.test(line);
+      if (!keepsSection) section = key;
+      continue;
+    }
+    const bullet = BULLET_PREFIX.test(line);
+    const body = line.replace(BULLET_PREFIX, '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!body || body.length < 20) continue;
+    if (PROOF_NOISE.test(body) || isRoleHeaderLine(body)) continue;
+    const inAchievements = section === 'experience' || section === 'achievements';
+    if (!inAchievements && !bullet && !ACTION_VERB.test(body)) continue;
+    if (inAchievements && !bullet && !ACTION_VERB.test(body) && !PAST_TENSE_OPENER.test(body)) continue;
+    candidates.push(body);
+  }
+  return [...new Set(candidates)].slice(0, 40);
+}
+
+function defaultPreferences(input = {}, resumeText = '') {
   const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   const excludeRoles = Array.isArray(supplied.excludeRoles) ? supplied.excludeRoles.map(String) : [];
   // Replace, never accumulate: the dealbreaker synthesized from a previous
@@ -148,8 +358,12 @@ function defaultPreferences(name, input = {}) {
   }
   const locations = Array.isArray(supplied.locations) ? supplied.locations : [];
   if (!locations.length && supplied.location) locations.push(String(supplied.location));
+  // Derived defaults are never fabricated: with no resume statement the arrays
+  // stay empty and explicit caller values always win.
+  const derivedRoleFamilies = Array.isArray(supplied.targetRoleFamilies) ? supplied.targetRoleFamilies : roleFamiliesFromResume(resumeText);
+  const derivedSkills = Array.isArray(supplied.skills) ? supplied.skills : skillsFromResume(resumeText);
   return {
-    targetRoleFamilies: Array.isArray(supplied.targetRoleFamilies) ? supplied.targetRoleFamilies : [name],
+    targetRoleFamilies: derivedRoleFamilies,
     industries: Array.isArray(supplied.industries) ? supplied.industries : [],
     companyStages: Array.isArray(supplied.companyStages) ? supplied.companyStages : [],
     locations,
@@ -157,7 +371,7 @@ function defaultPreferences(name, input = {}) {
     dealbreakers,
     excludeRoles,
     excludeRolesDealbreaker,
-    skills: Array.isArray(supplied.skills) ? supplied.skills : slug(name).split('-').filter(Boolean),
+    skills: derivedSkills,
     missionKeywords: Array.isArray(supplied.missionKeywords) ? supplied.missionKeywords : [],
     values: Array.isArray(supplied.values) ? supplied.values : [],
     workModel: String(supplied.workModel || (supplied.remoteOnly ? 'remote' : '')),
@@ -167,14 +381,11 @@ function defaultPreferences(name, input = {}) {
 }
 
 function extractProofPoints(profileId, resumeText) {
-  const action = /\b(automated|reconciled|added|defined|built|led|managed|created|designed|improved|launched|reduced|increased|owned|shipped|analyzed|implemented|taught|researched|coordinated|facilitated|developed)\b/i;
-  return String(resumeText || '').split(/\r?\n/)
-    .map(line => line.trim().replace(/^[-*•]\s*/, ''))
-    .filter(line => line.length >= 20 && action.test(line)).slice(0, 24)
+  return proofCandidatesFromResume(resumeText)
     .map((summary, index) => ({
       id: id('proof', `${profileId}:${index}:${summary}`), profileId, summary,
       skills: [...new Set(tokenize(summary).filter(token => token.length > 3))].slice(0, 10),
-      metrics: [...summary.matchAll(/(?:\$[\d,.]+|\d+(?:\.\d+)?%|\d+x|\b\d{2,}\b)/gi)].map(match => match[0]),
+      metrics: metricsFromText(summary),
       source: 'resume_import', verification: 'human_required', status: 'needs_verification', createdAt: now(),
     }));
 }
@@ -310,12 +521,18 @@ export function doctor(dataDir) {
 }
 
 export function start(dataDir, args = {}) {
+  // rc6: `migrated` reports whether THIS call migrated a legacy store. A
+  // genuinely empty PLUGIN_DATA (no store.json yet) and an already-current
+  // store both report false; only a store below the bundled schema reports
+  // true. Read before the commit so the value describes the pre-commit state.
+  const schemaOnDisk = storeSchemaVersionOnDisk(dataDir);
   const committed = commitStore(dataDir, { expectedRevision: expected(args) }, store => {
     store.audit = Array.isArray(store.audit) ? store.audit : [];
     store.audit.push({ event: 'start', createdAt: now() });
     return store;
   });
-  return { ok: true, initialized: true, migrated: true, schemaVersion: STORE_SCHEMA_VERSION, revision: committed.revision,
+  const migrated = schemaOnDisk !== null && schemaOnDisk < STORE_SCHEMA_VERSION;
+  return { ok: true, initialized: true, migrated, schemaVersion: STORE_SCHEMA_VERSION, revision: committed.revision,
     dataDir: path.resolve(dataDir), storePath: committed.storePath, message: 'Versioned durable state initialized under PLUGIN_DATA' };
 }
 
@@ -363,7 +580,7 @@ export function createProfile(dataDir, args = {}) {
     }
     const proofPoints = extractProofPoints(profileId, input.text);
     const profile = {
-      id: profileId, name, preferences: defaultPreferences(name, args.preferences),
+      id: profileId, name, preferences: defaultPreferences(args.preferences, input.text),
       resumeSource: input.sourceName, resumeText: input.text,
       resume: input.text ? resumeDocument(profileId, input.text) : null,
       proofPointIds: proofPoints.map(proof => proof.id), createdAt: now(), updatedAt: now(),
@@ -429,7 +646,7 @@ export function getScore(dataDir, args = {}) {
 export function updateProfile(dataDir, args = {}) {
   return mutate(dataDir, args, store => {
     const profile = requireProfile(store, args.profileId);
-    if (args.preferences && typeof args.preferences === 'object') profile.preferences = defaultPreferences(profile.name, { ...profile.preferences, ...args.preferences });
+    if (args.preferences && typeof args.preferences === 'object') profile.preferences = defaultPreferences({ ...profile.preferences, ...args.preferences }, profile.resumeText);
     if (args.name) {
       const name = String(args.name).trim();
       if (Object.values(store.profiles).some(other => other.id !== profile.id && other.name === name)) {
@@ -473,19 +690,209 @@ export function importJob(dataDir, args = {}) {
   const input = readIntakeText(dataDir, args, 'job', ['text', 'content']);
   if (!input.text) throw error('missing_content', 'import_job requires inline text/content or a staged path');
   const parsed = parseJobText(input.text);
+  // Verbatim posting for jobs/<id>/posting.md: inline intake trims, so
+  // prefer the raw inline arg when present (parse/store still use input).
+  const verbatimPosting = String(args.text || args.content || '').trim() !== ''
+    ? String(args.text || args.content)
+    : input.text;
+  // P1b Greenhouse detail (additive, sync sources only: inline detail or a
+  // staged PLUGIN_DATA fixture; never network, never blocking). Plain
+  // non-Greenhouse imports keep their exact prior shape.
+  const greenhouseArgs = greenhouseImportArgs(args);
+  const greenhouseJob = greenhouseArgs.involved ? { ...parsed, url: greenhouseArgs.url || parsed.url } : null;
+  const detail = greenhouseJob
+    ? resolveGreenhouseDetailSync(greenhouseJob, {
+        dataDir,
+        postingText: input.text,
+        inlineDetail: greenhouseArgs.detail,
+        fixtureName: greenhouseArgs.fixtureName,
+      })
+    : null;
   const resultValue = mutate(dataDir, args, store => {
     requireProfile(store, profileId);
     const sourceHash = hashText(input.text);
     const duplicate = Object.values(store.jobs).find(job => job.profileId === profileId && job.sourceHash === sourceHash);
-    if (duplicate) return { jobId: duplicate.id, id: duplicate.id, job: duplicate, deduped: true };
+    if (duplicate) {
+      if (greenhouseJob) linkGreenhouseDetail(duplicate, detail, verbatimPosting, greenhouseArgs.url);
+      return {
+        jobId: duplicate.id, id: duplicate.id, job: duplicate, deduped: true,
+        ...(greenhouseJob ? greenhouseMarkers(duplicate) : {}),
+      };
+    }
     const jobId = id('job', `${profileId}:${sourceHash}`);
     const job = { id: jobId, jobId, profileId, ...parsed, source: input.real ? 'staged_file' : 'inline_text',
       sourceName: input.sourceName, sourceHash, dedupeKey: dedupeKeyForJob(parsed), discovered: false, saved: true,
       status: 'imported', createdAt: now(), updatedAt: now() };
+    if (greenhouseJob) {
+      if (greenhouseArgs.url && !job.url) job.url = greenhouseArgs.url;
+      linkGreenhouseDetail(job, detail, verbatimPosting, greenhouseArgs.url);
+    }
     store.jobs[jobId] = job;
-    return { jobId, id: jobId, job, created: true };
+    return { jobId, id: jobId, job, created: true, ...(greenhouseJob ? greenhouseMarkers(job) : {}) };
   });
   return resultValue;
+}
+
+/**
+ * P1b: collect Greenhouse-specific import inputs (all optional/additive).
+ * `involved` is true when the caller supplied Greenhouse inputs or the
+ * posting text/URL parses as a Greenhouse reference.
+ */
+function greenhouseImportArgs(args = {}) {
+  const url = String(args.greenhouseUrl || args.greenhouseDetailUrl || args.url || '').trim();
+  const detail = args.greenhouseDetail && typeof args.greenhouseDetail === 'object' ? args.greenhouseDetail : null;
+  const fixtureName = String(args.greenhouseDetailFixture || '').trim() || null;
+  const involved = Boolean(
+    String(args.greenhouseUrl || '').trim()
+    || String(args.greenhouseDetailUrl || '').trim()
+    || detail
+    || fixtureName
+    || parseGreenhouseRef({ url }, String(args.text || args.content || ''))
+  );
+  return { url, detail, fixtureName, involved };
+}
+
+/**
+ * P1b (RC-1): the listing copy of a posting is the least authoritative
+ * identity JobSSS holds — a page <title>, a board fallback, or the machine
+ * placeholders below. A successful Greenhouse detail read carries the vendor's
+ * own identity, so it fills ONLY the empty/generic top-level fields; authored
+ * listing values are never replaced. sourceId, sourceHash, dedupeKey, URL and
+ * the stored ask list keep their existing semantics.
+ */
+const GENERIC_LISTING_TITLES = new Set(['Imported role', 'Imported URL role']);
+// Machine page-title wrappers public ATS pages emit; never a requisition title.
+const PAGE_TITLE_LISTING_TITLE = /^(?:job application for .+|.+\s[-–—|]\s+careers at .+)$/i;
+
+function isGenericListingTitle(value) {
+  const text = String(value ?? '').trim();
+  if (text === '' || GENERIC_LISTING_TITLES.has(text)) return true;
+  return PAGE_TITLE_LISTING_TITLE.test(text);
+}
+
+function isGenericListingCompany(value) {
+  const text = String(value ?? '').trim();
+  return text === '' || text.toLowerCase() === 'unknown company';
+}
+
+function isGenericListingLocation(value) {
+  const text = String(value ?? '').trim();
+  return text === '' || text.toLowerCase() === 'unknown';
+}
+
+function isGenericWorkModel(value) {
+  const text = String(value ?? '').trim().toLowerCase();
+  return text === '' || text === 'unknown';
+}
+
+/** Fill only empty/generic listing identity fields from the normalized detail. */
+function promoteGreenhouseListing(job, detail) {
+  const listing = detail && detail.listing;
+  if (!listing || typeof listing !== 'object') return job;
+  if (listing.title && isGenericListingTitle(job.title)) job.title = listing.title;
+  if (listing.company && isGenericListingCompany(job.company)) job.company = listing.company;
+  if (listing.location && isGenericListingLocation(job.location)) job.location = listing.location;
+  if (listing.workModel && listing.workModel !== 'unknown' && isGenericWorkModel(job.workModel)) job.workModel = listing.workModel;
+  return job;
+}
+
+/**
+ * P1b: persist/link Greenhouse application detail on a job record.
+ * Success stores the verbatim posting plus normalized questions/documents
+ * with provenance; degradation records an explicit marker and still keeps
+ * the posting. Never throws.
+ */
+function linkGreenhouseDetail(job, detail, postingText, sourceUrl) {
+  job.postingText = String(postingText || '');
+  if (detail && detail.ok) {
+    job.applicationDetail = {
+      board: detail.board,
+      jobId: detail.id,
+      sourceUrl: job.url || sourceUrl || '',
+      detailUrl: detail.detailUrl,
+      fetchedAt: detail.fetchedAt,
+      hash: hashText(detail.rawText),
+      questions: detail.questions,
+      documents: detail.documents,
+      rawDetail: detail.rawDetail,
+      source: detail.source,
+    };
+    job.detailCoverage = { status: 'ok', source: detail.source, detailUrl: detail.detailUrl, fetchedAt: detail.fetchedAt };
+    job.questionsStatus = { status: 'ok', count: detail.questions.length, detailUrl: detail.detailUrl };
+    // RC-1: the detail payload is the authoritative listing identity; fill
+    // only the empty/generic top-level fields, never an authored value.
+    promoteGreenhouseListing(job, detail);
+  } else {
+    // Degradation keeps a lightweight applicationDetail (empty ask list +
+    // today's listing fields + explicit marker) so the per-job folder still
+    // materializes jobs/<id>/application.json instead of vanishing.
+    const failed = detail || { detailUrl: '', reason: 'detail_fetch_failed' };
+    const reason = String(failed.reason || 'detail_fetch_failed');
+    job.applicationDetail = {
+      board: String(failed.board || ''),
+      jobId: String(failed.id ?? failed.jobId ?? ''),
+      sourceUrl: job.url || sourceUrl || '',
+      detailUrl: String(failed.detailUrl || ''),
+      fetchedAt: failed.fetchedAt || now(),
+      hash: hashText(String(postingText || '')),
+      questions: [],
+      documents: [],
+      rawDetail: null,
+      source: 'degraded',
+      status: 'degraded',
+      degraded: true,
+      reason,
+      ...(failed.message ? { message: String(failed.message) } : {}),
+      listing: {
+        title: job.title || '',
+        company: job.company || '',
+        location: job.location || '',
+        compensation: job.compensation || '',
+        workModel: job.workModel || '',
+        url: job.url || sourceUrl || '',
+      },
+    };
+    job.detailCoverage = { status: 'degraded', reason, detailUrl: failed.detailUrl || '' };
+    job.questionsStatus = { status: 'degraded', reason: failed.reason || 'detail_fetch_failed' };
+  }
+  job.updatedAt = now();
+  return job;
+}
+
+function greenhouseMarkers(job) {
+  return { detailCoverage: job.detailCoverage, questionsStatus: job.questionsStatus };
+}
+
+/**
+ * P1b: compute the pre-decide readiness gate for a job with linked
+ * application detail: required questions (minus saved answers) plus
+ * required documents (minus produced drafts). Returns null when the job
+ * has no linked ask list.
+ */
+export function unansweredRequiredFor(store, job) {
+  const detail = job && job.applicationDetail;
+  if (!detail || !Array.isArray(detail.questions)) return null;
+  const norm = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const answered = new Set(
+    Object.values(store.answers || {})
+      .filter(item => item && item.profileId === job.profileId)
+      .map(item => norm(item.question))
+  );
+  const unanswered = [];
+  for (const item of detail.questions) {
+    if (item && item.required && item.label && !answered.has(norm(item.label))) unanswered.push(String(item.label));
+  }
+  const artifacts = Object.values(store.artifacts || {})
+    .filter(item => item && item.jobId === job.id && item.profileId === job.profileId && !item.retiredAt);
+  const hasResume = artifacts.some(item => item.kind === 'resume_draft');
+  const hasCover = artifacts.some(item => item.kind === 'cover_letter_draft');
+  for (const item of Array.isArray(detail.documents) ? detail.documents : []) {
+    if (!item || !item.required) continue;
+    if (item.kind === 'resume' && hasResume) continue;
+    if (item.kind === 'cover_letter' && hasCover) continue;
+    unanswered.push(`Required document: ${item.kind}`);
+  }
+  return unanswered;
 }
 
 export async function importJobUrl(dataDir, args = {}) {
@@ -496,17 +903,38 @@ export async function importJobUrl(dataDir, args = {}) {
   const prior = Object.values(snapshot.jobs).find(job => job.profileId === profileId && job.url === url && job.fetchStatus === 'fetched');
   if (prior) return { ok: true, jobId: prior.id, id: prior.id, job: prior, deduped: true, revision: snapshot.revision };
   const fetched = await fetchPublicJob(url);
+  // P1b: link Greenhouse application detail when the URL is a Greenhouse
+  // reference (fixture first, then the same public API trust level as the
+  // listing fetch). Degradation never blocks the import.
+  let urlDetail = null;
+  let urlGreenhouse = false;
+  try {
+    const ref = parseGreenhouseRef({ url });
+    urlGreenhouse = Boolean(ref);
+    if (ref) {
+      urlDetail = await fetchApplicationDetail({ url }, { dataDir, postingText: fetched.description || '' });
+    }
+  } catch {
+    urlDetail = null;
+  }
   return mutate(dataDir, args, store => {
     requireProfile(store, profileId);
     const duplicate = Object.values(store.jobs).find(job => job.profileId === profileId && job.url === fetched.url && job.fetchStatus === 'fetched');
-    if (duplicate) return { ok: true, jobId: duplicate.id, id: duplicate.id, job: duplicate, deduped: true };
+    if (duplicate) {
+      if (urlGreenhouse) {
+        linkGreenhouseDetail(duplicate, urlDetail && urlDetail.ok ? urlDetail : (urlDetail || { ok: false, reason: 'detail_fetch_failed', detailUrl: '' }),
+          typeof duplicate.postingText === 'string' && duplicate.postingText ? duplicate.postingText : fetched.description, url);
+      }
+      return { ok: true, jobId: duplicate.id, id: duplicate.id, job: duplicate, deduped: true, ...(urlGreenhouse ? greenhouseMarkers(duplicate) : {}) };
+    }
     const sourceHash = hashText(fetched.description);
     const jobId = id('job', `${profileId}:url:${fetched.url}`);
     const job = { ...fetched, id: jobId, jobId, profileId, sourceHash,
       discovered: false, saved: false, status: 'imported_url', dedupeKey: dedupeKeyForJob(fetched),
       createdAt: now(), updatedAt: now() };
+    if (urlGreenhouse) linkGreenhouseDetail(job, urlDetail && urlDetail.ok ? urlDetail : (urlDetail || { ok: false, reason: 'detail_fetch_failed', detailUrl: '' }), fetched.description, url);
     store.jobs[jobId] = job;
-    return { ok: true, jobId, id: jobId, job, created: true,
+    return { ok: true, jobId, id: jobId, job, created: true, ...(urlGreenhouse ? greenhouseMarkers(job) : {}),
       message: 'Public job URL fetched and stored locally for review. No application or other external action was performed.' };
   });
 }
@@ -537,7 +965,26 @@ export function scoreJob(dataDir, args = {}) {
 }
 
 export function pursueJob(dataDir, args = {}) {
-  return mutate(dataDir, args, store => pursueLocal(store, { jobId: String(args.jobId || args.id || ''), profileId: String(args.profileId || '') }));
+  // P1b: ensure linked Greenhouse detail exists before the pursuit commit
+  // so the per-job folder materializes with the ask list. Sync sources
+  // only (inline args or staged fixture); never network, never blocking.
+  const greenhouseArgs = greenhouseImportArgs(args);
+  return mutate(dataDir, args, store => {
+    const jobId = String(args.jobId || args.id || '');
+    const profileId = String(args.profileId || '');
+    const job = store.jobs?.[jobId] || null;
+    if (job && job.profileId === profileId && !job.applicationDetail
+      && (greenhouseArgs.involved || parseGreenhouseRef(job, job.description || ''))) {
+      const detail = resolveGreenhouseDetailSync(
+        { ...job, url: greenhouseArgs.url || job.url },
+        { dataDir, postingText: job.description || '', inlineDetail: greenhouseArgs.detail, fixtureName: greenhouseArgs.fixtureName }
+      );
+      linkGreenhouseDetail(job, detail,
+        typeof job.postingText === 'string' && job.postingText ? job.postingText : String(job.description || ''),
+        greenhouseArgs.url || job.url);
+    }
+    return pursueLocal(store, { jobId: String(args.jobId || args.id || ''), profileId: String(args.profileId || '') });
+  });
 }
 
 export function saveJob(dataDir, args = {}) {
@@ -564,10 +1011,25 @@ export function applicationsPlan(dataDir, args = {}) {
   const nextActions = isTerminal || excluded
     ? []
     : [...new Set(tasks.map(task => task.text).concat(['human review', 'verify proof-grounded materials']))];
+  // P1b: packet coverage cites the real ask list (persisted questions[] +
+  // required documents) instead of a generic template.
+  const detail = job.applicationDetail && Array.isArray(job.applicationDetail.questions) ? job.applicationDetail : null;
+  const askList = detail ? detail.questions.map(item => String(item.label || '')).filter(Boolean) : [];
+  const requiredQuestions = detail ? detail.questions.filter(item => item && item.required).map(item => String(item.label)) : [];
+  const requiredDocuments = detail
+    ? (Array.isArray(detail.documents) ? detail.documents : []).filter(item => item && item.required).map(item => String(item.kind))
+    : [];
+  const unansweredRequired = unansweredRequiredFor(store, job) || [];
   return { ok: true, jobId, profileId, application,
     plan: { jobId, profileId, status: application.status, readiness: isTerminal ? 'closed' : excluded ? 'excluded' : fit ? 'ready_for_review' : 'needs_score',
       score: fit ? { overall: fit.overall, scoreStatus: fit.scoreStatus } : null,
       nextActions },
+    coverage: detail ? {
+      source: 'application_detail',
+      detailUrl: detail.detailUrl || '',
+      askList, questions: askList, requiredQuestions, requiredDocuments,
+      gaps: unansweredRequired, unansweredRequired,
+    } : null,
     blockers: excluded ? fit.eligibility.hardFailures : [], warnings: [], message: 'Local pipeline plan; no external action was performed.' };
 }
 
@@ -587,13 +1049,26 @@ export function reviewQueue(dataDir, args = {}) {
   // fallback for an already represented job.
   const represented = new Set(artifacts.map(item => item.jobId || item.id));
   const queue = [...artifacts, ...fallback.filter(item => !represented.has(item.jobId))];
-  return { ok: true, profileId, queue, items: queue, artifacts, count: queue.length,
+  // P1b: per pursued job, surface the pre-decide readiness gate —
+  // unansweredRequired[] covering required questions AND required
+  // documents. Entries without a linked ask list keep their prior shape.
+  const gated = queue.map(item => {
+    const job = store.jobs?.[item.jobId || item.id] || null;
+    if (!job || job.profileId !== profileId) return item;
+    const unanswered = unansweredRequiredFor(store, job);
+    if (!unanswered) return item;
+    return { ...item, unansweredRequired: unanswered, unanswered_required: unanswered };
+  });
+  return { ok: true, profileId, queue: gated, items: gated, artifacts: gated, count: gated.length,
     message: 'Local review queue; human decision required for any external step.' };
 }
 
 export function createSavedSearch(dataDir, args = {}) {
   return mutate(dataDir, args, store => {
-    const result = createSearch(store, { ...args, at: now() });
+    // The fixture (when present) is resolved and validated against
+    // PLUGIN_DATA here, so a rejected search never reaches the store and a
+    // relative fixture never depends on the server process cwd.
+    const result = createSearch(store, { ...args, dataDir, at: now() });
     return { ok: true, searchId: result.search.id, id: result.search.id, name: result.search.name, ...result };
   });
 }
@@ -616,8 +1091,26 @@ export async function dailyDiscovery(dataDir, args = {}) {
   const snapshot = loadStore(dataDir);
   requireProfile(snapshot, args.profileId);
   const searches = savedSearches(snapshot, { profileId: args.profileId });
-  const sourceResults = Object.fromEntries(await Promise.all(searches.map(async search => [search.id, await fetchSavedSearchSource(search, { dataDir })])));
-  return mutate(dataDir, args, store => runAllSearches(store, { profileId: args.profileId, dataDir, sourceResults }));
+  // Per-search fault isolation (rc5): one unresolvable saved search must not
+  // abort the whole daily run. Each search's source failure is captured here
+  // and reported in the aggregate per-search `errors` list (searchId /
+  // searchName) while every resolvable search still returns its results.
+  const outcomes = await Promise.all(searches.map(async search => {
+    try {
+      return { searchId: search.id, result: await fetchSavedSearchSource(search, { dataDir }) };
+    } catch (error) {
+      return { searchId: search.id, error };
+    }
+  }));
+  const sourceResults = {};
+  const sourceErrors = {};
+  for (const outcome of outcomes) {
+    if (outcome.error) sourceErrors[outcome.searchId] = outcome.error;
+    else sourceResults[outcome.searchId] = outcome.result;
+  }
+  return mutate(dataDir, args, store => runAllSearches(store, {
+    profileId: args.profileId, dataDir, sourceResults, sourceErrors,
+  }));
 }
 
 export function listTasks(dataDir, args = {}) { return tasksForProfile(loadStore(dataDir), args); }

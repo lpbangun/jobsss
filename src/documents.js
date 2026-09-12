@@ -38,8 +38,11 @@ const PREFERENCE_LINE = /^\s*(remote only|hybrid\b|target\b|hard minimum\b|not s
 const APPLICANT_PREFERENCE = /^\s*(?:work authorization|authorization|target\b|hard minimum|remote only|remote:|interest\b|available|availability|desired|not seeking|open to|no (?:relocation|required|office|permanent)|compensation|salary|annual|location|preferences|candidate preferences|looking for|i seek|i am available|my minimum|i value)/i;
 const AUTHORIZATION_LINE = /\b(?:work authorization|authorization to work|authorized to work|right to work)\b|\bcitizen\b/i;
 // Unlabeled dated role records (`2021-09 through 2023-02: Role, Company.`)
-// keep closed dated chronology even when no Experience heading is supplied.
-const DATED_ROLE_LINE = /^(?:19|20)\d{2}(?:-\d{2})?\s*(?:through|to|until|[–—-])\s*(?:19|20)\d{2}(?:-\d{2})?\s*[:|]|^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}\s*(?:through|to|[–—-])\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}\s*[:|]/i;
+// keep dated chronology even when no Experience heading is supplied. An
+// open-ended "Present" range (case-insensitive) is a role end too, so a
+// `2021 - Present | Role | Company` line opens its own role instead of
+// becoming an anonymous bullet under the next employer.
+const DATED_ROLE_LINE = /^(?:19|20)\d{2}(?:-\d{2})?\s*(?:through|to|until|[–—-])\s*(?:(?:19|20)\d{2}(?:-\d{2})?|present)\s*[:|]|^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}\s*(?:through|to|[–—-])\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|present)\s*[:|]/i;
 const BARE_SECTION = /^(?:#{1,6}\s*)?(experience|employment|skills|education|preferences|boundaries)\b/i;
 
 function applicantLine(raw) {
@@ -109,8 +112,10 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
     }
     if (section === 'internal') continue;
     if (/experience|employment/i.test(section)) {
-      // Dated role headers start with a closed date range. Achievement
-      // sentences that merely mention a year stay with the current role.
+      // Dated role headers (closed numeric ranges and open-ended "Present"
+      // ranges alike) always open their own role and own the bullets that
+      // follow. Achievement sentences that merely mention a year stay with
+      // the current role instead of becoming a header or an anonymous bullet.
       if (DATED_ROLE_LINE.test(raw)) {
         roles.push({ text: clean(raw), bullets: [] });
       } else {

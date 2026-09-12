@@ -849,7 +849,10 @@ export function reviewQueue(dataDir, args = {}) {
 
 export function createSavedSearch(dataDir, args = {}) {
   return mutate(dataDir, args, store => {
-    const result = createSearch(store, { ...args, at: now() });
+    // The fixture (when present) is resolved and validated against
+    // PLUGIN_DATA here, so a rejected search never reaches the store and a
+    // relative fixture never depends on the server process cwd.
+    const result = createSearch(store, { ...args, dataDir, at: now() });
     return { ok: true, searchId: result.search.id, id: result.search.id, name: result.search.name, ...result };
   });
 }
@@ -872,8 +875,26 @@ export async function dailyDiscovery(dataDir, args = {}) {
   const snapshot = loadStore(dataDir);
   requireProfile(snapshot, args.profileId);
   const searches = savedSearches(snapshot, { profileId: args.profileId });
-  const sourceResults = Object.fromEntries(await Promise.all(searches.map(async search => [search.id, await fetchSavedSearchSource(search, { dataDir })])));
-  return mutate(dataDir, args, store => runAllSearches(store, { profileId: args.profileId, dataDir, sourceResults }));
+  // Per-search fault isolation (rc5): one unresolvable saved search must not
+  // abort the whole daily run. Each search's source failure is captured here
+  // and reported in the aggregate per-search `errors` list (searchId /
+  // searchName) while every resolvable search still returns its results.
+  const outcomes = await Promise.all(searches.map(async search => {
+    try {
+      return { searchId: search.id, result: await fetchSavedSearchSource(search, { dataDir }) };
+    } catch (error) {
+      return { searchId: search.id, error };
+    }
+  }));
+  const sourceResults = {};
+  const sourceErrors = {};
+  for (const outcome of outcomes) {
+    if (outcome.error) sourceErrors[outcome.searchId] = outcome.error;
+    else sourceResults[outcome.searchId] = outcome.result;
+  }
+  return mutate(dataDir, args, store => runAllSearches(store, {
+    profileId: args.profileId, dataDir, sourceResults, sourceErrors,
+  }));
 }
 
 export function listTasks(dataDir, args = {}) { return tasksForProfile(loadStore(dataDir), args); }

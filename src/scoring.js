@@ -221,8 +221,21 @@ function deterministicProposal({ profile, job }) {
   const sourceFloor = floorSource ? parseCompensation(floorSource[1]) : {};
   const minimum = candidateMinimum > 0 ? candidateMinimum : sourceFloor.min;
   const candidateCurrency = String(salary.currency || sourceFloor.currency || '').toUpperCase();
-  const comparablePay = minimum > 0 && candidateCurrency && candidateCurrency === compensation.currency && compensation.baseStatus !== 'unknown' && ['year', 'unknown'].includes(compensation.interval);
-  if (!comparablePay || (compensation.max === null && compensation.min === null)) {
+  // An unresolved pay interval or base/bonus split is not evidence of
+  // non-base pay: a directly parsed range stated in the candidate's currency
+  // ("Compensation range $130k-$165k") is itself base-pay evidence, so the
+  // dimension must not be nulled merely because the interval or the base
+  // label could not be resolved. The range is withheld only when the posting
+  // states bonus/equity/total compensation without naming base or salary,
+  // and an hourly range is never compared against an annual floor. No
+  // exchange rate, bonus or equity amount is ever substituted here.
+  const parsedRange = compensation.min !== null || compensation.max !== null;
+  const nonBasePayStatement = /\b(?:bonus|equity|OTE|total compensation|discretionary)\b/i.test(String(compensation.text || ''))
+    && !/\b(?:base|salary)\b/i.test(String(compensation.text || ''));
+  const comparablePay = minimum > 0 && candidateCurrency && candidateCurrency === compensation.currency
+    && parsedRange && !nonBasePayStatement
+    && ['year', 'unknown'].includes(compensation.interval);
+  if (!comparablePay) {
     dimensions.compensation = unknownDimension('compensation', 'Comparable annual base-pay evidence is missing or currency differs; no exchange rate or bonus/equity substitution is assumed.', [candidateMinimum > 0 ? preferenceRef('salary') : resumeRef, fieldRef(job, 'description')]);
   } else {
     let scoreValue = 65;

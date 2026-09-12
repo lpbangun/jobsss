@@ -553,29 +553,53 @@ function greenhouseCompany(config) {
 }
 
 /**
+ * Resolve a discovery fixture against PLUGIN_DATA and enforce the B16
+ * arbitrary-path boundary. Resolution is rooted at PLUGIN_DATA, never at the
+ * server process cwd, so a relative fixture means "relative to PLUGIN_DATA".
+ * Absolute paths outside PLUGIN_DATA, `..` traversal, symlinks escaping the
+ * directory, and missing/non-file targets are rejected with a typed error
+ * naming the expected location. Returns { dataDir, absolute, relative }.
+ */
+export function resolveDiscoveryFixturePath(fixture, dataDir) {
+  const requested = fixture == null ? '' : String(fixture).trim();
+  if (!requested) {
+    throw Object.assign(new Error('Offline ATS discovery requires a fixture path inside PLUGIN_DATA'), { code: 'offline_adapter_requires_fixture' });
+  }
+  const dataReal = fs.realpathSync(ensureDataDir(dataDir));
+  const inside = value => value === dataReal || value.startsWith(`${dataReal}${path.sep}`);
+  // path.resolve(dataReal, requested) roots a relative fixture at PLUGIN_DATA
+  // and leaves an absolute one as-is; the process cwd is never consulted.
+  const expected = path.resolve(dataReal, requested);
+  const outside = value => Object.assign(
+    new Error(`Discovery fixture must resolve inside PLUGIN_DATA (${dataReal}); ${requested} is not a PLUGIN_DATA-relative fixture`),
+    { code: 'fixture_outside_data_dir', details: { fixture: requested, resolved: value, dataDir: dataReal } }
+  );
+  if (!inside(expected)) throw outside(expected);
+  let real;
+  try {
+    real = fs.realpathSync(expected);
+  } catch {
+    throw Object.assign(
+      new Error(`Discovery fixture does not exist: ${expected} (expected inside PLUGIN_DATA ${dataReal})`),
+      { code: 'fixture_not_found', details: { fixture: requested, expected, dataDir: dataReal } }
+    );
+  }
+  if (!inside(real)) throw outside(real);
+  if (!fs.statSync(real).isFile()) {
+    throw Object.assign(
+      new Error(`Discovery fixture must be a regular file: ${expected} (expected inside PLUGIN_DATA ${dataReal})`),
+      { code: 'fixture_read_error', details: { fixture: requested, expected, dataDir: dataReal } }
+    );
+  }
+  return { dataDir: dataReal, absolute: real, relative: path.relative(dataReal, real) };
+}
+
+/**
  * Ensure a discovery fixture path resolves inside the host PLUGIN_DATA
  * directory (B16 arbitrary-path boundary). Returns the real absolute path.
  */
 export function resolveDiscoveryFixture(fixture, dataDir) {
-  if (fixture == null || String(fixture).trim() === '') {
-    throw Object.assign(new Error('Offline ATS discovery requires a fixture path inside PLUGIN_DATA'), { code: 'offline_adapter_requires_fixture' });
-  }
-  const realData = ensureDataDir(dataDir);
-  const requested = path.resolve(String(fixture));
-  let real;
-  try {
-    real = fs.realpathSync(requested);
-  } catch {
-    throw Object.assign(new Error(`Discovery fixture does not exist: ${requested}`), { code: 'fixture_not_found' });
-  }
-  const dataReal = fs.realpathSync(realData);
-  if (real !== dataReal && !real.startsWith(`${dataReal}${path.sep}`)) {
-    throw Object.assign(
-      new Error('Discovery fixture must be inside PLUGIN_DATA; arbitrary filesystem paths are not readable by MCP.'),
-      { code: 'fixture_outside_data_dir', details: { fixture: real } }
-    );
-  }
-  return real;
+  return resolveDiscoveryFixturePath(fixture, dataDir).absolute;
 }
 
 /**
@@ -665,9 +689,14 @@ export function savedSearchIdentity(adapter, config = {}) {
 
 /**
  * Create or return the equivalent saved search for a profile. Pure store
- * mutation (no files). Returns { search, created, deduped }.
+ * mutation (no files) EXCEPT that a staged offline `config.fixture` is
+ * resolved and validated against PLUGIN_DATA (rc5): a PLUGIN_DATA-relative
+ * fixture is stored as its resolved PLUGIN_DATA path, and a fixture that
+ * escapes PLUGIN_DATA or does not exist is rejected here — with a typed
+ * error naming the expected location — instead of failing at run time
+ * against the server process cwd. Returns { search, created, deduped }.
  */
-export function createSavedSearch(store, { profileId, name, adapter, config = {}, minFit = 70, at }) {
+export function createSavedSearch(store, { profileId, name, adapter, config = {}, minFit = 70, at, dataDir = null }) {
   if (!profileId) throw Object.assign(new Error('create_saved_search requires profileId'), { code: 'missing_profile' });
   if (!name) throw Object.assign(new Error('create_saved_search requires name'), { code: 'missing_search_name' });
   const kind = String(adapter || '').toLowerCase();
@@ -677,9 +706,22 @@ export function createSavedSearch(store, { profileId, name, adapter, config = {}
   if (!store.profiles || !store.profiles[profileId]) {
     throw Object.assign(new Error(`Unknown profile: ${profileId}`), { code: 'unknown_profile' });
   }
+  // Validate before any mutation so a rejected search is never persisted.
+  // Without a dataDir (pure store-level callers) the fixture is stored as
+  // given; the run path still resolves it against PLUGIN_DATA.
+  let savedConfig = config && typeof config === 'object' ? config : {};
+  let identityConfig = savedConfig;
+  if (String(savedConfig.fixture ?? '').trim() && dataDir) {
+    const resolved = resolveDiscoveryFixturePath(savedConfig.fixture, dataDir);
+    savedConfig = { ...savedConfig, fixture: resolved.absolute };
+    // Identity keeps the PLUGIN_DATA-relative form, so a search created with a
+    // relative fixture and the same search created with its absolute path (or
+    // a legacy stored entry) remain the same saved search.
+    identityConfig = { ...savedConfig, fixture: resolved.relative };
+  }
   store.searches = store.searches || {};
   const searches = Object.values(store.searches).filter(search => search.profileId === profileId);
-  const identity = savedSearchIdentity(kind, config);
+  const identity = savedSearchIdentity(kind, identityConfig);
   const existing = searches.find(search => search.adapter === kind && search.identity === identity);
   if (existing) return { search: existing, created: false, deduped: true };
   const searchId = id('search', `${profileId}:${name}`);
@@ -689,7 +731,7 @@ export function createSavedSearch(store, { profileId, name, adapter, config = {}
     name,
     profileId,
     adapter: kind,
-    config,
+    config: savedConfig,
     identity,
     minFit: safeMinFit,
     createdAt: at || now(),
@@ -732,7 +774,7 @@ function emptyRunCounts() {
  * discovery run outputs; the parent persists the store via the serialized
  * commit path and exposes the tool.
  */
-export function runSavedSearch(store, { searchRef, profileId, dataDir, sourceResult = null, now: nowFn = now } = {}) {
+export function runSavedSearch(store, { searchRef, profileId, dataDir, sourceResult = null, sourceError = null, now: nowFn = now } = {}) {
   const search = getSavedSearch(store, searchRef);
   if (!search) throw Object.assign(new Error(`Unknown saved search: ${searchRef}`), { code: 'unknown_saved_search' });
   if (profileId && search.profileId !== profileId) {
@@ -758,6 +800,15 @@ export function runSavedSearch(store, { searchRef, profileId, dataDir, sourceRes
   };
   try {
     let result;
+    if (sourceError) {
+      // The caller already attempted this search's source and it failed
+      // (daily_discovery fault isolation): report the original typed failure
+      // as this search's fetch error instead of re-fetching or aborting.
+      throw Object.assign(new Error(sourceError?.message || String(sourceError)), {
+        code: sourceError?.code || sourceError?.name || 'discovery_error',
+        details: sourceError?.details,
+      });
+    }
     if (search.adapter === 'greenhouse') {
       result = sourceResult || fetchGreenhouseOffline(search.config, { dataDir });
     } else {
@@ -827,14 +878,17 @@ export function runSavedSearch(store, { searchRef, profileId, dataDir, sourceRes
   return outputs;
 }
 
-export function runAllSearches(store, { profileId, dataDir, sourceResults = {}, now: nowFn = now } = {}) {
+export function runAllSearches(store, { profileId, dataDir, sourceResults = {}, sourceErrors = {}, now: nowFn = now } = {}) {
   if (!profileId) throw Object.assign(new Error('daily_discovery requires profileId'), { code: 'missing_profile' });
   if (!store.profiles || !store.profiles[profileId]) {
     throw Object.assign(new Error(`Unknown profile: ${profileId}`), { code: 'unknown_profile' });
   }
   const searches = listSavedSearches(store, { profileId });
   const runs = searches.map(search => runSavedSearch(store, {
-    searchRef: search.id, profileId, dataDir, sourceResult: sourceResults[search.id] || null, now: nowFn,
+    searchRef: search.id, profileId, dataDir,
+    sourceResult: sourceResults[search.id] || null,
+    sourceError: sourceErrors[search.id] || null,
+    now: nowFn,
   }));
   const counts = emptyRunCounts();
   const jobs = [];

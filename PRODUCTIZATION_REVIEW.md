@@ -21,12 +21,14 @@ The authoritative JobSSS product version is **0.1.0** from `plugin.json`. The re
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `827416cdb222737f915576ff2e610e544d3765c832867adb6fd112dc7ec7ee78`
+- SHA-256: `c93f9a8ea21190b2104e726d698a5f1138f054f09b223dbd1673da66525a2634`
 - Exact reproduction command:
 
 ```bash
 JOBSSS_NATIVE_CACHE="$(mktemp -d)" ./bin/jobsss evidence --out "$(pwd)/evidence/native-validation.json"
 ```
+
+Current native artifact refresh (2026-09-12, B67 consistency): the pinned evidence command was re-run on two fresh processes with separate empty caller-selected caches, and both regenerations were byte-identical to each other and to the committed artifact cited above. The previously committed bytes (`827416cdb222737f915576ff2e610e544d3765c832867adb6fd112dc7ec7ee78`) predated the RC-2–RC-6, Greenhouse-promotion and P1b–P3 integration merges, whose runtime source changes moved the SEA payload and the recorded native layout offsets. Official input, injector and validator pins are unchanged, and no product behavior, policy, or frozen check was changed by this refresh.
 
 The artifact and `src/packaging.lock.json` are the exact entries for official Node v22.22.3 Darwin x64, Darwin arm64, and Windows x64 URLs, archive hashes, executable-input hashes, and architectures. The artifact also contains all four complete cases, payload lengths/hashes, fuse state, output hashes, Mach-O LC_SYMTAB/dysymtab/linkedit/code-signature and offset/range evidence, and PE alignment/security/overlay/section/`SizeOfImage` evidence.
 

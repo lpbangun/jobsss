@@ -5,18 +5,18 @@
       "arch": "arm64",
       "basename": "injected-darwin-arm64",
       "case": "darwin-arm64",
-      "executableOutputSha256": "de95d07f72511edfd821e25a177b26b0c1a6c7d6b99fe1155bb1cd8dceaa3779",
+      "executableOutputSha256": "82379be96a0b1f057c8e0994cddbad1398f8a3d500222b88afe9d8367d5bc285",
       "format": "macho",
       "kind": "macho",
       "macho": {
         "LINKEDIT": {
           "beforeFileoff": 86605824,
           "cmd": 25,
-          "delta": 409600,
+          "delta": 475136,
           "fileAligned": true,
-          "fileEnd": 112181664,
+          "fileEnd": 112247200,
           "fileInBounds": true,
-          "fileoff": 87015424,
+          "fileoff": 87080960,
           "filesize": 25166240,
           "name": "segment_command_64",
           "nsects": 0,
@@ -24,16 +24,16 @@
           "sections": [],
           "segname": "__LINKEDIT",
           "vmAligned": true,
-          "vmaddr": 4382179328,
+          "vmaddr": 4382244864,
           "vmsize": 25182208
         },
         "NODE_SEA": {
           "cmd": 25,
           "fileAligned": true,
-          "fileEnd": 87012926,
+          "fileEnd": 87071730,
           "fileInBounds": true,
           "fileoff": 86605824,
-          "filesize": 407102,
+          "filesize": 465906,
           "name": "segment_command_64",
           "nsects": 1,
           "sections": [
@@ -43,13 +43,13 @@
               "offset": 86605824,
               "sectname": "__NODE_SEA_BLOB",
               "segname": "NODE_SEA",
-              "size": 407102
+              "size": 465906
             }
           ],
           "segname": "NODE_SEA",
           "vmAligned": true,
           "vmaddr": 4381769728,
-          "vmsize": 409600
+          "vmsize": 475136
         },
         "NODE_SEA_BLOB": {
           "addr": 4381769728,
@@ -57,7 +57,7 @@
           "offset": 86605824,
           "sectname": "__NODE_SEA_BLOB",
           "segname": "NODE_SEA",
-          "size": 407102
+          "size": 465906
         },
         "chainedFixups": {
           "present": false
@@ -289,10 +289,10 @@
           {
             "cmd": 25,
             "fileAligned": true,
-            "fileEnd": 87012926,
+            "fileEnd": 87071730,
             "fileInBounds": true,
             "fileoff": 86605824,
-            "filesize": 407102,
+            "filesize": 465906,
             "name": "segment_command_64",
             "nsects": 1,
             "sections": [
@@ -302,41 +302,41 @@
                 "offset": 86605824,
                 "sectname": "__NODE_SEA_BLOB",
                 "segname": "NODE_SEA",
-                "size": 407102
+                "size": 465906
               }
             ],
             "segname": "NODE_SEA",
             "vmAligned": true,
             "vmaddr": 4381769728,
-            "vmsize": 409600
+            "vmsize": 475136
           },
           {
             "cmd": 25,
             "fileAligned": true,
-            "fileEnd": 112181664,
+            "fileEnd": 112247200,
             "fileInBounds": true,
-            "fileoff": 87015424,
+            "fileoff": 87080960,
             "filesize": 25166240,
             "name": "segment_command_64",
             "nsects": 0,
             "sections": [],
             "segname": "__LINKEDIT",
             "vmAligned": true,
-            "vmaddr": 4382179328,
+            "vmaddr": 4382244864,
             "vmsize": 25182208
           },
           {
             "cmd": 2147483682,
             "dyldInfo": {
-              "bind_off": 87055296,
+              "bind_off": 87120832,
               "bind_size": 6416,
-              "export_off": 87291128,
+              "export_off": 87356664,
               "export_size": 1159632,
-              "lazy_bind_off": 87274688,
+              "lazy_bind_off": 87340224,
               "lazy_bind_size": 16440,
-              "rebase_off": 87015424,
+              "rebase_off": 87080960,
               "rebase_size": 39872,
-              "weak_bind_off": 87061712,
+              "weak_bind_off": 87127248,
               "weak_bind_size": 212976
             },
             "name": "dyld_info_command"
@@ -346,9 +346,9 @@
             "name": "symtab_command",
             "symtab": {
               "nsyms": 607678,
-              "stroff": 98352816,
+              "stroff": 98418352,
               "strsize": 13828848,
-              "symoff": 88618720
+              "symoff": 88684256
             }
           },
           {
@@ -358,7 +358,7 @@
               "extreloff": 0,
               "iextdefsym": 575568,
               "ilocalsym": 0,
-              "indirectsymoff": 98341568,
+              "indirectsymoff": 98407104,
               "iundefsym": 607040,
               "locreloff": 0,
               "modtaboff": 0,
@@ -415,19 +415,19 @@
           },
           {
             "cmd": 38,
-            "dataoff": 88450760,
+            "dataoff": 88516296,
             "datasize": 167960,
             "name": "linkedit_data_command"
           },
           {
             "cmd": 41,
-            "dataoff": 88618720,
+            "dataoff": 88684256,
             "datasize": 0,
             "name": "linkedit_data_command"
           }
         ],
         "dataInCode": {
-          "dataoff": 88618720,
+          "dataoff": 88684256,
           "datasize": 0,
           "present": true
         },
@@ -436,7 +436,7 @@
           "extreloff": 0,
           "iextdefsym": 575568,
           "ilocalsym": 0,
-          "indirectsymoff": 98341568,
+          "indirectsymoff": 98407104,
           "iundefsym": 607040,
           "locreloff": 0,
           "modtaboff": 0,
@@ -452,7 +452,7 @@
           "tocoff": 0
         },
         "exports": {
-          "dataoff": 87291128,
+          "dataoff": 87356664,
           "datasize": 1159632,
           "present": true,
           "source": "LC_DYLD_INFO"
@@ -610,34 +610,34 @@
             "kind": "segment",
             "name": "NODE_SEA",
             "offset": 86605824,
-            "size": 407102
+            "size": 465906
           },
           {
             "inBounds": true,
             "kind": "section",
             "name": "NODE_SEA/__NODE_SEA_BLOB",
             "offset": 86605824,
-            "size": 407102
+            "size": 465906
           },
           {
             "inBounds": true,
             "kind": "segment",
             "name": "__LINKEDIT",
-            "offset": 87015424,
+            "offset": 87080960,
             "size": 25166240
           },
           {
             "inBounds": true,
             "kind": "LC_SYMTAB",
             "name": "symoff",
-            "offset": 88618720,
+            "offset": 88684256,
             "size": 9722848
           },
           {
             "inBounds": true,
             "kind": "LC_SYMTAB",
             "name": "stroff",
-            "offset": 98352816,
+            "offset": 98418352,
             "size": 13828848
           },
           {
@@ -665,7 +665,7 @@
             "inBounds": true,
             "kind": "LC_DYSYMTAB",
             "name": "indirectsym",
-            "offset": 98341568,
+            "offset": 98407104,
             "size": 11248
           },
           {
@@ -686,35 +686,35 @@
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "rebase_off",
-            "offset": 87015424,
+            "offset": 87080960,
             "size": 39872
           },
           {
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "bind_off",
-            "offset": 87055296,
+            "offset": 87120832,
             "size": 6416
           },
           {
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "weak_bind_off",
-            "offset": 87061712,
+            "offset": 87127248,
             "size": 212976
           },
           {
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "lazy_bind_off",
-            "offset": 87274688,
+            "offset": 87340224,
             "size": 16440
           },
           {
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "export_off",
-            "offset": 87291128,
+            "offset": 87356664,
             "size": 1159632
           },
           {
@@ -728,20 +728,20 @@
             "inBounds": true,
             "kind": "linkedit_data",
             "name": "linkedit_data_command",
-            "offset": 88450760,
+            "offset": 88516296,
             "size": 167960
           },
           {
             "inBounds": true,
             "kind": "linkedit_data",
             "name": "linkedit_data_command",
-            "offset": 88618720,
+            "offset": 88684256,
             "size": 0
           }
         ],
         "fileOffsetCommandsInBounds": true,
         "functionStarts": {
-          "dataoff": 88450760,
+          "dataoff": 88516296,
           "datasize": 167960,
           "present": true
         },
@@ -751,8 +751,8 @@
         },
         "hasCodeSignature": false,
         "ncmds": 20,
-        "payloadLength": 407102,
-        "payloadSha256": "643d7b1f390d876d41e1748b04cefc40a0af72ba98aab053b81e7200569b489f",
+        "payloadLength": 465906,
+        "payloadSha256": "e7f7dd0ada5896ec1aa1328c1552758e67e97fe885d6f8d52df2070e3f66579a",
         "segmentOrder": [
           "__PAGEZERO",
           "__TEXT",
@@ -766,12 +766,12 @@
         "sizeofcmds": 2728,
         "symtab": {
           "nsyms": 607678,
-          "stroff": 98352816,
+          "stroff": 98418352,
           "strsize": 13828848,
-          "symoff": 88618720
+          "symoff": 88684256
         }
       },
-      "sha256": "de95d07f72511edfd821e25a177b26b0c1a6c7d6b99fe1155bb1cd8dceaa3779",
+      "sha256": "82379be96a0b1f057c8e0994cddbad1398f8a3d500222b88afe9d8367d5bc285",
       "validators": {
         "macholib": "1.16.3",
         "pefile": "2024.8.26"
@@ -781,18 +781,18 @@
       "arch": "x64",
       "basename": "injected-darwin-x64",
       "case": "darwin-x64",
-      "executableOutputSha256": "953ca96651b78eb0ac96337853114f6dd8fe6353f0df37bb0dbdb8144fa7373d",
+      "executableOutputSha256": "d4fc0edc6e0a7c9b5077e895295a3a11955208908b826d55fe80f96eb4ef3669",
       "format": "macho",
       "kind": "macho",
       "macho": {
         "LINKEDIT": {
           "beforeFileoff": 88850432,
           "cmd": 25,
-          "delta": 409600,
+          "delta": 466944,
           "fileAligned": true,
-          "fileEnd": 114692648,
+          "fileEnd": 114749992,
           "fileInBounds": true,
-          "fileoff": 89260032,
+          "fileoff": 89317376,
           "filesize": 25432616,
           "name": "segment_command_64",
           "nsects": 0,
@@ -800,16 +800,16 @@
           "sections": [],
           "segname": "__LINKEDIT",
           "vmAligned": true,
-          "vmaddr": 4384419840,
+          "vmaddr": 4384477184,
           "vmsize": 25436160
         },
         "NODE_SEA": {
           "cmd": 25,
           "fileAligned": true,
-          "fileEnd": 89257534,
+          "fileEnd": 89316338,
           "fileInBounds": true,
           "fileoff": 88850432,
-          "filesize": 407102,
+          "filesize": 465906,
           "name": "segment_command_64",
           "nsects": 1,
           "sections": [
@@ -819,13 +819,13 @@
               "offset": 88850432,
               "sectname": "__NODE_SEA_BLOB",
               "segname": "NODE_SEA",
-              "size": 407102
+              "size": 465906
             }
           ],
           "segname": "NODE_SEA",
           "vmAligned": true,
           "vmaddr": 4384010240,
-          "vmsize": 409600
+          "vmsize": 466944
         },
         "NODE_SEA_BLOB": {
           "addr": 4384010240,
@@ -833,7 +833,7 @@
           "offset": 88850432,
           "sectname": "__NODE_SEA_BLOB",
           "segname": "NODE_SEA",
-          "size": 407102
+          "size": 465906
         },
         "chainedFixups": {
           "present": false
@@ -1065,10 +1065,10 @@
           {
             "cmd": 25,
             "fileAligned": true,
-            "fileEnd": 89257534,
+            "fileEnd": 89316338,
             "fileInBounds": true,
             "fileoff": 88850432,
-            "filesize": 407102,
+            "filesize": 465906,
             "name": "segment_command_64",
             "nsects": 1,
             "sections": [
@@ -1078,41 +1078,41 @@
                 "offset": 88850432,
                 "sectname": "__NODE_SEA_BLOB",
                 "segname": "NODE_SEA",
-                "size": 407102
+                "size": 465906
               }
             ],
             "segname": "NODE_SEA",
             "vmAligned": true,
             "vmaddr": 4384010240,
-            "vmsize": 409600
+            "vmsize": 466944
           },
           {
             "cmd": 25,
             "fileAligned": true,
-            "fileEnd": 114692648,
+            "fileEnd": 114749992,
             "fileInBounds": true,
-            "fileoff": 89260032,
+            "fileoff": 89317376,
             "filesize": 25432616,
             "name": "segment_command_64",
             "nsects": 0,
             "sections": [],
             "segname": "__LINKEDIT",
             "vmAligned": true,
-            "vmaddr": 4384419840,
+            "vmaddr": 4384477184,
             "vmsize": 25436160
           },
           {
             "cmd": 2147483682,
             "dyldInfo": {
-              "bind_off": 89300216,
+              "bind_off": 89357560,
               "bind_size": 6368,
-              "export_off": 89538648,
+              "export_off": 89595992,
               "export_size": 1173520,
-              "lazy_bind_off": 89521976,
+              "lazy_bind_off": 89579320,
               "lazy_bind_size": 16672,
-              "rebase_off": 89260032,
+              "rebase_off": 89317376,
               "rebase_size": 40184,
-              "weak_bind_off": 89306584,
+              "weak_bind_off": 89363928,
               "weak_bind_size": 215392
             },
             "name": "dyld_info_command"
@@ -1122,9 +1122,9 @@
             "name": "symtab_command",
             "symtab": {
               "nsyms": 612404,
-              "stroff": 100690328,
+              "stroff": 100747672,
               "strsize": 14002320,
-              "symoff": 90880496
+              "symoff": 90937840
             }
           },
           {
@@ -1134,7 +1134,7 @@
               "extreloff": 0,
               "iextdefsym": 579956,
               "ilocalsym": 0,
-              "indirectsymoff": 100678960,
+              "indirectsymoff": 100736304,
               "iundefsym": 611764,
               "locreloff": 0,
               "modtaboff": 0,
@@ -1191,19 +1191,19 @@
           },
           {
             "cmd": 38,
-            "dataoff": 90712168,
+            "dataoff": 90769512,
             "datasize": 168328,
             "name": "linkedit_data_command"
           },
           {
             "cmd": 41,
-            "dataoff": 90880496,
+            "dataoff": 90937840,
             "datasize": 0,
             "name": "linkedit_data_command"
           }
         ],
         "dataInCode": {
-          "dataoff": 90880496,
+          "dataoff": 90937840,
           "datasize": 0,
           "present": true
         },
@@ -1212,7 +1212,7 @@
           "extreloff": 0,
           "iextdefsym": 579956,
           "ilocalsym": 0,
-          "indirectsymoff": 100678960,
+          "indirectsymoff": 100736304,
           "iundefsym": 611764,
           "locreloff": 0,
           "modtaboff": 0,
@@ -1228,7 +1228,7 @@
           "tocoff": 0
         },
         "exports": {
-          "dataoff": 89538648,
+          "dataoff": 89595992,
           "datasize": 1173520,
           "present": true,
           "source": "LC_DYLD_INFO"
@@ -1386,34 +1386,34 @@
             "kind": "segment",
             "name": "NODE_SEA",
             "offset": 88850432,
-            "size": 407102
+            "size": 465906
           },
           {
             "inBounds": true,
             "kind": "section",
             "name": "NODE_SEA/__NODE_SEA_BLOB",
             "offset": 88850432,
-            "size": 407102
+            "size": 465906
           },
           {
             "inBounds": true,
             "kind": "segment",
             "name": "__LINKEDIT",
-            "offset": 89260032,
+            "offset": 89317376,
             "size": 25432616
           },
           {
             "inBounds": true,
             "kind": "LC_SYMTAB",
             "name": "symoff",
-            "offset": 90880496,
+            "offset": 90937840,
             "size": 9798464
           },
           {
             "inBounds": true,
             "kind": "LC_SYMTAB",
             "name": "stroff",
-            "offset": 100690328,
+            "offset": 100747672,
             "size": 14002320
           },
           {
@@ -1441,7 +1441,7 @@
             "inBounds": true,
             "kind": "LC_DYSYMTAB",
             "name": "indirectsym",
-            "offset": 100678960,
+            "offset": 100736304,
             "size": 11368
           },
           {
@@ -1462,35 +1462,35 @@
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "rebase_off",
-            "offset": 89260032,
+            "offset": 89317376,
             "size": 40184
           },
           {
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "bind_off",
-            "offset": 89300216,
+            "offset": 89357560,
             "size": 6368
           },
           {
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "weak_bind_off",
-            "offset": 89306584,
+            "offset": 89363928,
             "size": 215392
           },
           {
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "lazy_bind_off",
-            "offset": 89521976,
+            "offset": 89579320,
             "size": 16672
           },
           {
             "inBounds": true,
             "kind": "LC_DYLD_INFO",
             "name": "export_off",
-            "offset": 89538648,
+            "offset": 89595992,
             "size": 1173520
           },
           {
@@ -1504,20 +1504,20 @@
             "inBounds": true,
             "kind": "linkedit_data",
             "name": "linkedit_data_command",
-            "offset": 90712168,
+            "offset": 90769512,
             "size": 168328
           },
           {
             "inBounds": true,
             "kind": "linkedit_data",
             "name": "linkedit_data_command",
-            "offset": 90880496,
+            "offset": 90937840,
             "size": 0
           }
         ],
         "fileOffsetCommandsInBounds": true,
         "functionStarts": {
-          "dataoff": 90712168,
+          "dataoff": 90769512,
           "datasize": 168328,
           "present": true
         },
@@ -1527,8 +1527,8 @@
         },
         "hasCodeSignature": false,
         "ncmds": 20,
-        "payloadLength": 407102,
-        "payloadSha256": "643d7b1f390d876d41e1748b04cefc40a0af72ba98aab053b81e7200569b489f",
+        "payloadLength": 465906,
+        "payloadSha256": "e7f7dd0ada5896ec1aa1328c1552758e67e97fe885d6f8d52df2070e3f66579a",
         "segmentOrder": [
           "__PAGEZERO",
           "__TEXT",
@@ -1542,12 +1542,12 @@
         "sizeofcmds": 2728,
         "symtab": {
           "nsyms": 612404,
-          "stroff": 100690328,
+          "stroff": 100747672,
           "strsize": 14002320,
-          "symoff": 90880496
+          "symoff": 90937840
         }
       },
-      "sha256": "953ca96651b78eb0ac96337853114f6dd8fe6353f0df37bb0dbdb8144fa7373d",
+      "sha256": "d4fc0edc6e0a7c9b5077e895295a3a11955208908b826d55fe80f96eb4ef3669",
       "validators": {
         "macholib": "1.16.3",
         "pefile": "2024.8.26"
@@ -1557,21 +1557,21 @@
       "arch": "x64",
       "basename": "injected-win-x64.exe",
       "case": "win-x64-after",
-      "executableOutputSha256": "0891f124963ac4ac25c6391e1f158e46a8e25281f3141f0098ee04627f27d48a",
+      "executableOutputSha256": "0d42b90acd03f9e72684bbfd4ecf0a9f82925ffed1dc422ff6eee78dad26efa8",
       "format": "pe",
       "kind": "pe",
       "pe": {
         "FileAlignment": 512,
         "NumberOfSections": 7,
         "SectionAlignment": 4096,
-        "SizeOfImage": 90419200,
+        "SizeOfImage": 90476544,
         "certificateRestored": false,
-        "computedSizeOfImage": 90419200,
+        "computedSizeOfImage": 90476544,
         "computedSizeOfImageInputs": {
-          "fileSize": 87502848,
+          "fileSize": 87561728,
           "headersAlignedToSectionAlignment": 4096,
           "headersEnd": 856,
-          "maxAlignedSectionEnd": 90419200,
+          "maxAlignedSectionEnd": 90476544,
           "sections": [
             {
               "alignedSectionEnd": 30715904,
@@ -1628,13 +1628,13 @@
               "virtualSize": 171852
             },
             {
-              "alignedSectionEnd": 90419200,
-              "memSize": 549376,
+              "alignedSectionEnd": 90476544,
+              "memSize": 608256,
               "name": ".rsrc",
-              "sectionEnd": 90415616,
-              "sizeOfRawData": 549376,
+              "sectionEnd": 90474496,
+              "sizeOfRawData": 608256,
               "virtualAddress": 89866240,
-              "virtualSize": 549376
+              "virtualSize": 608256
             }
           ]
         },
@@ -1647,15 +1647,15 @@
         "overlayOffset": null,
         "overlaySha256": null,
         "overlaySize": 0,
-        "payloadLength": 407102,
-        "payloadSha256": "643d7b1f390d876d41e1748b04cefc40a0af72ba98aab053b81e7200569b489f",
+        "payloadLength": 465906,
+        "payloadSha256": "e7f7dd0ada5896ec1aa1328c1552758e67e97fe885d6f8d52df2070e3f66579a",
         "resourcePreservation": {
           "added": [
             {
               "language": "0",
               "name": "NODE_SEA_BLOB",
-              "sha256": "643d7b1f390d876d41e1748b04cefc40a0af72ba98aab053b81e7200569b489f",
-              "size": 407102,
+              "sha256": "e7f7dd0ada5896ec1aa1328c1552758e67e97fe885d6f8d52df2070e3f66579a",
+              "size": 465906,
               "type": "RT_RCDATA"
             }
           ],
@@ -1713,8 +1713,8 @@
           {
             "language": "0",
             "name": "NODE_SEA_BLOB",
-            "sha256": "643d7b1f390d876d41e1748b04cefc40a0af72ba98aab053b81e7200569b489f",
-            "size": 407102,
+            "sha256": "e7f7dd0ada5896ec1aa1328c1552758e67e97fe885d6f8d52df2070e3f66579a",
+            "size": 465906,
             "type": "RT_RCDATA"
           },
           {
@@ -1786,9 +1786,9 @@
           {
             "name": ".rsrc",
             "pointerToRawData": 86953472,
-            "sizeOfRawData": 549376,
+            "sizeOfRawData": 608256,
             "virtualAddress": 89866240,
-            "virtualSize": 549376
+            "virtualSize": 608256
           }
         ],
         "security": {
@@ -1796,7 +1796,7 @@
           "size": 0
         }
       },
-      "sha256": "0891f124963ac4ac25c6391e1f158e46a8e25281f3141f0098ee04627f27d48a",
+      "sha256": "0d42b90acd03f9e72684bbfd4ecf0a9f82925ffed1dc422ff6eee78dad26efa8",
       "validators": {
         "macholib": "1.16.3",
         "pefile": "2024.8.26"
@@ -2087,8 +2087,8 @@
   ],
   "officialNodeVersion": "22.22.3",
   "payload": {
-    "length": 407102,
-    "sha256": "643d7b1f390d876d41e1748b04cefc40a0af72ba98aab053b81e7200569b489f"
+    "length": 465906,
+    "sha256": "e7f7dd0ada5896ec1aa1328c1552758e67e97fe885d6f8d52df2070e3f66579a"
   },
   "productVersion": "0.1.0",
   "publishedBase": "a380827d3cfd58c7c4dca014a109ead0326db18c",

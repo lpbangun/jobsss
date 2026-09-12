@@ -19,12 +19,14 @@ The release pipeline still uses the sole native implementation in `src/packaging
 Complete evidence is recorded once:
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `827416cdb222737f915576ff2e610e544d3765c832867adb6fd112dc7ec7ee78`
+- SHA-256: `c93f9a8ea21190b2104e726d698a5f1138f054f09b223dbd1673da66525a2634`
 - Exact reproduction command:
 
 ```bash
 JOBSSS_NATIVE_CACHE="$(mktemp -d)" ./bin/jobsss evidence --out "$(pwd)/evidence/native-validation.json"
 ```
+
+Current native artifact refresh (2026-09-12, B67 consistency): the pinned evidence command was re-run on two fresh processes with separate empty caller-selected caches from the merged main tree, and both regenerations were byte-identical to each other and to the canonical artifact cited above. The previously committed bytes (`827416cdb222737f915576ff2e610e544d3765c832867adb6fd112dc7ec7ee78`) predated the RC-2–RC-6, Greenhouse-promotion and P1b–P3 integration merges, whose runtime source changes moved the SEA payload (payload length `407102` → `465906` bytes, with shifted Mach-O and PE layout offsets). Stale evidence therefore failed the B67 byte-identity comparison instead of being silently accepted. Official inputs, injector and validator pins are unchanged. This remains local build/test structural validation only — not publication, matching-host runtime proof, or a new reviewer verdict.
 
 The command uses a caller-selected external empty cache, downloads only locked inputs, verifies checksums before validation, avoids user configuration/data and prior generated files, and emits deterministic path- and timestamp-free JSON. Frozen B67 requires two fresh processes with empty caches to produce byte-identical output matching the repository artifact.
 

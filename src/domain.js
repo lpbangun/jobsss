@@ -122,7 +122,216 @@ function readIntakeText(dataDir, args, kind, inlineKeys) {
   catch (cause) { throw error(`${kind}_read_error`, `Cannot read staged ${kind}: ${cause.message}`); }
 }
 
-function defaultPreferences(name, input = {}) {
+// ---------------------------------------------------------------------------
+// Resume-derived profile intake.
+//
+// create_profile used to seed preferences.targetRoleFamilies with the
+// candidate's name and preferences.skills with name tokens, which fabricated
+// targeting and search vocabulary, while proof extraction kept only lines that
+// happened to contain an allowlisted action verb (most experience bullets were
+// dropped) and recorded empty metrics for quantified claims. Preferences are
+// now derived from what the resume actually states — role titles from the
+// experience headings and the target/objective line, skills from the Skills
+// section — and every experience bullet becomes a proof candidate with its
+// evident metrics. An explicit `preferences` argument always wins; a resume
+// that states nothing leaves the arrays empty rather than inventing values
+// from the name.
+// ---------------------------------------------------------------------------
+
+// Section labels: Markdown headings plus bare ALL-CAPS record labels such as
+// "EXPERIENCE" or "SKILLS [P01-SKILLS]". Anything else that looks like a
+// heading ends the current section without claiming its lines.
+const EXPERIENCE_HEADING = /\b(?:experience|employment|work history)\b/i;
+const ACHIEVEMENT_HEADING = /\b(?:achievements|accomplishments)\b/i;
+const SKILLS_HEADING = /\b(?:skills|competencies|technologies|tech stack)\b/i;
+const TARGET_HEADING = /^(?:target(?:\s+role)?|desired\s+role|role\s+target|objective|headline|position\s+sought)$/i;
+const TARGET_LABEL = /^(?:target(?:\s+role)?|desired\s+role|role\s+target|objective|headline|position\s+sought)\s*[:\u2013\u2014-]/i;
+const ACTION_VERB = /\b(automated|reconciled|added|defined|built|led|managed|created|designed|improved|launched|reduced|increased|owned|shipped|analyzed|implemented|taught|researched|coordinated|facilitated|developed)\b/i;
+const PAST_TENSE_OPENER = /^[A-Z][a-z]+ed\b/;
+const BULLET_PREFIX = /^(?:[-*\u2022\u00b7]\s+|[A-Za-z]{1,4}\d{1,3}[:.)]\s+)/;
+const DATED_ROLE_LINE = /^(?:\d{4}[-/]\d{1,2}|\w+\s+\d{4})\s*(?:-|\u2013|\u2014|to|through)\s*(?:\d{4}[-/]\d{1,2}|\w+\s+\d{4}|\d{4}|present|current)/i;
+// Context prose that sits under an experience heading but is not a claim.
+const PROOF_NOISE = /^(?:fixed-term|no subsequent|\W*available\b|\W*all human|\W*references|\W*notes?:|\W*disclaimer)|\bnot human-attested\b|\bpending human\b|\bhuman-only\b/i;
+const ROLE_NOUN = /\b(?:engineer|analyst|developer|programmer|manager|designer|scientist|architect|consultant|specialist|administrator|coordinator|director|supervisor|technician|strategist|planner|producer|editor|recruiter|marketer|writer|researcher|accountant|teacher|professor|officer|attorney|paralegal|translator|librarian|intern)\b/i;
+const ROLE_TITLE = /(?:[A-Za-z][A-Za-z/&.+-]*\s+){0,2}(?:engineer|analyst|developer|programmer|manager|designer|scientist|architect|consultant|specialist|administrator|coordinator|director|supervisor|technician|strategist|planner|producer|editor|recruiter|marketer|writer|researcher|accountant|teacher|professor|officer|attorney|paralegal|translator|librarian)s?\b/gi;
+const ROLE_LEVEL = /^(?:junior|senior|staff|principal|lead|mid-level|entry-level|associate|intern|apprentice|trainee|chief|head of|vp of|vice president of)\s+/i;
+const SKILL_LABEL_NOISE = /^(?:missing|exposure only|exposure|none|no|not|without|avoid|education|degree|certifications? status|references|notes?)$/i;
+const SKILL_ENTRY_NOISE = /\b(?:university|college|school|completed|degree|gpa|honors|sandbox|listed|certification)\b/i;
+
+function headingKeyFor(line) {
+  const raw = String(line || '').trim();
+  if (!raw || raw.length > 90) return null;
+  if (/^[-*\u2022\u00b7]/.test(raw)) return null;
+  const md = raw.match(/^#{1,6}\s*(.+?)\s*#*$/);
+  let text = md ? md[1] : raw;
+  text = text.replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[:\u2013\u2014-]\s*$/, '').trim();
+  if (!text) return null;
+  const words = text.split(/\s+/);
+  const bareLabel = words.length <= 5 && text.length <= 48 && /^[A-Z][A-Z0-9 &/+-]*$/.test(text);
+  if (!md && !bareLabel) return null;
+  if (TARGET_HEADING.test(text)) return 'target';
+  if (ACHIEVEMENT_HEADING.test(text)) return 'achievements';
+  if (EXPERIENCE_HEADING.test(text)) return 'experience';
+  if (SKILLS_HEADING.test(text)) return 'skills';
+  return 'other';
+}
+
+// True for a dated role header ("2022-01 through 2024-06: Data Analyst, Co."),
+// which names a role instead of claiming an outcome.
+function isRoleHeaderLine(line) {
+  const text = String(line || '').trim();
+  if (!DATED_ROLE_LINE.test(text)) return false;
+  return !ACTION_VERB.test(text) && !PAST_TENSE_OPENER.test(text.replace(BULLET_PREFIX, ''));
+}
+
+function resumeSections(resumeText) {
+  const sections = [];
+  let key = null;
+  let lines = [];
+  const flush = () => { sections.push({ key, lines }); key = null; lines = []; };
+  for (const raw of String(resumeText || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const found = headingKeyFor(line);
+    if (found) {
+      // A dated role heading inside an achievement block opens a role, not a
+      // new section: keep scanning the same block.
+      const keepsSection = found === 'other' && (key === 'experience' || key === 'achievements')
+        && /\b(?:19|20)\d{2}\b/.test(line);
+      if (!keepsSection) { flush(); key = found; }
+      continue;
+    }
+    lines.push(line);
+  }
+  flush();
+  return sections.filter(section => section.lines.length);
+}
+
+function roleParts(line) {
+  return String(line || '').replace(/^#{1,6}\s*/, '').replace(/\[[^\]]*\]/g, ' ')
+    .split(/[|,:]|\s{2,}/);
+}
+
+function normalizeRole(raw) {
+  let role = String(raw || '').replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/[.,;:\u2013\u2014-]+$/, '').trim();
+  if (!role || /\d/.test(role)) return null;
+  role = role.replace(ROLE_LEVEL, '').trim();
+  if (!role || role.length > 48 || role.split(/\s+/).length > 5) return null;
+  if (!ROLE_NOUN.test(role)) return null;
+  return role;
+}
+
+// Role families come from stated target/objective lines and from role titles in
+// the experience headings. The candidate's name is never a role family.
+function roleFamiliesFromResume(resumeText) {
+  const out = [];
+  const seen = new Set();
+  const push = raw => {
+    const role = normalizeRole(raw);
+    if (!role) return;
+    const key = role.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key); out.push(role);
+  };
+  const pushTargetLine = line => {
+    for (const match of String(line || '').matchAll(ROLE_TITLE)) push(match[0]);
+  };
+  let section = null;
+  for (const raw of String(resumeText || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const key = headingKeyFor(line);
+    if (key) {
+      const datedRoleHeading = key === 'other' && (section === 'experience' || section === 'achievements')
+        && /\b(?:19|20)\d{2}\b/.test(line);
+      if (datedRoleHeading) for (const part of roleParts(line)) push(part);
+      else section = key;
+      continue;
+    }
+    if (TARGET_LABEL.test(line)) pushTargetLine(line);
+    else if (section === 'target') pushTargetLine(line);
+    if ((section === 'experience' || section === 'achievements') && isRoleHeaderLine(line)) {
+      for (const part of roleParts(line)) push(part);
+    }
+  }
+  return out.slice(0, 6);
+}
+
+// Skills come from the Skills section only. A `Missing:`/`Exposure only:`
+// inventory names what the candidate does not have, so those labels are
+// dropped instead of being promoted into skills.
+function skillsFromResume(resumeText) {
+  const out = [];
+  const seen = new Set();
+  for (const section of resumeSections(resumeText)) {
+    if (section.key !== 'skills') continue;
+    for (const line of section.lines) {
+      const text = line.replace(BULLET_PREFIX, '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      const label = text.match(/^([A-Za-z][A-Za-z /&+-]{0,24})\s*:/);
+      if (label && SKILL_LABEL_NOISE.test(label[1].trim())) continue;
+      const body = label ? text.slice(label[0].length) : text;
+      if (/^(?:missing|exposure only|no|not|without|avoid)\b/i.test(body.trim())) continue;
+      for (const entry of body.split(/[,;|\u2022\u00b7]/)) {
+        const skill = entry.replace(/^[\s\-*]+/, '').replace(/\s+/g, ' ').replace(/\.$/, '')
+          .replace(/^(?:and|plus|including|with)\s+/i, '').trim();
+        if (skill.length < 2 || skill.length > 48 || !/[a-z]/i.test(skill)) continue;
+        if (skill.split(/\s+/).length > 6 || SKILL_ENTRY_NOISE.test(skill)) continue;
+        const key = skill.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key); out.push(skill);
+      }
+    }
+  }
+  return out.slice(0, 32);
+}
+
+// Evident metrics only: numbers carrying a unit (currency, percent, scale,
+// count of things, duration). A bare four-digit year is a date, not a metric.
+const METRIC_PATTERN = /(?:\$\s?\d[\d,]*(?:\.\d+)?\s?(?:k|m|bn|b)?|\b(?:usd|eur|gbp|cad|aud)\s?\d[\d,]*(?:\.\d+)?|\b\d[\d,]*(?:\.\d+)?\s?%|\b\d[\d,]*(?:\.\d+)?\s?x\b|\b\d[\d,]*(?:\.\d+)?\s?(?:k|m|bn|b)\b|\b\d[\d,]*(?:\.\d+)?\s+(?:services?|users?|customers?|events?|records?|rows?|requests?|reports?|dashboards?|models?|tests?|pipelines?|jobs?|meetings?|runs?|hours?|minutes?|mins?|seconds?|secs?|days?|weeks?|months?|quarters?|years?|colleagues?|engineers?|analysts?|teams?|people|projects?|tickets?|incidents?|stakeholders?|mentors?|students?|educators?)\b|\b\d{2,}(?:,\d{3})*\b)/gi;
+
+function metricsFromText(text) {
+  const out = [];
+  for (const match of String(text || '').matchAll(METRIC_PATTERN)) {
+    const value = match[0].trim();
+    if (/^(?:19|20)\d{2}$/.test(value)) continue;
+    if (!out.includes(value)) out.push(value);
+  }
+  return out.slice(0, 12);
+}
+
+// Every experience bullet is a proof candidate; outside an experience block a
+// line qualifies on an allowlisted action verb (unchanged behaviour). Plain
+// prose inside an experience block qualifies when it opens with a past-tense
+// verb, so unlabeled resumes keep their achievements without swallowing
+// preference or boundary prose.
+function proofCandidatesFromResume(resumeText) {
+  const candidates = [];
+  let section = null;
+  for (const raw of String(resumeText || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const key = headingKeyFor(line);
+    if (key) {
+      const keepsSection = key === 'other' && (section === 'experience' || section === 'achievements')
+        && /\b(?:19|20)\d{2}\b/.test(line);
+      if (!keepsSection) section = key;
+      continue;
+    }
+    const bullet = BULLET_PREFIX.test(line);
+    const body = line.replace(BULLET_PREFIX, '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!body || body.length < 20) continue;
+    if (PROOF_NOISE.test(body) || isRoleHeaderLine(body)) continue;
+    const inAchievements = section === 'experience' || section === 'achievements';
+    if (!inAchievements && !bullet && !ACTION_VERB.test(body)) continue;
+    if (inAchievements && !bullet && !ACTION_VERB.test(body) && !PAST_TENSE_OPENER.test(body)) continue;
+    candidates.push(body);
+  }
+  return [...new Set(candidates)].slice(0, 40);
+}
+
+function defaultPreferences(input = {}, resumeText = '') {
   const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   const excludeRoles = Array.isArray(supplied.excludeRoles) ? supplied.excludeRoles.map(String) : [];
   // Replace, never accumulate: the dealbreaker synthesized from a previous
@@ -149,8 +358,12 @@ function defaultPreferences(name, input = {}) {
   }
   const locations = Array.isArray(supplied.locations) ? supplied.locations : [];
   if (!locations.length && supplied.location) locations.push(String(supplied.location));
+  // Derived defaults are never fabricated: with no resume statement the arrays
+  // stay empty and explicit caller values always win.
+  const derivedRoleFamilies = Array.isArray(supplied.targetRoleFamilies) ? supplied.targetRoleFamilies : roleFamiliesFromResume(resumeText);
+  const derivedSkills = Array.isArray(supplied.skills) ? supplied.skills : skillsFromResume(resumeText);
   return {
-    targetRoleFamilies: Array.isArray(supplied.targetRoleFamilies) ? supplied.targetRoleFamilies : [name],
+    targetRoleFamilies: derivedRoleFamilies,
     industries: Array.isArray(supplied.industries) ? supplied.industries : [],
     companyStages: Array.isArray(supplied.companyStages) ? supplied.companyStages : [],
     locations,
@@ -158,7 +371,7 @@ function defaultPreferences(name, input = {}) {
     dealbreakers,
     excludeRoles,
     excludeRolesDealbreaker,
-    skills: Array.isArray(supplied.skills) ? supplied.skills : slug(name).split('-').filter(Boolean),
+    skills: derivedSkills,
     missionKeywords: Array.isArray(supplied.missionKeywords) ? supplied.missionKeywords : [],
     values: Array.isArray(supplied.values) ? supplied.values : [],
     workModel: String(supplied.workModel || (supplied.remoteOnly ? 'remote' : '')),
@@ -168,14 +381,11 @@ function defaultPreferences(name, input = {}) {
 }
 
 function extractProofPoints(profileId, resumeText) {
-  const action = /\b(automated|reconciled|added|defined|built|led|managed|created|designed|improved|launched|reduced|increased|owned|shipped|analyzed|implemented|taught|researched|coordinated|facilitated|developed)\b/i;
-  return String(resumeText || '').split(/\r?\n/)
-    .map(line => line.trim().replace(/^[-*•]\s*/, ''))
-    .filter(line => line.length >= 20 && action.test(line)).slice(0, 24)
+  return proofCandidatesFromResume(resumeText)
     .map((summary, index) => ({
       id: id('proof', `${profileId}:${index}:${summary}`), profileId, summary,
       skills: [...new Set(tokenize(summary).filter(token => token.length > 3))].slice(0, 10),
-      metrics: [...summary.matchAll(/(?:\$[\d,.]+|\d+(?:\.\d+)?%|\d+x|\b\d{2,}\b)/gi)].map(match => match[0]),
+      metrics: metricsFromText(summary),
       source: 'resume_import', verification: 'human_required', status: 'needs_verification', createdAt: now(),
     }));
 }
@@ -364,7 +574,7 @@ export function createProfile(dataDir, args = {}) {
     }
     const proofPoints = extractProofPoints(profileId, input.text);
     const profile = {
-      id: profileId, name, preferences: defaultPreferences(name, args.preferences),
+      id: profileId, name, preferences: defaultPreferences(args.preferences, input.text),
       resumeSource: input.sourceName, resumeText: input.text,
       resume: input.text ? resumeDocument(profileId, input.text) : null,
       proofPointIds: proofPoints.map(proof => proof.id), createdAt: now(), updatedAt: now(),
@@ -430,7 +640,7 @@ export function getScore(dataDir, args = {}) {
 export function updateProfile(dataDir, args = {}) {
   return mutate(dataDir, args, store => {
     const profile = requireProfile(store, args.profileId);
-    if (args.preferences && typeof args.preferences === 'object') profile.preferences = defaultPreferences(profile.name, { ...profile.preferences, ...args.preferences });
+    if (args.preferences && typeof args.preferences === 'object') profile.preferences = defaultPreferences({ ...profile.preferences, ...args.preferences }, profile.resumeText);
     if (args.name) {
       const name = String(args.name).trim();
       if (Object.values(store.profiles).some(other => other.id !== profile.id && other.name === name)) {

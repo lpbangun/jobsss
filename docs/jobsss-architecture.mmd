@@ -1,0 +1,59 @@
+---
+title: "JobSSS — one portable Agent Plugin, one skill, one bundled MCP runtime"
+---
+flowchart TB
+  subgraph HOST["AGENT HOST (outside the plugin)"]
+    Agent["Host agent model<br/>Hermes · Claude Code · Codex"]
+    Adapters["Thin client adapters · compat/<br/>pointers only · no duplicated policy"]
+  end
+
+  subgraph PLUGIN["JobSSS PLUGIN — portable, self-contained (Agent Plugins 1.0.0)"]
+    Skill["Skill: skills/jobsss/SKILL.md<br/>slash routes + behavior contract"]
+    Launcher["bin/jobsss launcher<br/>source: Node 22+ on PATH · release: nothing on PATH"]
+    MCP["MCP stdio server 'jobsss'<br/>47 tools · JSON-RPC 2.0"]
+    D1["domain.js<br/>doctor · start · intake · lifecycle · tasks"]
+    D2["workflows.js · documents.js<br/>materials · answers · native PDF"]
+    D3["scoring.js<br/>jobos.fit-score.v1 · 7 weighted dimensions"]
+    D4["discovery.js · relationships.js<br/>ATS boards · contacts · network paths"]
+    Store["store.js — versioned canonical state<br/>projections + audit mirror"]
+    Contracts["contracts/ — packet · outcome · bulk-input<br/>offline validators · stable error codes"]
+    Authority["authority.js — human-only decisions<br/>CLI only · never on tools/list"]
+  end
+
+  subgraph DATA["PLUGIN_DATA — host-provided, writable (only durable state root)"]
+    S1["store.json — canonical, schemaVersion 2"]
+    S2["projections/*.json + audit.md — readable mirrors"]
+    S3["job · document · profile payloads (incl. exported PDFs)"]
+  end
+
+  subgraph EXT["EXTERNAL (outside the plugin)"]
+    Human["Human operator<br/>bin/jobsss decide · 12 actions<br/>id + revision + contentHash"]
+    Public["Public HTTP(S)<br/>job pages · public ATS boards"]
+  end
+
+  subgraph NEVER["NEVER through MCP — blocked, not attestable (policy)"]
+    N1["send · submit · apply"]
+    N2["approve · verify"]
+    N3["schedule · browser automation"]
+  end
+
+  Agent -->|"loads the skill"| Skill
+  Adapters -.->|"points at the canonical skill"| Skill
+  Skill -->|"MCP tool calls"| MCP
+  Launcher --> MCP
+  MCP --> D1 & D2 & D3 & D4
+  D1 --> Store
+  D2 --> Store
+  D3 --> Store
+  D4 --> Store
+  D4 -.->|"public intake only"| Public
+  Store -->|"persists"| S1
+  S1 --> S2
+  S1 --> S3
+  Store --> Contracts
+  MCP -.->|"non-authoritative handoffs"| Human
+  Human -->|"trusted local decision"| Authority
+  Authority -->|"records human observation"| S1
+
+  classDef blocked fill:#3f1220,stroke:#fb7185,color:#fecdd3;
+  class N1,N2,N3 blocked;

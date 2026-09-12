@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "task_id": "rc2-resume-roles",
+  "dispatch_id": "rc2-resume-roles-d1",
+  "harness": "hermes",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "status": "success",
+  "exit_code": 0,
+  "evidence": {
+    "branch": "fix/rc2-resume-roles",
+    "commit": null,
+    "files": ["src/documents.js", "tests/resume-roles-regression.test.mjs"],
+    "test_count": 14,
+    "test_result": "pass",
+    "log_path": "/home/logani/projects/jobsss-worktrees/oprun-rc2-resume-roles/jobsss/.oprun/logs/acceptance-final.log"
+  },
+  "summary": "Fixed DATED_ROLE_LINE (src/documents.js:45): 'Present' is a case-insensitive range end, so '2021 - Present | Role | Company' opens its own role and owns its bullets instead of landing under the next employer; closed numeric ranges unchanged. New tests/resume-roles-regression.test.mjs (6 tests) was RED first (2 fail), green after. Lane command exit 0, 14/14 pass. Base 8eeceb0, no commit per envelope. One blocked op (inline python -c) reported, not rerouted.",
+  "finished_at": "2026-09-11T23:00:16Z"
+}

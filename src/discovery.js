@@ -293,11 +293,18 @@ export function parseJobText(text, fallback = {}) {
   const compensationJson = payFallback && parsedCompensation.min === null && parsedCompensation.max === null
     ? parseCompensation(text)
     : parsedCompensation;
+  // rc6: a posting that states a pay range but no labeled field (for example
+  // "Salary range: USD 180,000 - 200,000." which `find('salary')` cannot match)
+  // still describes compensation, so the top-level text mirrors the parsed
+  // result instead of staying empty. An explicit label is never overwritten,
+  // and text with no parseable amount stays empty — no pay text is invented.
+  const compensationText = compensation
+    || (compensationJson.min !== null || compensationJson.max !== null ? compensationJson.text : '');
   return {
     title: fallback.title || find('title') || heading.title || 'Imported role',
     company: fallback.company || labeledCompany || headingCompany || 'Unknown company',
     location: fallback.location || find('location') || find('location/authorization') || heading.location || '',
-    compensation,
+    compensation: compensationText,
     compensationJson,
     workModel,
     url: fallback.url || sourceUrl || '',
@@ -721,11 +728,16 @@ export function createSavedSearch(store, { profileId, name, adapter, config = {}
   }
   store.searches = store.searches || {};
   const searches = Object.values(store.searches).filter(search => search.profileId === profileId);
-  const identity = savedSearchIdentity(kind, identityConfig);
+  // rc6: the identity must describe the search that is actually stored, so it
+  // carries the effective minFit floor (the same value written to the record)
+  // instead of the raw `config.minFit` that callers never set. Two searches
+  // that differ only by floor are then distinct searches rather than one
+  // silently deduped record.
+  const safeMinFit = Number.isFinite(Number(minFit)) ? Number(minFit) : 70;
+  const identity = savedSearchIdentity(kind, { ...identityConfig, minFit: safeMinFit });
   const existing = searches.find(search => search.adapter === kind && search.identity === identity);
   if (existing) return { search: existing, created: false, deduped: true };
   const searchId = id('search', `${profileId}:${name}`);
-  const safeMinFit = Number.isFinite(Number(minFit)) ? Number(minFit) : 70;
   const search = {
     id: searchId,
     name,

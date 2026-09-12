@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   slug, id, now, loadStore, commitStore, hashText, dedupeKeyForJob, tokenize,
-  ensureDataDir, STORE_SCHEMA_VERSION, activeProofIdsForStore,
+  ensureDataDir, STORE_SCHEMA_VERSION, activeProofIdsForStore, storeSchemaVersionOnDisk,
 } from './store.js';
 import { localScore } from './scoring.js';
 import {
@@ -521,12 +521,18 @@ export function doctor(dataDir) {
 }
 
 export function start(dataDir, args = {}) {
+  // rc6: `migrated` reports whether THIS call migrated a legacy store. A
+  // genuinely empty PLUGIN_DATA (no store.json yet) and an already-current
+  // store both report false; only a store below the bundled schema reports
+  // true. Read before the commit so the value describes the pre-commit state.
+  const schemaOnDisk = storeSchemaVersionOnDisk(dataDir);
   const committed = commitStore(dataDir, { expectedRevision: expected(args) }, store => {
     store.audit = Array.isArray(store.audit) ? store.audit : [];
     store.audit.push({ event: 'start', createdAt: now() });
     return store;
   });
-  return { ok: true, initialized: true, migrated: true, schemaVersion: STORE_SCHEMA_VERSION, revision: committed.revision,
+  const migrated = schemaOnDisk !== null && schemaOnDisk < STORE_SCHEMA_VERSION;
+  return { ok: true, initialized: true, migrated, schemaVersion: STORE_SCHEMA_VERSION, revision: committed.revision,
     dataDir: path.resolve(dataDir), storePath: committed.storePath, message: 'Versioned durable state initialized under PLUGIN_DATA' };
 }
 

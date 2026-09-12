@@ -621,16 +621,21 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   const selected = ranked.selected;
   const selectedIds = selected.map(entry => entry.proof.id);
   const coverage = buildCoverage(requirements, selected);
+  const selectedProofs = selected.map(entry => entry.proof);
   const body = kind === 'cover_letter'
-    ? coverLetterCopy(profile, job, proofs)
-    : resumeCopy(profile, selected.map(entry => entry.proof), Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)), { preferences: profile.preferences, job });
+    ? coverLetterCopy(profile, job, selectedProofs)
+    : resumeCopy(profile, selectedProofs, Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)), { preferences: profile.preferences, job });
   // Draft metadata must record the owned selected proofs the copy was built
   // from, even after display cleanup/paraphrase strips proof labels: match
   // normalized claim tokens against the rendered copy and fall back to the
   // requirement-selected proof ids rather than ever reporting an empty list.
   // Historical/retired proof status can then be computed from the artifact.
+  // rc6: the citation pool is the proof set the copy was actually built from —
+  // for a cover letter that is the requirement-selected proofs only — so a
+  // draft never cites a proof outside selectedProofPointIds.
   const normClaim = text => tokenize(String(text || '')).join(' ');
-  const usedProofIds = proofs.filter(proof => {
+  const citationPool = kind === 'cover_letter' ? selectedProofs : proofs;
+  const usedProofIds = citationPool.filter(proof => {
     const claim = normClaim(supportedAchievement(proof.summary));
     if (claim.split(' ').length < 4) return false;
     return ` ${normClaim(body)} `.includes(` ${claim} `);

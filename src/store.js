@@ -128,6 +128,23 @@ export function storePath(dataDir) {
   return path.join(ensureDataDir(dataDir), 'store.json');
 }
 
+/**
+ * Schema version currently on disk, or null when no canonical store file
+ * exists yet. Read-only and side-effect free: callers that must report whether
+ * a legacy migration actually ran (rc6) can compare it with
+ * STORE_SCHEMA_VERSION before committing. An unreadable/corrupt store returns
+ * null here; the following commitStore() raises the typed store error.
+ */
+export function storeSchemaVersionOnDisk(dataDir) {
+  const p = storePath(dataDir);
+  if (!fs.existsSync(p)) return null;
+  try {
+    const parsed = readStoreFile(p);
+    const numeric = Number(parsed.version ?? parsed.schemaVersion ?? 1);
+    return Number.isFinite(numeric) ? numeric : null;
+  } catch { return null; }
+}
+
 function defaultStore() {
   const at = now();
   return {

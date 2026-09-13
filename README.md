@@ -478,7 +478,7 @@ contracts/               portable packet / outcome / bulk-input schemas + exampl
 compat/                  thin client adapters and the compatibility matrix
 docs/                    architecture diagram (.mmd source + rendered .svg)
 tests/                   reviewer-owned acceptance suite + synthetic fixtures
-tests/fixtures/          synthetic postings, resumes, boards, contact cards
+synthetic fixture data     synthetic postings, resumes, boards, contact cards
 BENCHMARK.md             frozen pass bar (B1–B70)
 evidence/                canonical native-format validation evidence
 AGENTS.md                contributor invariants and commands

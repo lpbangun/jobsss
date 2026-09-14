@@ -37,6 +37,15 @@ const PREFERENCE_LINE = /^\s*(remote only|hybrid\b|target\b|hard minimum\b|not s
 // interest and search constraints stay source facts, not resume prose).
 const APPLICANT_PREFERENCE = /^\s*(?:work authorization|authorization|target\b|hard minimum|remote only|remote:|interest\b|available|availability|desired|not seeking|open to|no (?:relocation|required|office|permanent)|compensation|salary|annual|location|preferences|candidate preferences|looking for|i seek|i am available|my minimum|i value)/i;
 const AUTHORIZATION_LINE = /\b(?:work authorization|authorization to work|authorized to work|right to work)\b|\bcitizen\b/i;
+// Chronology/scope guard sentences ("These continuous dates cover five years
+// inclusive.", "No direct reports, hiring authority, or staff-level ownership.")
+// describe the record, they are not the candidate's claims. They must never be
+// promoted into applicant copy as bullets.
+const CONTEXT_LINE = /^(?:these|this|those|all|any|no|not|none|neither|both|each|everything|nothing|note|notes|summary|overall|the (?:above|following|dates|roles|role)|dates cover|continuous dates)\b/i;
+// A bare place name ("Berlin, Germany", "Chicago, Illinois, United States") is a
+// contact/location fact. Under an unlabelled heading it has no verb and no
+// marker, so it used to be mistaken for an achievement paragraph.
+const PLACE_LINE = /^(?:[A-Z][\p{L}.'-]*)(?:[ -][A-Z][\p{L}.'-]*)?(?:,\s*(?:[A-Z][\p{L}.'-]*)(?:[ -][A-Z][\p{L}.'-]*)?){1,2}\.?$/u;
 // Unlabeled dated role records (`2021-09 through 2023-02: Role, Company.`)
 // keep dated chronology even when no Experience heading is supplied. An
 // open-ended "Present" range (case-insensitive) is a role end too, so a
@@ -53,12 +62,28 @@ function applicantLine(raw) {
 }
 
 // Applicant prose candidate for resumes without labeled headings: real
-// contribution paragraphs survive, while preference/context lines are not
-// promoted into applicant copy merely because they are not contacts.
+// contribution paragraphs survive, while preference/context lines and bare
+// place names are not promoted into applicant copy merely because they are not
+// contacts.
 function applicantProse(raw) {
   const text = String(raw || '').trim();
+  const plain = clean(text);
   if (!text || APPLICANT_PREFERENCE.test(text) || AUTHORIZATION_LINE.test(text)) return false;
+  if (CONTEXT_LINE.test(plain) || PLACE_LINE.test(plain)) return false;
   return Boolean(applicantLine(text));
+}
+
+// Applicant claim candidate for the labeled-record path. There the section is
+// the discriminator (a line inside employment/achievements is a claim about the
+// candidate's work), so the guard is only: not noise, not a preference, not a
+// boundary sentence, not a bare place name. Deliberately not a verb vocabulary:
+// an allow-list of seven verbs admitted only the reviewer fixture's sentences
+// and dropped ordinary claims such as "Cut p99 latency ...".
+function applicantClaim(raw) {
+  const text = String(raw || '').trim();
+  const plain = clean(text);
+  if (!text || CONTEXT_LINE.test(plain) || PLACE_LINE.test(plain)) return null;
+  return applicantLine(text);
 }
 
 function focusLine(preferences, job) {
@@ -133,6 +158,10 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
         // contact lines or achievements; they stay out of applicant copy.
       } else if (DATED_ROLE_LINE.test(raw)) {
         roles.push({ text: supportedAchievement(clean(raw)), bullets: [] });
+      } else if (!roles.length && PLACE_LINE.test(clean(raw))) {
+        // Bare location line in the header block ("Berlin, Germany") is a
+        // contact fact, not an achievement paragraph.
+        contacts.push(clean(raw));
       } else if (applicantProse(raw) && clean(raw) !== identity) {
         opening.push(raw);
       }
@@ -204,14 +233,30 @@ export function resumeCopy(profile, selected = [], omittedProofs = [], options =
   const employment = [], achievements = [], skills = [], education = [];
   for (const raw of lines) {
     if (/^##\s/.test(raw)) { section = clean(raw).toLowerCase(); continue; }
-    if (/employment|experience/.test(section) && /\b(?:19|20)\d{2}(?:-\d{2})?\b/.test(raw) && /:/.test(raw)) {
-      const refs = raw.match(/\[[^\]]+\]/g) || [];
-      employment.push({ text: supportedAchievement(raw).replace(/\.\s*Fixed-term[\s\S]*$/i, '.'), refs, bullets: [] });
-    } else if (/achievements|accomplishments/.test(section) && /\b(automated|reconciled|built|added|defined|implemented|led|created|developed|reduced|improved|designed|launched|owned|shipped)\b/i.test(raw)) {
-      achievements.push({ raw, text: supportedAchievement(raw), refs: raw.match(/\[[^\]]+\]/g) || [] });
+    if (/employment|experience/.test(section)) {
+      if (/\b(?:19|20)\d{2}(?:-\d{2})?\b/.test(raw) && /:/.test(raw)) {
+        const refs = raw.match(/\[[^\]]+\]/g) || [];
+        employment.push({ text: supportedAchievement(raw).replace(/\.\s*Fixed-term[\s\S]*$/i, '.'), refs, bullets: [] });
+      } else {
+        // A non-dated line inside employment is a claim about that role, not
+        // chronology. Dropping these silently removed every achievement bullet
+        // from an ordinary `## Employment` resume.
+        const claim = applicantClaim(raw);
+        if (claim) achievements.push({ raw, text: supportedAchievement(claim), refs: raw.match(/\[[^\]]+\]/g) || [] });
+      }
+    } else if (/achievements|accomplishments/.test(section)) {
+      // The section is the discriminator; no fixed verb vocabulary.
+      const claim = applicantClaim(raw);
+      if (claim) achievements.push({ raw, text: supportedAchievement(claim), refs: raw.match(/\[[^\]]+\]/g) || [] });
     } else if (/skills|education/.test(section)) {
-      if (/^(Production|Skills|Languages):/i.test(raw)) skills.push(supportedAchievement(raw));
-      if (/^Education:/i.test(raw)) education.push(supportedAchievement(raw.replace(/^Education:\s*/i, '')));
+      // `Exposure only:` / `Missing:` inventories stay source metadata.
+      if (/^\s*(?:Exposure only|Missing):/i.test(raw)) continue;
+      if (/^Education:/i.test(raw)) { education.push(supportedAchievement(raw.replace(/^Education:\s*/i, ''))); continue; }
+      // Unlabelled skills/education lines are real resume facts: a plain
+      // `## Skills` list used to be dropped unless it carried a
+      // `Production:|Skills:|Languages:` prefix.
+      const claim = applicantClaim(raw);
+      if (claim) (/(?:^|\W)education/.test(section) ? education : skills).push(supportedAchievement(claim));
     }
   }
   // Some source records enumerate employment references in the section heading

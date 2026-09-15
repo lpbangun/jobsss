@@ -1,0 +1,60 @@
+{
+  "view": "jobs",
+  "schema_version": "1.1",
+  "applied_filters": {
+    "status": "verified_open"
+  },
+  "attribution": {
+    "license": "CC BY 4.0 applies only to project-owned material; source rights remain with their owners.",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sourceUrl": "https://ohshi.work/",
+    "notice": "Job data from ohshi.work, licensed CC BY 4.0. Attribution required on redistribution."
+  },
+  "page": {
+    "next_cursor": "live-cur-page-2",
+    "total": 3
+  },
+  "data": [
+    {
+      "id": "job_ashby_liveqa_aaaaaaaa-1111-2222-3333-444444444444",
+      "provider": "ashby",
+      "sourceId": "ashby:liveqa",
+      "title": "Live Envelope QA Role Alpha",
+      "roleFamily": "data",
+      "location": "Berlin, Germany",
+      "remoteStatus": "remote",
+      "employmentType": "FullTime",
+      "compensation": "See posting",
+      "canonicalUrl": "https://jobs.ashbyhq.com/liveqa/aaaaaaaa-1111-2222-3333-444444444444",
+      "status": "verified_open",
+      "firstSeenAt": "2026-09-14T19:32:20.817Z",
+      "lastSeenAt": "2026-09-15T17:12:34.850Z",
+      "publishedAt": "2026-09-14T17:03:59.260Z",
+      "summary": "Build the analytics platform that the educator team depends on.",
+      "company": {
+        "id": "company_liveqa",
+        "slug": "liveqa",
+        "name": "Liveqa Analytics",
+        "sector": "software"
+      }
+    },
+    {
+      "id": "job_lever_legacyco_bbbbbbbb-5555-6666-7777-888888888888",
+      "provider": "lever",
+      "sourceId": "lever:legacyco",
+      "title": "Live Envelope QA Role Beta",
+      "roleFamily": "product",
+      "location": "Remote US",
+      "remoteStatus": "hybrid",
+      "employmentType": "FullTime",
+      "compensation": "See posting",
+      "canonicalUrl": "https://jobs.lever.co/legacyco/bbbbbbbb-5555-6666-7777-888888888888",
+      "status": "verified_open",
+      "firstSeenAt": "2026-09-10T21:04:43.802Z",
+      "lastSeenAt": "2026-09-15T17:12:34.850Z",
+      "publishedAt": "2026-09-10T16:54:37.622Z",
+      "summary": "Own the roadmap for educator discovery features.",
+      "company": "Legacy String Co"
+    }
+  ]
+}

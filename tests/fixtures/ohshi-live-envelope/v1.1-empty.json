@@ -1,0 +1,13 @@
+{
+  "view": "jobs",
+  "schema_version": "1.1",
+  "attribution": {
+    "license": "CC BY 4.0",
+    "sourceUrl": "https://ohshi.work/"
+  },
+  "page": {
+    "next_cursor": null,
+    "total": 0
+  },
+  "data": []
+}

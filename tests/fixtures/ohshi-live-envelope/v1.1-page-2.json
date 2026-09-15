@@ -1,0 +1,38 @@
+{
+  "view": "jobs",
+  "schema_version": "1.1",
+  "attribution": {
+    "license": "CC BY 4.0 applies only to project-owned material; source rights remain with their owners.",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sourceUrl": "https://ohshi.work/"
+  },
+  "page": {
+    "next_cursor": null,
+    "total": 3
+  },
+  "data": [
+    {
+      "id": "job_greenhouse_page2_cccccccc-9999-0000-1111-222222222222",
+      "provider": "greenhouse",
+      "sourceId": "greenhouse:page2co",
+      "title": "Live Envelope QA Role Gamma",
+      "roleFamily": "engineering",
+      "location": "Amsterdam, Netherlands",
+      "remoteStatus": "onsite",
+      "employmentType": "FullTime",
+      "compensation": "See posting",
+      "canonicalUrl": "https://boards.greenhouse.io/page2co/jobs/7001",
+      "status": "verified_open",
+      "firstSeenAt": "2026-09-01T00:00:00.000Z",
+      "lastSeenAt": "2026-09-15T00:00:00.000Z",
+      "publishedAt": "2026-08-31T12:00:00.000Z",
+      "summary": "Own the ingestion platform behind the job index.",
+      "company": {
+        "id": "company_page2co",
+        "slug": "page2co",
+        "name": "Page Two Co",
+        "sector": "software"
+      }
+    }
+  ]
+}

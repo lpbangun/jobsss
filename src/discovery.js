@@ -840,34 +840,106 @@ function ohshiAttribution(value) {
   return { ...OHSI_ATTRIBUTION, ...input, license: String(input.license || OHSI_ATTRIBUTION.license) };
 }
 
+function ohshiCompanyName(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'object') return String(value.name || '').trim();
+  return String(value).trim();
+}
+
+function interpretOhshiEnvelope(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw Object.assign(new Error('ohshi.work intelligence returned an unrecognized envelope.'), { code: 'ohshi_unrecognized_envelope' });
+  }
+  const live = Array.isArray(data.data);
+  const jobsShape = Array.isArray(data.jobs);
+  if (!live && !jobsShape) {
+    throw Object.assign(new Error('ohshi.work intelligence returned an unrecognized envelope.'), { code: 'ohshi_unrecognized_envelope' });
+  }
+  const rows = live ? data.data : data.jobs;
+  const next = live
+    ? (data.page?.next_cursor ?? data.page?.nextCursor ?? null)
+    : (data.nextCursor ?? data.next_cursor ?? data.cursor?.next ?? null);
+  const total = live ? (data.page?.total ?? null) : (data.page?.total ?? data.total ?? null);
+  const schemaVersion = data.schema_version ?? data.schemaVersion ?? null;
+  return { data, rows, next, total, schemaVersion, live };
+}
+
+function parseOhshiEnvelope(text) {
+  let data;
+  try { data = JSON.parse(text); }
+  catch { throw Object.assign(new Error('ohshi.work intelligence returned invalid JSON.'), { code: 'ohshi_invalid_response' }); }
+  return interpretOhshiEnvelope(data);
+}
+
 function normalizeOhshiJob(row = {}) {
   const canonicalUrl = String(row.canonicalUrl || row.canonical_url || row.url || '').trim();
+  const companyObj = row.company && typeof row.company === 'object' ? row.company : null;
+  const sourceId = String(row.sourceId || row.source_id || row.id || '').trim();
+  const sourceRecordId = String(row.id || '').trim();
+  const remoteStatus = row.remoteStatus ?? row.remote_status;
+  const roleFamily = row.roleFamily ?? row.role_family;
+  const sector = row.sector ?? companyObj?.sector;
+  const postedDate = row.postedDate ?? row.posted_date ?? row.publishedAt ?? row.published_at ?? '';
+  const compensationRaw = row.compensationText ?? row.compensation ?? '';
+  const compensationText = typeof compensationRaw === 'string' ? compensationRaw.trim() : '';
   const job = {
-    title: String(row.title || '').trim(), company: String(row.company || '').trim(),
-    location: String(row.location || '').trim(), url: canonicalUrl, source: 'ohshi',
-    sourceId: String(row.id || row.sourceId || '').trim(), canonicalUrl,
-    provider: String(row.provider || '').trim(), status: String(row.status || '').trim(),
+    title: String(row.title || '').trim(),
+    company: ohshiCompanyName(row.company),
+    location: String(row.location || '').trim(),
+    url: canonicalUrl,
+    source: 'ohshi',
+    sourceId,
+    sourceRecordId,
+    canonicalUrl,
+    provider: String(row.provider || '').trim(),
+    status: String(row.status || '').trim(),
     firstSeenAt: row.firstSeenAt ?? row.first_seen_at ?? null,
     lastSeenAt: row.lastSeenAt ?? row.last_seen_at ?? null,
+    description: String(row.description || row.summary || '').trim(),
+    postedDate: String(postedDate || '').trim(),
   };
+  if (remoteStatus != null) {
+    job.remoteStatus = remoteStatus;
+    job.remote_status = remoteStatus;
+  }
+  if (roleFamily != null) {
+    job.roleFamily = roleFamily;
+    job.role_family = roleFamily;
+  }
+  if (sector != null) job.sector = sector;
+  if (row.employmentType != null) job.employmentType = row.employmentType;
+  if (compensationText && !/^see posting$/i.test(compensationText)) job.compensationText = compensationText;
   for (const key of ['remote_status', 'role_family', 'sector', 'description', 'postedDate', 'employmentType', 'compensationText']) {
-    if (Object.prototype.hasOwnProperty.call(row, key)) job[key] = row[key];
+    if (Object.prototype.hasOwnProperty.call(row, key) && job[key] == null) job[key] = row[key];
   }
   return job;
 }
 
-function normalizeOhshiPayload(data, jobs, partial = false) {
+function normalizeOhshiPayload(data, jobs, extra = false) {
+  const options = extra && typeof extra === 'object' ? extra : { partial: extra };
+  const schemaVersion = data?.schema_version ?? data?.schemaVersion ?? options.schemaVersion ?? null;
+  const page = options.page && typeof options.page === 'object' ? { ...options.page } : (data?.page && typeof data.page === 'object' ? { ...data.page } : {});
+  if (options.total != null && page.total == null) page.total = options.total;
+  if (options.nextCursor !== undefined && page.next_cursor == null && page.nextCursor == null) page.next_cursor = options.nextCursor;
+  page.readCount = Array.isArray(jobs) ? jobs.length : 0;
   return {
-    company: '', jobs, partial: Boolean(partial), attribution: ohshiAttribution(data?.attribution),
+    company: '',
+    jobs,
+    partial: Boolean(options.partial),
+    attribution: ohshiAttribution(data?.attribution),
+    schemaVersion,
+    schema_version: schemaVersion,
+    page,
   };
 }
 
 function ohshiQuery(config = {}, cursor = null) {
   const url = new URL(OHSI_ENDPOINT);
   url.searchParams.set('view', 'jobs');
-  url.searchParams.set('limit', '25');
+  url.searchParams.set('limit', '100');
   url.searchParams.set('status', 'verified_open');
-  for (const key of ['q', 'role_family', 'location', 'remote_status', 'sector', 'provider']) {
+  for (const key of ['q', 'role_family', 'location', 'remote_status', 'sector', 'provider', 'new_since']) {
     if (config[key] != null && String(config[key]).trim() !== '') url.searchParams.set(key, String(config[key]));
   }
   if (cursor != null && String(cursor) !== '') url.searchParams.set('cursor', String(cursor));
@@ -875,25 +947,44 @@ function ohshiQuery(config = {}, cursor = null) {
 }
 
 async function fetchOhshiPublic(config = {}, options = {}) {
-  const jobs = []; const seenCursors = new Set(); let cursor = null; let partial = false; let attribution = null;
+  const jobs = [];
+  const seenCursors = new Set();
+  const seenRows = new Set();
+  let cursor = null;
+  let partial = false;
+  let lastEnvelope = null;
+  let lastNext = null;
+  let lastTotal = null;
   for (let page = 0; page < OHSI_MAX_PAGES; page += 1) {
     if (cursor != null) {
       if (seenCursors.has(String(cursor))) { partial = true; break; }
       seenCursors.add(String(cursor));
     }
     const resource = await fetchPublicResource(ohshiQuery(config, cursor), { maxBytes: OHSI_MAX_BYTES, ...options });
-    let data;
-    try { data = JSON.parse(resource.text); }
-    catch { throw Object.assign(new Error('ohshi.work intelligence returned invalid JSON.'), { code: 'ohshi_invalid_response' }); }
     if (Number(resource.status) >= 400) throw Object.assign(new Error(`ohshi.work intelligence returned HTTP ${resource.status}`), { code: `ohshi_upstream_${resource.status}` });
-    const pageJobs = Array.isArray(data?.jobs) ? data.jobs : Array.isArray(data?.items) ? data.items : [];
-    jobs.push(...pageJobs.map(normalizeOhshiJob)); attribution = data?.attribution || attribution;
-    const next = data?.nextCursor ?? data?.next_cursor ?? data?.cursor?.next ?? null;
+    const parsed = parseOhshiEnvelope(resource.text);
+    lastEnvelope = parsed.data;
+    lastNext = parsed.next;
+    lastTotal = parsed.total;
+    for (const row of parsed.rows) {
+      const mapped = normalizeOhshiJob(row);
+      const key = mapped.sourceId || mapped.sourceRecordId || mapped.canonicalUrl || mapped.title;
+      if (key && seenRows.has(key)) continue;
+      if (key) seenRows.add(key);
+      jobs.push(mapped);
+    }
+    const next = parsed.next;
     if (next == null || String(next) === '') break;
     if (page + 1 >= OHSI_MAX_PAGES) { partial = true; break; }
     cursor = next;
   }
-  return normalizeOhshiPayload({ attribution }, jobs, partial);
+  if (!partial && lastTotal != null && Number(lastTotal) > jobs.length) partial = true;
+  return normalizeOhshiPayload(lastEnvelope || {}, jobs, {
+    partial,
+    total: lastTotal,
+    nextCursor: lastNext,
+    schemaVersion: lastEnvelope?.schema_version ?? lastEnvelope?.schemaVersion,
+  });
 }
 
 function fetchOhshiOffline(config, dataDir) {
@@ -901,8 +992,15 @@ function fetchOhshiOffline(config, dataDir) {
   let data;
   try { data = JSON.parse(fs.readFileSync(fixtureAbs, 'utf8')); }
   catch (cause) { throw Object.assign(new Error(`Cannot read ohshi fixture: ${cause.message}`), { code: 'fixture_read_error' }); }
-  const jobs = Array.isArray(data?.jobs) ? data.jobs.map(normalizeOhshiJob) : [];
-  return normalizeOhshiPayload(data, jobs, false);
+  const parsed = interpretOhshiEnvelope(data);
+  const jobs = parsed.rows.map(normalizeOhshiJob);
+  const partial = parsed.total != null && Number(parsed.total) > jobs.length;
+  return normalizeOhshiPayload(parsed.data, jobs, {
+    partial,
+    total: parsed.total,
+    nextCursor: parsed.next,
+    schemaVersion: parsed.schemaVersion,
+  });
 }
 
 export async function fetchSavedSearchSource(search, { dataDir, fetchImpl = globalThis.fetch, lookupImpl = dns.lookup } = {}) {
@@ -920,12 +1018,19 @@ export async function fetchSavedSearchSource(search, { dataDir, fetchImpl = glob
 // ---------------------------------------------------------------------------
 
 export function savedSearchIdentity(adapter, config = {}) {
-  return `${String(adapter || '').toLowerCase()}:${JSON.stringify({
+  const kind = String(adapter || '').toLowerCase();
+  const identity = {
     company: String(config.company || config.companyLabel || '').toLowerCase().trim(),
     boardToken: String(config.boardToken || config.board_token || '').toLowerCase().trim(),
     fixture: String(config.fixture || '').trim(),
     minFit: Number.isFinite(Number(config.minFit)) ? Number(config.minFit) : null,
-  })}`;
+  };
+  if (kind === 'ohshi') {
+    for (const key of ['q', 'role_family', 'location', 'remote_status', 'sector', 'provider', 'new_since']) {
+      if (config[key] != null && String(config[key]).trim() !== '') identity[key] = String(config[key]);
+    }
+  }
+  return `${kind}:${JSON.stringify(identity)}`;
 }
 
 /**

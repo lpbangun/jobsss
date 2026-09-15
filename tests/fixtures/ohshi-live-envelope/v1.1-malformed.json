@@ -1,0 +1,9 @@
+{
+  "view": "jobs",
+  "schema_version": "1.1",
+  "page": {
+    "next_cursor": "should-not-be-followed",
+    "total": 12
+  },
+  "note": "unsupported top-level shape: no data array and no jobs array"
+}

@@ -1,0 +1,424 @@
+{
+  "manifestVersion": 3,
+  "rubricVersion": "sourcing-v3",
+  "rubric": "docs/BENCHMARK-sourcing-v3.md",
+  "owner": "reviewer erratum E2 approved by Codevisor sessions 20260915_102141_8059d5 and 20260915_102622_d19611 — implementers and lanes must not edit any file below",
+  "repoBase": "ae53d320dd4f3d2c880bfe2c8adfd6dffb936700",
+  "supersedes": "evaluation/MANIFEST-sourcing-v2.json (preserved unchanged)",
+  "frozenAt": "2026-09-15T08:33:09.619Z",
+  "freeze": {
+    "hashAlgorithm": "sha256",
+    "selfExcluded": "evaluation/MANIFEST-sourcing-v3.json",
+    "writeCommand": "node evaluation/freeze-files.mjs --manifest evaluation/MANIFEST-sourcing-v3.json --write",
+    "verifyCommand": "node evaluation/freeze-files.mjs --manifest evaluation/MANIFEST-sourcing-v3.json --verify",
+    "pathsCommand": "node evaluation/freeze-files.mjs --manifest evaluation/MANIFEST-sourcing-v3.json --paths",
+    "note": "Sourcing-v3 incorporates E1 and adds only E2 compatibility corrections: scoped evidence-bundle tree exclusions, exact pinned-Hermes MCP namespace, runtime registration capture, and explicit v3 manifest selection for check #10. Scoring, fixtures, behavioral assertions, and thresholds are unchanged from v1."
+  },
+  "scoring": {
+    "checks": 10,
+    "minimum": 9,
+    "mandatory": [
+      1,
+      3,
+      7,
+      9
+    ],
+    "mandatoryHardBlock": true,
+    "noCreditFrom": [
+      "lane reports",
+      "prose",
+      "self-certification",
+      "controller summaries",
+      "live-network counts"
+    ],
+    "advisoryOutsideScore": [
+      "live ohshi.work smoke",
+      "exact policy cache TTL expiry (see D1)"
+    ]
+  },
+  "checks": [
+    {
+      "id": 1,
+      "title": "Frozen B1–B70 gate passes",
+      "mandatory": true,
+      "kind": "frozen-gate",
+      "command": "node --test --test-concurrency=1 tests/jobsss-gate0.test.mjs tests/jobsss-mcp-compat.test.mjs tests/jobsss-journey.test.mjs tests/jobsss-persistence.test.mjs tests/jobsss-discovery.test.mjs tests/jobsss-workflows.test.mjs tests/jobsss-integrity.test.mjs tests/jobsss-release.test.mjs tests/jobsss-adapters.test.mjs tests/jobsss-authority.test.mjs tests/jobsss-cross-platform.test.mjs",
+      "resultArtifact": "node:test exit code and TAP output",
+      "source": "AGENTS.md frozen focused command (verbatim); BENCHMARK.md stays untouched",
+      "redBeforeImplementation": false
+    },
+    {
+      "id": 2,
+      "title": "Robots decision table asserted offline",
+      "mandatory": false,
+      "kind": "offline-suite",
+      "command": "node --test --test-concurrency=1 tests/sourcing-robots-policy.test.mjs",
+      "resultArtifact": "node:test exit code and TAP output",
+      "fixtures": [
+        "tests/fixtures/sourcing/robots-decisions.json"
+      ],
+      "surface": "src/discovery.js: fetchPublicJob with injected fetchImpl/lookupImpl",
+      "redBeforeImplementation": true
+    },
+    {
+      "id": 3,
+      "title": "Denial produces zero content requests from every entry point",
+      "mandatory": true,
+      "kind": "offline-suite",
+      "command": "node --test --test-concurrency=1 tests/sourcing-egress-denial.test.mjs",
+      "resultArtifact": "node:test exit code and TAP output",
+      "fixtures": [],
+      "surface": "fetchPublicJob, fetchGreenhousePublic, fetchApplicationDetail, fetchSavedSearchSource (greenhouse + ohshi)",
+      "redBeforeImplementation": true
+    },
+    {
+      "id": 4,
+      "title": "RFC 9309 matcher semantics",
+      "mandatory": false,
+      "kind": "offline-suite",
+      "command": "node --test --test-concurrency=1 tests/sourcing-robots-matcher.test.mjs",
+      "resultArtifact": "node:test exit code and TAP output",
+      "fixtures": [
+        "tests/fixtures/sourcing/robots-matcher.json"
+      ],
+      "surface": "src/discovery.js: fetchPublicJob with injected transport",
+      "redBeforeImplementation": true
+    },
+    {
+      "id": 5,
+      "title": "Cross-origin and same-origin redirect targets decided per hop",
+      "mandatory": false,
+      "kind": "offline-suite",
+      "command": "node --test --test-concurrency=1 tests/sourcing-robots-redirects.test.mjs",
+      "resultArtifact": "node:test exit code and TAP output",
+      "fixtures": [
+        "tests/fixtures/sourcing/robots-redirects.json"
+      ],
+      "surface": "src/discovery.js: fetchPublicJob with injected transport",
+      "redBeforeImplementation": true
+    },
+    {
+      "id": 6,
+      "title": "No production egress bypasses the choke point (static invariant)",
+      "mandatory": false,
+      "kind": "offline-suite",
+      "command": "node --test --test-concurrency=1 tests/sourcing-egress-invariant.test.mjs",
+      "resultArtifact": "node:test exit code and TAP output",
+      "fixtures": [],
+      "surface": "repo source tree (src/**, bin/**) and the MCP runtime import closure",
+      "limit": "code-shape invariant, not a runtime trace; starts green on the untouched tree as a regression guard",
+      "redBeforeImplementation": false
+    },
+    {
+      "id": 7,
+      "title": "ohshi mapping, provenance, CC BY 4.0 attribution, honest partial results",
+      "mandatory": true,
+      "kind": "offline-suite",
+      "command": "node --test --test-concurrency=1 tests/sourcing-ohshi-mapping.test.mjs",
+      "resultArtifact": "node:test exit code and TAP output",
+      "fixtures": [
+        "tests/fixtures/sourcing/ohshi-intelligence.json"
+      ],
+      "surface": "src/domain.js createSavedSearch/dailyDiscovery + src/discovery.js fetchSavedSearchSource, skills/jobsss/**",
+      "redBeforeImplementation": true
+    },
+    {
+      "id": 8,
+      "title": "ohshi bounds: endpoint, cursor walk, cycle termination, page/byte caps, typed upstream errors, idempotent re-discovery",
+      "mandatory": false,
+      "kind": "offline-suite",
+      "command": "node --test --test-concurrency=1 tests/sourcing-ohshi-bounds.test.mjs",
+      "resultArtifact": "node:test exit code and TAP output",
+      "fixtures": [
+        "tests/fixtures/sourcing/ohshi-bounds.json",
+        "tests/fixtures/sourcing/ohshi-intelligence.json"
+      ],
+      "surface": "src/discovery.js fetchSavedSearchSource + src/domain.js dailyDiscovery",
+      "redBeforeImplementation": true
+    },
+    {
+      "id": 9,
+      "title": "Hermes-first host integration with the boundary labelled",
+      "mandatory": true,
+      "kind": "checker",
+      "command": "node evaluation/check9-hermes-host.mjs --bundle evidence/hermes-host --json",
+      "resultArtifact": "JSON verdict on stdout: { check, ok, needsReview, failures, facts }; exit 0 only when ok",
+      "contract": "evaluation/contracts/hermes-host-evidence.schema.json",
+      "surface": "recorded L3 run bundle + hermes --version / hermes mcp test / --skills preload captures + the plugin's own JSON-RPC tools/list",
+      "referenceImplementations": [
+        "node evaluation/check9-hermes-host.mjs --emit-plugin-tree-hash",
+        "node evaluation/check9-hermes-host.mjs --emit-skill-digest"
+      ],
+      "redBeforeImplementation": true
+    },
+    {
+      "id": 10,
+      "title": "Eval-lane evidence bundle independently recomputed",
+      "mandatory": false,
+      "kind": "checker",
+      "command": "node evaluation/check10-evidence.mjs --bundle evidence/eval-lane --manifest evaluation/MANIFEST-sourcing-v3.json --json",
+      "resultArtifact": "JSON verdict on stdout: { check, ok, failures, facts }; exit 0 only when ok",
+      "contract": "evaluation/contracts/eval-lane-evidence.schema.json",
+      "requiredArtifacts": [
+        "mcp-calls.jsonl",
+        "artifact-hashes.json",
+        "checks.py"
+      ],
+      "surface": "the bundle itself + the repo's mcp.json + evaluation/MANIFEST-sourcing-v3.json",
+      "redBeforeImplementation": true
+    }
+  ],
+  "files": [
+    {
+      "path": "docs/BENCHMARK-sourcing-v3.md",
+      "role": "rubric",
+      "check": null,
+      "sha256": "9cc9b96a953b9f770bbd82471b68f1852da4617264c7753dfc3113f7d1e471e0"
+    },
+    {
+      "path": "evaluation/MANIFEST-sourcing-v3.json",
+      "role": "manifest",
+      "check": null,
+      "sha256": null
+    },
+    {
+      "path": "evaluation/freeze-files.mjs",
+      "role": "tool",
+      "check": null,
+      "sha256": "2f40ccc6e579325d99dec59ed1d15512edc47d712874be2771b73e667fa18fdb"
+    },
+    {
+      "path": "evaluation/check9-hermes-host.mjs",
+      "role": "checker",
+      "check": 9,
+      "sha256": "7d53140d6f15c4b7c7b9f202768a91e6a6f82d795d8c42177ab0b79e02582ae5"
+    },
+    {
+      "path": "evaluation/check10-evidence.mjs",
+      "role": "checker",
+      "check": 10,
+      "sha256": "715d90543235f3c947128a3103a3197e7fd8f0b3c7f149b8281d80dfdabd79ec"
+    },
+    {
+      "path": "evaluation/contracts/hermes-host-evidence.schema.json",
+      "role": "contract",
+      "check": 9,
+      "sha256": "c0e80b9911f567aca7f5d0a4234da87687cfecd566bc6cd0124ddd63c8d0c5b0"
+    },
+    {
+      "path": "evaluation/contracts/eval-lane-evidence.schema.json",
+      "role": "contract",
+      "check": 10,
+      "sha256": "6e5d804918bc17e5b2999542602ae891db11c16a9011a7a82a18c1118529f2f8"
+    },
+    {
+      "path": "tests/helpers/sourcing-harness.mjs",
+      "role": "helper",
+      "check": null,
+      "sha256": "071de2daa0fc20025037c9747bd71551bc9c14ac62ad4862d6b435fdef11e634"
+    },
+    {
+      "path": "tests/sourcing-robots-policy.test.mjs",
+      "role": "check",
+      "check": 2,
+      "sha256": "a0821b8eca4b6b814ad89ef02f77ccf749a760d991592025bc624706d39fcf55"
+    },
+    {
+      "path": "tests/sourcing-egress-denial.test.mjs",
+      "role": "check",
+      "check": 3,
+      "sha256": "29d2df3aa8480550ad7f05f27ff68f4538ce894c0c2bce2e750b1ebe1eda5cf4"
+    },
+    {
+      "path": "tests/sourcing-robots-matcher.test.mjs",
+      "role": "check",
+      "check": 4,
+      "sha256": "6b0a330ab1c107c97150b2e2ff1ef534cdcb0618b06f030a1726eed4800454d2"
+    },
+    {
+      "path": "tests/sourcing-robots-redirects.test.mjs",
+      "role": "check",
+      "check": 5,
+      "sha256": "842b7c1327781a2e5211e6199d336a4b6a81ba0d55bb5863d1e07aafbad88e33"
+    },
+    {
+      "path": "tests/sourcing-egress-invariant.test.mjs",
+      "role": "check",
+      "check": 6,
+      "sha256": "32eb78bec1f8e6665c0e53409299a7fe27636ef8bc61a0efe2e3f6d2b6448c86"
+    },
+    {
+      "path": "tests/sourcing-ohshi-mapping.test.mjs",
+      "role": "check",
+      "check": 7,
+      "sha256": "4ed1e2920ca4864e59a82b2e63719c41809e4ec641d82d3721f6e418d173998e"
+    },
+    {
+      "path": "tests/sourcing-ohshi-bounds.test.mjs",
+      "role": "check",
+      "check": 8,
+      "sha256": "6faed7b5110b2ca8b0a28064ae609034372091aa9a6d4356f354f01c4ceb2440"
+    },
+    {
+      "path": "tests/fixtures/sourcing/robots-decisions.json",
+      "role": "fixture",
+      "check": 2,
+      "sha256": "dcd82f45ef5f82600b85708b065501972ff043b3d91f8d30d689a756e8f22fce"
+    },
+    {
+      "path": "tests/fixtures/sourcing/robots-matcher.json",
+      "role": "fixture",
+      "check": 4,
+      "sha256": "70bc74a15d4bfa5329d5d3bdf516e2312c9b4132c888ca6b1988ea28613f49ad"
+    },
+    {
+      "path": "tests/fixtures/sourcing/robots-redirects.json",
+      "role": "fixture",
+      "check": 5,
+      "sha256": "1314a8e30c74d53b91a733f483da7b5b0db1a28d375aeeb99a09119e7bc397a4"
+    },
+    {
+      "path": "tests/fixtures/sourcing/ohshi-intelligence.json",
+      "role": "fixture",
+      "check": 7,
+      "sha256": "bc27e8ed8c0402965f2ad82f4c0470781a736dbe134e13c9bb68f282138725dd"
+    },
+    {
+      "path": "tests/fixtures/sourcing/ohshi-bounds.json",
+      "role": "fixture",
+      "check": 8,
+      "sha256": "90fbde79e5f49bacb3fd98e2991eae29f5a555f3deff0e8f5c35161f812a7381"
+    }
+  ],
+  "harnessDefects": [
+    {
+      "id": "D1",
+      "assertion": "policy cache TTL expiry: valid/404 <24h, failures 5min, and 'no expired allow on refresh failure'",
+      "reason": "No public surface exposes a clock or the cache format, so expiry cannot be forced deterministically (module-private gate, no injectable time source).",
+      "remedy": "If the gate accepts an injectable time source in the same option bag as fetchImpl/lookupImpl, the expired-allow row becomes executable; the reviewer then folds it in as a new rubric version and re-freezes.",
+      "scoringEffect": "not scored today; the scored rows are in-process reuse, fresh-process reuse of the persisted policy, cold-path fail-closed, and no request inside a Retry-After window",
+      "owner": "reviewer"
+    },
+    {
+      "id": "D2",
+      "assertion": "the live /api/v1/intelligence?view=jobs body shape (nesting, cursor parameter name, extra filters)",
+      "reason": "No network at authoring time, so the live response could not be observed. The offline fixture body IS the frozen contract; the cursor parameter name is deliberately not frozen (checks match on the cursor value), and the live smoke is advisory.",
+      "remedy": "A recorded live capture may be attached as advisory evidence; folding it into the score requires a rubric amendment that freezes the observed shape.",
+      "scoringEffect": "the scored contract is the fixture body; the live path is never scored",
+      "owner": "reviewer"
+    },
+    {
+      "id": "D3",
+      "assertion": "authenticity of the Hermes transcript",
+      "reason": "No public Hermes surface signs a session transcript. The checker asserts location (inside the disposable HERMES_HOME), currency (mtime inside the recorded run window) and byte-level agreement with the normalized record.",
+      "remedy": "None available through public surfaces; the claim stops at 'recorded and internally consistent'. Do not upgrade this check's wording without new evidence.",
+      "scoringEffect": "check #9 asserts structure, isolation and agreement; it does not assert authenticity",
+      "owner": "reviewer"
+    },
+    {
+      "id": "D4",
+      "assertion": "the live MCP subprocess environment",
+      "reason": "The environment is asserted from a hash-verified raw capture recorded during the run; the checker cannot inspect a process that has exited.",
+      "remedy": "Capture the environment inside the same process tree at run time (already required) and keep the capture hash-verified.",
+      "scoringEffect": "asserted from the capture, with secret-assignment scanning",
+      "owner": "reviewer"
+    },
+    {
+      "id": "D5",
+      "assertion": "the byte cap value",
+      "reason": "The plan requires a byte cap but fixes no number, and no repo constant exists for the ohshi page fetch.",
+      "remedy": "None needed: the check uses an 8 MiB input, so any cap <= 8 MiB passes and no product constant is invented.",
+      "scoringEffect": "input size only",
+      "owner": "reviewer"
+    },
+    {
+      "id": "D6",
+      "assertion": "direct unit assertions on the policy matcher and the gate itself",
+      "reason": "fetchPublicResource is module-private by design; exporting it for tests would widen the product surface for no runtime reason.",
+      "remedy": "None. Every check reaches the gate through the exported entry points that use it. A check that truly needs a new public seam is an escalation to the reviewer, not an implementation detail.",
+      "scoringEffect": "checks are black-box by construction",
+      "owner": "reviewer"
+    },
+    {
+      "id": "D7",
+      "assertion": "rejected settle outcomes can be serialized by frozen assertion messages",
+      "reason": "Sourcing-v1 omitted value on rejection while three assertion messages eagerly called JSON.stringify(outcome.value).slice(...), making correct denial paths crash with TypeError.",
+      "remedy": "Reviewer erratum E1 defines rejected outcomes as {ok:false,value:null,error,code,message}; Codevisor session 20260915_101007_cb0bbe approved this one-line non-substantive correction and a full v2 re-freeze.",
+      "scoringEffect": "none; no expected behavior, fixture, assertion, command, score, threshold, or product contract changes",
+      "owner": "reviewer"
+    },
+    {
+      "id": "D8",
+      "assertion": "plugin-tree immutability can be recorded without hashing the record that contains the hash",
+      "reason": "Sourcing-v2 included evidence/hermes-host/run.json in the plugin-tree digest even though run.json had to contain that digest, creating an unsatisfiable self-reference.",
+      "remedy": "Reviewer erratum E2 excludes exactly evidence/hermes-host and evidence/eval-lane by repository-relative path; evidence/native-validation.json and every other plugin file remain covered.",
+      "scoringEffect": "none; bundle captures and returned artifacts are independently re-hashed, while run.json is self-excluded like the manifest",
+      "owner": "reviewer"
+    },
+    {
+      "id": "D9",
+      "assertion": "Hermes MCP names match the pinned host runtime rather than prompt prose",
+      "reason": "Hermes v0.21.2 at 31d0a242 registers mcp__<server>__<tool>; sourcing-v2 expected legacy mcp_<server>_<tool> and could collect those strings from user prompt text.",
+      "remedy": "Reviewer erratum E2 requires the exact double-underscore namespace, a hash-verified agent.log registration capture for the full set, and paired calls/results in the Hermes transcript.",
+      "scoringEffect": "none; this tightens provenance and changes no product behavior or score threshold",
+      "owner": "reviewer"
+    }
+  ],
+  "frozenNames": [
+    "policy codes policy_absent / policy_invalid / policy_unreadable / policy_unreachable (from the plan's decision table); a denial is any policy_* code that is not policy_absent",
+    "policy URL <origin>/robots.txt, fetched through the same injectable transport as content",
+    "policy cache root derived from process.env.PLUGIN_DATA",
+    "ohshi offline seam: adapter 'ohshi' + config.fixture inside PLUGIN_DATA, fixture body { jobs, nextCursor, attribution }",
+    "normalized ohshi job keys: title, company, location, url, source, sourceId, canonicalUrl, provider, status, firstSeenAt, lastSeenAt; result-level attribution; truncation marker (partial: true)",
+    "checks.py --list-checks --json interface: {\"checks\":[{\"id\",\"command\"}]}",
+    "plugin-tree hash and skill digest algorithms: implemented by evaluation/check9-hermes-host.mjs (--emit-plugin-tree-hash / --emit-skill-digest)",
+    "plugin tree hash excludes .git, node_modules, .tmp, .pi, and exactly the self-referential evidence/hermes-host and evidence/eval-lane bundle paths; evidence/native-validation.json remains covered",
+    "pinned Hermes v0.21.2 MCP tool namespace: mcp__<server>__<tool>"
+  ],
+  "releaseGate": [
+    {
+      "id": "R1",
+      "title": "Frozen gate passes on the release commit",
+      "command": "node --test --test-concurrency=1 tests/jobsss-gate0.test.mjs tests/jobsss-mcp-compat.test.mjs tests/jobsss-journey.test.mjs tests/jobsss-persistence.test.mjs tests/jobsss-discovery.test.mjs tests/jobsss-workflows.test.mjs tests/jobsss-integrity.test.mjs tests/jobsss-release.test.mjs tests/jobsss-adapters.test.mjs tests/jobsss-authority.test.mjs tests/jobsss-cross-platform.test.mjs",
+      "blocking": true
+    },
+    {
+      "id": "R2",
+      "title": "Evidence currency: regenerate native evidence and update both report hashes",
+      "command": "JOBSSS_NATIVE_CACHE=<empty external dir> ./bin/jobsss evidence --out \"$(pwd)/evidence/native-validation.json\"",
+      "thenCheck": "the SHA-256 cited in RELEASE_REPORT.md and PRODUCTIZATION_REVIEW.md matches the regenerated artifact (frozen B70)",
+      "blocking": true
+    },
+    {
+      "id": "R3",
+      "title": "Hermetic PDF text-layer check via the existing /ToUnicode-CMap parser",
+      "command": "the dependency-free parser already written and verified (poppler gap stops being a standing exception)",
+      "blocking": true
+    },
+    {
+      "id": "R4",
+      "title": "Freeze intact (sourcing-v3)",
+      "command": "node evaluation/freeze-files.mjs --manifest evaluation/MANIFEST-sourcing-v3.json --verify",
+      "blocking": true
+    }
+  ],
+  "keepOut": [
+    "no Workday/Ashby readers",
+    "no bulk ohshi mirror",
+    "no ATS framework",
+    "no 'public API' exception registry",
+    "no dashboard/CSV/Gmail/Notion plumbing",
+    "no browser automation",
+    "no daemon/scheduler",
+    "no npm dependency",
+    "no private-Hermes test API",
+    "no generic MCP client relabelled as Hermes",
+    "no weakening of any existing check",
+    "no edits to BENCHMARK.md or tests/jobsss-*.test.mjs"
+  ],
+  "notes": [
+    "Files land at the paths listed above, mirrored under /home/logani/oprun-evidence/e0-codevisor-authored/ until the conductor copies them into the repo.",
+    "Run node evaluation/freeze-files.mjs --write once the package is in place, then --verify in the release gate.",
+    "harnessDefects entries are recorded rather than hidden: no check scores an assertion listed there."
+  ]
+}

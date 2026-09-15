@@ -71,7 +71,7 @@
       "required": ["server", "observedTools"],
       "properties": {
         "server": { "type": "string", "description": "Must match the server key in mcp.json; the expected tool set is derived from the plugin, not from this list." },
-        "observedTools": { "type": "array", "items": { "type": "string" }, "description": "Every declared name must also appear in a raw capture; the set must equal the plugin's own registration as mcp_<server>_<tool>." }
+        "observedTools": { "type": "array", "items": { "type": "string" }, "description": "Every declared name must also appear in a raw capture; the set must equal the plugin's own registration as mcp__<server>__<tool> for the pinned Hermes runtime." }
       }
     },
     "model": {

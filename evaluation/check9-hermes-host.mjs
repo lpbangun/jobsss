@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Check #9 (MANDATORY) — Hermes-first host integration, boundary labelled.
-// Reviewer-owned: docs/BENCHMARK-sourcing-v1.md §3 #9.
+// Reviewer-owned: docs/BENCHMARK-sourcing-v3.md §3 #9.
 //
 // The checker recomputes, it does not trust:
 //   * every raw capture is re-hashed against its declared sha256;
@@ -35,11 +35,12 @@ const EVALUATION_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.dirname(EVALUATION_DIR);
 
 const TREE_EXCLUDED_DIRS = ['.git', 'node_modules', '.tmp', '.pi'];
+const TREE_EXCLUDED_BUNDLES = ['evidence/hermes-host', 'evidence/eval-lane'];
 const TREE_EXCLUDED_FILES = [];
 const BOUNDARY_LABEL = 'source-skill+mcp-under-tool-only-isolation';
 const FORBIDDEN_BOUNDARIES = ['native-plugin-loading', 'os-sandboxing'];
 const REASONING_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
-const TOOL_TOKEN = /mcp_[a-z0-9]+_[a-z0-9_]+/g;
+const TOOL_TOKEN = /mcp__[a-z0-9]+__[a-z0-9_]+/g;
 const SECRET_ASSIGNMENT = /(?:^|\n)\s*[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Z0-9_]*\s*=\s*\S+/;
 
 function sha256(text) {
@@ -54,8 +55,9 @@ function walkFiles(root, rel = '') {
   const out = [];
   for (const entry of readdirSync(path.join(root, rel), { withFileTypes: true })) {
     const next = rel ? path.join(rel, entry.name) : entry.name;
+    const normalized = next.split(path.sep).join('/');
     if (entry.isDirectory()) {
-      if (TREE_EXCLUDED_DIRS.includes(entry.name)) continue;
+      if (TREE_EXCLUDED_DIRS.includes(entry.name) || TREE_EXCLUDED_BUNDLES.includes(normalized)) continue;
       out.push(...walkFiles(root, next));
     } else if (entry.isFile()) {
       const base = path.basename(next);
@@ -131,7 +133,7 @@ async function deriveToolNames() {
 
 function collectToolTokens(text, server) {
   const tokens = String(text).match(TOOL_TOKEN) || [];
-  const prefix = `mcp_${server}_`;
+  const prefix = `mcp__${server}__`;
   return tokens.filter(token => token.startsWith(prefix));
 }
 
@@ -171,7 +173,7 @@ async function run() {
   const ok = failures.length === 0;
   const report = {
     check: 9,
-    rubricVersion: 'sourcing-v1',
+    rubricVersion: 'sourcing-v3',
     ok,
     needsReview: facts.needsReview === true,
     boundaryClaimed: facts.boundaryClaimed || null,
@@ -220,6 +222,9 @@ async function inspect(record, bundle, args, fail, facts) {
       const text = readRaw(rel);
       if (!String(text).includes(String(hermes.version))) {
         fail('version_capture_disagrees', `${rel} does not contain the recorded version ${hermes.version}`);
+      }
+      if (key === 'versionCapture' && !String(text).includes(String(hermes.installCommit || '').slice(0, 7))) {
+        fail('version_commit_disagrees', `${rel} does not contain the recorded Hermes commit prefix ${String(hermes.installCommit || '').slice(0, 7)}`);
       }
     }
   }
@@ -326,7 +331,7 @@ async function inspect(record, bundle, args, fail, facts) {
     fail('plugin_probe_failed', `could not derive the expected tool set from ./bin/jobsss mcp: ${error.message}`);
     derived = { names: [] };
   }
-  const expected = new Set(derived.names.map(name => `mcp_${server}_${String(name).replace(/[-.]/g, '_')}`));
+  const expected = new Set(derived.names.map(name => `mcp__${server}__${String(name).replace(/[-.]/g, '_')}`));
   facts.expectedToolCount = expected.size;
   const observed = new Set(observedTokens);
   for (const name of expected) {
@@ -353,8 +358,8 @@ async function inspect(record, bundle, args, fail, facts) {
   for (const call of toolCalls) {
     const paired = toolResults.find(result => String(result?.callId || '') === String(call?.callId || ''));
     if (!paired) fail('tool_pair_unmatched', `tool_call ${call?.callId} has no matching tool_result`);
-    if (!String(call?.tool || '').startsWith(`mcp_${server}_`)) {
-      fail('tool_call_not_mcp', `tool_call ${call?.tool} is not an mcp_${server}_* tool`);
+    if (!String(call?.tool || '').startsWith(`mcp__${server}__`)) {
+      fail('tool_call_not_mcp', `tool_call ${call?.tool} is not an mcp__${server}__* tool`);
     }
     if (transcriptText && !transcriptText.includes(String(call?.tool || ''))) {
       fail('tool_call_not_in_transcript', `tool name ${call?.tool} does not appear in the recorded transcript bytes`);
@@ -431,7 +436,7 @@ async function inspect(record, bundle, args, fail, facts) {
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   run().then(code => { process.exitCode = code; }).catch(error => {
-    process.stdout.write(`${JSON.stringify({ check: 9, rubricVersion: 'sourcing-v1', ok: false, failures: [{ code: 'checker_error', message: String(error?.stack || error) }] }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ check: 9, rubricVersion: 'sourcing-v3', ok: false, failures: [{ code: 'checker_error', message: String(error?.stack || error) }] }, null, 2)}\n`);
     process.exitCode = 1;
   });
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Check #10 — the eval-lane evidence bundle, checked by an independent
-// recomputation. Reviewer-owned: docs/BENCHMARK-sourcing-v3.md §3 #10.
+// recomputation. Reviewer-owned: docs/BENCHMARK-sourcing-v4.md §3 #10.
 //
 // Rules this checker obeys:
 //   * no live-count literals: every expectation is derived at check time from
@@ -241,7 +241,7 @@ function evaluate(args) {
     }
   }
 
-  return { check: 10, rubricVersion: 'sourcing-v3', ok: failures.length === 0, failures, facts };
+  return { check: 10, rubricVersion: 'sourcing-v4', ok: failures.length === 0, failures, facts };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
@@ -250,7 +250,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   try {
     report = evaluate(args);
   } catch (error) {
-    report = { check: 10, rubricVersion: 'sourcing-v3', ok: false, failures: [{ code: 'checker_error', message: String(error?.stack || error) }], facts: {} };
+    report = { check: 10, rubricVersion: 'sourcing-v4', ok: false, failures: [{ code: 'checker_error', message: String(error?.stack || error) }], facts: {} };
   }
   if (args.json) process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   else process.stdout.write(`${report.ok ? 'PASS' : 'FAIL'} check #10 — ${report.failures.length} failure(s)\n${report.failures.map(item => `  - ${item.code}: ${item.message}`).join('\n')}\n`);

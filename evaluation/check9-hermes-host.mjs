@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Check #9 (MANDATORY) — Hermes-first host integration, boundary labelled.
-// Reviewer-owned: docs/BENCHMARK-sourcing-v3.md §3 #9.
+// Reviewer-owned: docs/BENCHMARK-sourcing-v4.md §3 #9.
 //
 // The checker recomputes, it does not trust:
 //   * every raw capture is re-hashed against its declared sha256;
@@ -90,7 +90,7 @@ export function skillDigest(root = REPO_ROOT) {
 }
 
 function parseArgs(argv) {
-  const args = { bundle: null, json: false, repoRoot: REPO_ROOT, hermesHomeRoot: process.env.HERMES_HOME || path.join(os.homedir(), '.hermes') };
+  const args = { bundle: null, json: false, repoRoot: REPO_ROOT, hermesHomeRoot: path.join(os.homedir(), '.hermes') };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === '--bundle') args.bundle = argv[index + 1];
@@ -173,7 +173,7 @@ async function run() {
   const ok = failures.length === 0;
   const report = {
     check: 9,
-    rubricVersion: 'sourcing-v3',
+    rubricVersion: 'sourcing-v4',
     ok,
     needsReview: facts.needsReview === true,
     boundaryClaimed: facts.boundaryClaimed || null,
@@ -436,7 +436,7 @@ async function inspect(record, bundle, args, fail, facts) {
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   run().then(code => { process.exitCode = code; }).catch(error => {
-    process.stdout.write(`${JSON.stringify({ check: 9, rubricVersion: 'sourcing-v3', ok: false, failures: [{ code: 'checker_error', message: String(error?.stack || error) }] }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ check: 9, rubricVersion: 'sourcing-v4', ok: false, failures: [{ code: 'checker_error', message: String(error?.stack || error) }] }, null, 2)}\n`);
     process.exitCode = 1;
   });
 }

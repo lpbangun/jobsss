@@ -24,7 +24,7 @@ import path from 'node:path';
 import dns from 'node:dns/promises';
 import { id, now, hashText, dedupeKeyForJob, ensureDataDir } from './store.js';
 
-export const SUPPORTED_SAVED_SEARCH_ADAPTERS = Object.freeze(['greenhouse']);
+export const SUPPORTED_SAVED_SEARCH_ADAPTERS = Object.freeze(['greenhouse', 'ohshi']);
 export const DISCOVERY_OUTPUTS_VERSION = 2;
 export const LIVENESS_FRESH_MS = 86_400_000; // 24h, JobOS FRESH_WINDOW_MS
 
@@ -825,8 +825,91 @@ export async function fetchGreenhousePublic(config = {}, options = {}) {
   return normalizeGreenhouseBoard(data, config, Date.now());
 }
 
+const OHSI_ENDPOINT = 'https://ohshi.work/api/v1/intelligence';
+const OHSI_MAX_PAGES = 10;
+const OHSI_MAX_BYTES = 8 * 1024 * 1024;
+const OHSI_ATTRIBUTION = Object.freeze({
+  license: 'CC BY 4.0',
+  licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+  sourceUrl: 'https://ohshi.work/',
+  notice: 'Job data from ohshi.work, licensed CC BY 4.0. Attribution required on redistribution.'
+});
+
+function ohshiAttribution(value) {
+  const input = value && typeof value === 'object' ? value : {};
+  return { ...OHSI_ATTRIBUTION, ...input, license: String(input.license || OHSI_ATTRIBUTION.license) };
+}
+
+function normalizeOhshiJob(row = {}) {
+  const canonicalUrl = String(row.canonicalUrl || row.canonical_url || row.url || '').trim();
+  const job = {
+    title: String(row.title || '').trim(), company: String(row.company || '').trim(),
+    location: String(row.location || '').trim(), url: canonicalUrl, source: 'ohshi',
+    sourceId: String(row.id || row.sourceId || '').trim(), canonicalUrl,
+    provider: String(row.provider || '').trim(), status: String(row.status || '').trim(),
+    firstSeenAt: row.firstSeenAt ?? row.first_seen_at ?? null,
+    lastSeenAt: row.lastSeenAt ?? row.last_seen_at ?? null,
+  };
+  for (const key of ['remote_status', 'role_family', 'sector', 'description', 'postedDate', 'employmentType', 'compensationText']) {
+    if (Object.prototype.hasOwnProperty.call(row, key)) job[key] = row[key];
+  }
+  return job;
+}
+
+function normalizeOhshiPayload(data, jobs, partial = false) {
+  return {
+    company: '', jobs, partial: Boolean(partial), attribution: ohshiAttribution(data?.attribution),
+  };
+}
+
+function ohshiQuery(config = {}, cursor = null) {
+  const url = new URL(OHSI_ENDPOINT);
+  url.searchParams.set('view', 'jobs');
+  url.searchParams.set('limit', '25');
+  url.searchParams.set('status', 'verified_open');
+  for (const key of ['q', 'role_family', 'location', 'remote_status', 'sector', 'provider']) {
+    if (config[key] != null && String(config[key]).trim() !== '') url.searchParams.set(key, String(config[key]));
+  }
+  if (cursor != null && String(cursor) !== '') url.searchParams.set('cursor', String(cursor));
+  return url.href;
+}
+
+async function fetchOhshiPublic(config = {}, options = {}) {
+  const jobs = []; const seenCursors = new Set(); let cursor = null; let partial = false; let attribution = null;
+  for (let page = 0; page < OHSI_MAX_PAGES; page += 1) {
+    if (cursor != null) {
+      if (seenCursors.has(String(cursor))) { partial = true; break; }
+      seenCursors.add(String(cursor));
+    }
+    const resource = await fetchPublicResource(ohshiQuery(config, cursor), { maxBytes: OHSI_MAX_BYTES, ...options });
+    let data;
+    try { data = JSON.parse(resource.text); }
+    catch { throw Object.assign(new Error('ohshi.work intelligence returned invalid JSON.'), { code: 'ohshi_invalid_response' }); }
+    if (Number(resource.status) >= 400) throw Object.assign(new Error(`ohshi.work intelligence returned HTTP ${resource.status}`), { code: `ohshi_upstream_${resource.status}` });
+    const pageJobs = Array.isArray(data?.jobs) ? data.jobs : Array.isArray(data?.items) ? data.items : [];
+    jobs.push(...pageJobs.map(normalizeOhshiJob)); attribution = data?.attribution || attribution;
+    const next = data?.nextCursor ?? data?.next_cursor ?? data?.cursor?.next ?? null;
+    if (next == null || String(next) === '') break;
+    if (page + 1 >= OHSI_MAX_PAGES) { partial = true; break; }
+    cursor = next;
+  }
+  return normalizeOhshiPayload({ attribution }, jobs, partial);
+}
+
+function fetchOhshiOffline(config, dataDir) {
+  const fixtureAbs = resolveDiscoveryFixture(config.fixture, dataDir);
+  let data;
+  try { data = JSON.parse(fs.readFileSync(fixtureAbs, 'utf8')); }
+  catch (cause) { throw Object.assign(new Error(`Cannot read ohshi fixture: ${cause.message}`), { code: 'fixture_read_error' }); }
+  const jobs = Array.isArray(data?.jobs) ? data.jobs.map(normalizeOhshiJob) : [];
+  return normalizeOhshiPayload(data, jobs, false);
+}
+
 export async function fetchSavedSearchSource(search, { dataDir, fetchImpl = globalThis.fetch, lookupImpl = dns.lookup } = {}) {
-  if (search.adapter !== 'greenhouse') throw Object.assign(new Error(`No public ATS adapter for: ${search.adapter}`), { code: 'unsupported_adapter' });
+  if (!['greenhouse', 'ohshi'].includes(search.adapter)) throw Object.assign(new Error(`No public ATS adapter for: ${search.adapter}`), { code: 'unsupported_adapter' });
+  if (search.adapter === 'ohshi') return search.config?.fixture
+    ? fetchOhshiOffline(search.config, dataDir)
+    : fetchOhshiPublic(search.config, { fetchImpl, lookupImpl });
   return search.config?.fixture
     ? fetchGreenhouseOffline(search.config, { dataDir })
     : fetchGreenhousePublic(search.config, { fetchImpl, lookupImpl });
@@ -974,6 +1057,8 @@ export function runSavedSearch(store, { searchRef, profileId, dataDir, sourceRes
     }
     if (search.adapter === 'greenhouse') {
       result = sourceResult || fetchGreenhouseOffline(search.config, { dataDir });
+    } else if (search.adapter === 'ohshi') {
+      result = sourceResult || fetchOhshiOffline(search.config, dataDir);
     } else {
       throw Object.assign(new Error(`No offline adapter for: ${search.adapter}`), { code: 'unsupported_adapter' });
     }

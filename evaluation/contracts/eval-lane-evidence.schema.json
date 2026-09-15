@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "jobsss/sourcing-v1/eval-lane-evidence.schema.json",
+  "title": "Eval-lane evidence bundle (check #10)",
+  "description": "Documentation of the bundle that evaluation/check10-evidence.mjs independently recomputes. The checker has no live-count literal: it derives the expected tool prefix from the repo's mcp.json, recomputes every hash from the bytes at the returned path, and compares the runner (checks.py) against the frozen manifest. A missing bundle fails the check.",
+  "type": "object",
+  "required": ["mcp-calls.jsonl", "artifact-hashes.json", "checks.py"],
+  "properties": {
+    "mcp-calls.jsonl": {
+      "description": "One JSON object per line, in call order. seq must be a dense increasing sequence from 1. tool must start with mcp_<server>_ where <server> is the first key in the repo's mcp.json. Each record that returns an artifact must name resultPath (absolute, or bundle-relative) and resultSha256 (the hash of the bytes at that path).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["seq", "tool", "callId", "resultPath", "resultSha256"],
+        "additionalProperties": true,
+        "properties": {
+          "seq": { "type": "integer" },
+          "ts": { "type": "string" },
+          "server": { "type": "string" },
+          "tool": { "type": "string" },
+          "callId": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "argumentsSha256": { "type": "string" },
+          "resultPath": { "type": "string", "description": "The path the tool returned. The checker hashes the bytes there; nothing is trusted." },
+          "resultSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "artifact-hashes.json": {
+      "description": "The artifact table: every artifact returned by a call, and only those. Accepted shapes: {\"artifacts\":[{\"path\",\"sha256\"}]}, {\"artifacts\":{<path>:<sha256>}}, or a bare {<path>:<sha256>} map. Paths must resolve to the same artifacts the calls returned (bijection). No numeric field whose name matches /count|total|artifacts|entries|calls/i may disagree with the recomputed call/artifact counts.",
+      "type": "object"
+    },
+    "checks.py": {
+      "description": "The eval lane's own runner. It must answer `python3 checks.py --list-checks --json` with {\"checks\":[{\"id\":<int|string>,\"command\":<string>}]}. The checker requires the id set to equal the frozen manifest's check ids and every command string to match the manifest exactly, so a lane cannot measure itself against a different bar.",
+      "type": "string"
+    },
+    "run.json": {
+      "description": "Optional run record. Any numeric count field it declares must match the recomputed counts.",
+      "type": "object"
+    }
+  }
+}

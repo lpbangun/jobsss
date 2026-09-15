@@ -1,0 +1,133 @@
+{
+  "fixtureVersion": 1,
+  "check": 5,
+  "note": "Redirect scenarios. Each scenario is a data-driven transport program: 'request' is the target handed to fetchPublicJob(); 'rules' are matched in order (exact 'match', or 'prefix'/'contains'/'re') and the first hit is served. 'neverRequested' URLs must not appear in the transport log at all; 'robotsBeforeContent' pairs assert policy-before-content ordering per origin.",
+  "marker": "FINAL-HOP-BODY-MARKER",
+  "scenarios": [
+    {
+      "id": "cross-origin-to-allowed-target",
+      "enforcement": "mandatory",
+      "note": "Control case: both origins allow, so the redirect completes and the final URL is reported.",
+      "request": "https://origin-a.test/jobs/1",
+      "rules": [
+        { "match": "https://origin-a.test/robots.txt", "status": 200, "body": "User-agent: *\nDisallow: /private/\n" },
+        { "match": "https://origin-b.test/robots.txt", "status": 200, "body": "User-agent: *\nDisallow: /private/\n" },
+        { "match": "https://origin-a.test/jobs/1", "status": 302, "headers": { "location": "https://origin-b.test/jobs/2" } },
+        { "match": "https://origin-b.test/jobs/2", "status": 200, "body": "<html><head><title>Job Application for Analytics Engineer at Example</title></head><body>FINAL-HOP-BODY-MARKER</body></html>" }
+      ],
+      "expect": {
+        "decision": "allow",
+        "finalUrl": "https://origin-b.test/jobs/2",
+        "bodyContains": "FINAL-HOP-BODY-MARKER",
+        "neverRequested": [],
+        "robotsBeforeContent": [
+          ["https://origin-a.test/robots.txt", "https://origin-a.test/jobs/1"],
+          ["https://origin-b.test/robots.txt", "https://origin-b.test/jobs/2"]
+        ]
+      }
+    },
+    {
+      "id": "cross-origin-to-denied-target",
+      "enforcement": "mandatory",
+      "note": "The redirect target's own policy denies: the target content is never requested, even though the first origin allowed.",
+      "request": "https://origin-a.test/jobs/1",
+      "rules": [
+        { "match": "https://origin-a.test/robots.txt", "status": 200, "body": "User-agent: *\nDisallow: /private/\n" },
+        { "match": "https://origin-b.test/robots.txt", "status": 200, "body": "User-agent: *\nDisallow: /private/\n" },
+        { "match": "https://origin-a.test/jobs/1", "status": 302, "headers": { "location": "https://origin-b.test/private/9" } },
+        { "match": "https://origin-b.test/private/9", "status": 200, "body": "<html><body>FINAL-HOP-BODY-MARKER</body></html>" }
+      ],
+      "expect": {
+        "decision": "deny",
+        "policyCode": null,
+        "denialFamily": true,
+        "neverRequested": ["https://origin-b.test/private/9"],
+        "robotsBeforeContent": [
+          ["https://origin-a.test/robots.txt", "https://origin-a.test/jobs/1"],
+          ["https://origin-b.test/robots.txt", "https://origin-b.test/private/9"]
+        ]
+      }
+    },
+    {
+      "id": "same-origin-path-change-to-denied",
+      "enforcement": "mandatory",
+      "note": "A redirect target is re-decided even when the origin did not change: /jobs -> /private is denied on the same host.",
+      "request": "https://origin-c.test/jobs/1",
+      "rules": [
+        { "match": "https://origin-c.test/robots.txt", "status": 200, "body": "User-agent: *\nDisallow: /private/\n" },
+        { "match": "https://origin-c.test/jobs/1", "status": 302, "headers": { "location": "/private/1" } },
+        { "match": "https://origin-c.test/private/1", "status": 200, "body": "<html><body>FINAL-HOP-BODY-MARKER</body></html>" }
+      ],
+      "expect": {
+        "decision": "deny",
+        "policyCode": null,
+        "denialFamily": true,
+        "neverRequested": ["https://origin-c.test/private/1"],
+        "robotsBeforeContent": [
+          ["https://origin-c.test/robots.txt", "https://origin-c.test/jobs/1"]
+        ]
+      }
+    },
+    {
+      "id": "same-origin-path-change-to-allowed",
+      "enforcement": "mandatory",
+      "note": "Control case for the same-origin re-decision: an allowed second path is fetched.",
+      "request": "https://origin-c.test/jobs/1",
+      "rules": [
+        { "match": "https://origin-c.test/robots.txt", "status": 200, "body": "User-agent: *\nDisallow: /private/\n" },
+        { "match": "https://origin-c.test/jobs/1", "status": 302, "headers": { "location": "/jobs/2" } },
+        { "match": "https://origin-c.test/jobs/2", "status": 200, "body": "<html><head><title>Job Application for Analytics Engineer at Example</title></head><body>FINAL-HOP-BODY-MARKER</body></html>" }
+      ],
+      "expect": {
+        "decision": "allow",
+        "finalUrl": "https://origin-c.test/jobs/2",
+        "bodyContains": "FINAL-HOP-BODY-MARKER",
+        "neverRequested": [],
+        "robotsBeforeContent": [
+          ["https://origin-c.test/robots.txt", "https://origin-c.test/jobs/1"]
+        ]
+      }
+    },
+    {
+      "id": "hop-policy-unreachable-fails-closed",
+      "enforcement": "mandatory",
+      "note": "The redirect target's policy cannot be verified: fail closed and never fetch the target content.",
+      "request": "https://origin-a.test/jobs/1",
+      "rules": [
+        { "match": "https://origin-a.test/robots.txt", "status": 200, "body": "User-agent: *\nDisallow: /private/\n" },
+        { "match": "https://origin-d.test/robots.txt", "status": 500, "body": "server error" },
+        { "match": "https://origin-a.test/jobs/1", "status": 302, "headers": { "location": "https://origin-d.test/jobs/5" } },
+        { "match": "https://origin-d.test/jobs/5", "status": 200, "body": "<html><body>FINAL-HOP-BODY-MARKER</body></html>" }
+      ],
+      "expect": {
+        "decision": "deny",
+        "policyCode": "policy_unreachable",
+        "neverRequested": ["https://origin-d.test/jobs/5"],
+        "robotsBeforeContent": []
+      }
+    },
+    {
+      "id": "existing-redirect-limit-preserved",
+      "enforcement": "mandatory",
+      "note": "The gate must not mask the existing 4-hop redirect limit; the 6th URL is never requested.",
+      "request": "https://origin-e.test/hop/1",
+      "rules": [
+        { "match": "https://origin-e.test/robots.txt", "status": 200, "body": "User-agent: *\nDisallow: /private/\n" },
+        { "match": "https://origin-e.test/hop/1", "status": 302, "headers": { "location": "/hop/2" } },
+        { "match": "https://origin-e.test/hop/2", "status": 302, "headers": { "location": "/hop/3" } },
+        { "match": "https://origin-e.test/hop/3", "status": 302, "headers": { "location": "/hop/4" } },
+        { "match": "https://origin-e.test/hop/4", "status": 302, "headers": { "location": "/hop/5" } },
+        { "match": "https://origin-e.test/hop/5", "status": 302, "headers": { "location": "/hop/6" } },
+        { "match": "https://origin-e.test/hop/6", "status": 200, "body": "<html><body>FINAL-HOP-BODY-MARKER</body></html>" }
+      ],
+      "expect": {
+        "decision": "error",
+        "code": "url_redirect_error",
+        "neverRequested": ["https://origin-e.test/hop/6"],
+        "robotsBeforeContent": [
+          ["https://origin-e.test/robots.txt", "https://origin-e.test/hop/1"]
+        ]
+      }
+    }
+  ]
+}

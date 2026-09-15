@@ -1,0 +1,69 @@
+{
+  "fixtureVersion": 1,
+  "checks": [7, 8],
+  "note": "Offline ohshi intelligence fixture. This body IS the frozen contract for the offline adapter path (adapter:'ohshi' + config.fixture, mirroring the existing greenhouse fixture convention): { jobs, nextCursor, attribution }. Field names inside jobs are the plan's canonical mapping fields. Staged verbatim into PLUGIN_DATA by the checks; never fetched.",
+  "view": "jobs",
+  "nextCursor": null,
+  "attribution": {
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sourceUrl": "https://ohshi.work/",
+    "notice": "Job data from ohshi.work, licensed CC BY 4.0. Attribution required on redistribution."
+  },
+  "jobs": [
+    {
+      "id": "oh-1001",
+      "title": "Analytics Engineer",
+      "company": "Example Analytics Co",
+      "location": "Berlin, Germany",
+      "remote_status": "remote",
+      "role_family": "data",
+      "sector": "software",
+      "provider": "greenhouse",
+      "status": "verified_open",
+      "canonicalUrl": "https://boards.greenhouse.io/example-analytics/jobs/9001",
+      "firstSeenAt": "2026-08-20T09:00:00Z",
+      "lastSeenAt": "2026-09-14T09:00:00Z",
+      "postedDate": "2026-08-19",
+      "employmentType": "Full-time",
+      "description": "Build the analytics platform that the educator team depends on.",
+      "compensationText": "$120,000 - $150,000 USD"
+    },
+    {
+      "id": "oh-1002",
+      "title": "Product Manager, Learning Platform",
+      "company": "Example Learning Co",
+      "location": "Remote US",
+      "remote_status": "remote",
+      "role_family": "product",
+      "sector": "education",
+      "provider": "lever",
+      "status": "closed",
+      "canonicalUrl": "https://jobs.lever.co/example-learning/22222222-3333-4444-5555-666666666666",
+      "firstSeenAt": "2026-07-02T07:30:00Z",
+      "lastSeenAt": "2026-09-01T07:30:00Z",
+      "postedDate": "2026-07-01",
+      "employmentType": "Full-time",
+      "description": "Own the roadmap for educator discovery features.",
+      "compensationText": ""
+    },
+    {
+      "id": "oh-1003",
+      "title": "Data Platform Engineer",
+      "company": "Example Infrastructure",
+      "location": "Amsterdam, Netherlands",
+      "remote_status": "hybrid",
+      "role_family": "data",
+      "sector": "software",
+      "provider": "ashby",
+      "status": "verified_open",
+      "canonicalUrl": "https://jobs.ashbyhq.com/example-infrastructure/9f1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9",
+      "firstSeenAt": "2026-08-28T11:15:00Z",
+      "lastSeenAt": "2026-09-15T06:45:00Z",
+      "postedDate": "2026-08-27",
+      "employmentType": "Contract",
+      "description": "Own the ingestion platform behind the job index.",
+      "compensationText": "EUR 90,000 - 110,000"
+    }
+  ]
+}

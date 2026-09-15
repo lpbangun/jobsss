@@ -1,0 +1,144 @@
+{
+  "fixtureVersion": 1,
+  "check": 4,
+  "note": "RFC 9309 matcher semantics as fixed by the plan. One row = one robots body + one target URL + the expected decision. Every row is served as a 200 policy through the injected transport; 'advisory' rows are recorded but not scored.",
+  "target": "https://matcher.example.test",
+  "rows": [
+    {
+      "id": "longest-match-allow-wins",
+      "enforcement": "mandatory",
+      "note": "Longer Allow overrides a shorter Disallow for the same path prefix.",
+      "robots": "User-agent: *\nDisallow: /a/\nAllow: /a/b/\n",
+      "path": "/a/b/c",
+      "expect": "allow"
+    },
+    {
+      "id": "longest-match-disallow-wins",
+      "enforcement": "mandatory",
+      "note": "Longer Disallow overrides a shorter Allow.",
+      "robots": "User-agent: *\nAllow: /a/\nDisallow: /a/b/\n",
+      "path": "/a/b/c",
+      "expect": "deny"
+    },
+    {
+      "id": "allow-on-ties-disallow-first",
+      "enforcement": "mandatory",
+      "note": "Equal-length rule match resolves to Allow, whatever the file order.",
+      "robots": "User-agent: *\nDisallow: /tie\nAllow: /tie\n",
+      "path": "/tie",
+      "expect": "allow"
+    },
+    {
+      "id": "allow-on-ties-allow-first",
+      "enforcement": "mandatory",
+      "note": "Allow-on-ties is order-independent.",
+      "robots": "User-agent: *\nAllow: /tie\nDisallow: /tie\n",
+      "path": "/tie",
+      "expect": "allow"
+    },
+    {
+      "id": "wildcard-anchor-pdf-denied",
+      "enforcement": "mandatory",
+      "note": "$ anchors the pattern: only the exact suffix matches.",
+      "robots": "User-agent: *\nDisallow: /*.pdf$\n",
+      "path": "/docs/job.pdf",
+      "expect": "deny"
+    },
+    {
+      "id": "wildcard-anchor-non-suffix-allowed",
+      "enforcement": "mandatory",
+      "note": "/*.pdf$ does not match a longer path.",
+      "robots": "User-agent: *\nDisallow: /*.pdf$\n",
+      "path": "/docs/job.pdf.html",
+      "expect": "allow"
+    },
+    {
+      "id": "wildcard-mid-path-denied",
+      "enforcement": "mandatory",
+      "note": "* matches any run of characters inside a path.",
+      "robots": "User-agent: *\nDisallow: /jobs/*/apply\n",
+      "path": "/jobs/9001/apply",
+      "expect": "deny"
+    },
+    {
+      "id": "wildcard-mid-path-near-miss-allowed",
+      "enforcement": "mandatory",
+      "note": "The same pattern does not match a sibling path.",
+      "robots": "User-agent: *\nDisallow: /jobs/*/apply\n",
+      "path": "/jobs/9001/view",
+      "expect": "allow"
+    },
+    {
+      "id": "anchor-dollar-exact-denied",
+      "enforcement": "mandatory",
+      "note": "$ anchors to end of path.",
+      "robots": "User-agent: *\nDisallow: /jobs$\n",
+      "path": "/jobs",
+      "expect": "deny"
+    },
+    {
+      "id": "anchor-dollar-descendant-allowed",
+      "enforcement": "mandatory",
+      "note": "/jobs$ must not swallow /jobs/1.",
+      "robots": "User-agent: *\nDisallow: /jobs$\n",
+      "path": "/jobs/1",
+      "expect": "allow"
+    },
+    {
+      "id": "percent-encoding-matched-verbatim",
+      "enforcement": "mandatory",
+      "note": "Percent-encoded octets are matched as written; the pattern is not decoded and the URL is not re-encoded.",
+      "robots": "User-agent: *\nDisallow: /caf%C3%A9/\n",
+      "path": "/caf%C3%A9/menu",
+      "expect": "deny"
+    },
+    {
+      "id": "percent-encoding-unicode-form",
+      "enforcement": "advisory",
+      "note": "Advisory: the same octets written as unicode. Recorded, not scored, because the plan fixes 'percent-encoding' without fixing normalization of the incoming URL.",
+      "robots": "User-agent: *\nDisallow: /caf%C3%A9/\n",
+      "path": "/caf\u00e9/menu",
+      "expect": "deny"
+    },
+    {
+      "id": "empty-disallow-allows-all",
+      "enforcement": "mandatory",
+      "note": "An empty Disallow value imposes no path restriction.",
+      "robots": "User-agent: *\nDisallow:\n",
+      "path": "/anything/at/all",
+      "expect": "allow"
+    },
+    {
+      "id": "no-matching-rule-allows",
+      "enforcement": "mandatory",
+      "note": "Paths outside every rule are allowed.",
+      "robots": "User-agent: *\nDisallow: /private/\n",
+      "path": "/jobs/1",
+      "expect": "allow"
+    },
+    {
+      "id": "other-bot-group-does-not-apply",
+      "enforcement": "mandatory",
+      "note": "Only the group that matches our user-agent (or the * group) applies; another bot's Disallow: / must not leak onto us.",
+      "robots": "User-agent: SomeOtherBot\nDisallow: /\n\nUser-agent: *\nDisallow: /private/\n",
+      "path": "/jobs/1",
+      "expect": "allow"
+    },
+    {
+      "id": "star-group-private-still-denied",
+      "enforcement": "mandatory",
+      "note": "The * group's own rules still apply.",
+      "robots": "User-agent: SomeOtherBot\nDisallow: /\n\nUser-agent: *\nDisallow: /private/\n",
+      "path": "/private/1",
+      "expect": "deny"
+    },
+    {
+      "id": "star-group-disallow-all",
+      "enforcement": "mandatory",
+      "note": "Disallow: / under the * group blocks everything.",
+      "robots": "User-agent: *\nDisallow: /\n",
+      "path": "/jobs/1",
+      "expect": "deny"
+    }
+  ]
+}

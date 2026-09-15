@@ -1,0 +1,119 @@
+{
+  "fixtureVersion": 1,
+  "check": 2,
+  "note": "Robots decision table. One row = one policy response + one target URL + the expected decision. Rows are driven through the exported fetchPublicJob() entry point with an injected transport; no network is used. Enforcement 'mandatory' rows are scored; 'advisory' rows are recorded only (see docs/BENCHMARK-sourcing-v1.md).",
+  "contentBody": "<html><head><title>Job Application for Analytics Engineer at Example</title></head><body><p>Sample posting body.</p></body></html>",
+  "contentStatus": 200,
+  "rows": [
+    {
+      "id": "allow-valid-policy",
+      "enforcement": "mandatory",
+      "note": "200 with a parsable policy that does not match the target path.",
+      "robots": { "status": 200, "headers": { "content-type": "text/plain" }, "body": "User-agent: *\nDisallow: /private/\n" },
+      "target": "https://boards.example.test/jobs/1",
+      "expect": { "decision": "allow", "policyCode": null, "contentRequests": 1 }
+    },
+    {
+      "id": "deny-disallow-path",
+      "enforcement": "mandatory",
+      "note": "200 with a matching Disallow: the content URL must never be requested.",
+      "robots": { "status": 200, "headers": { "content-type": "text/plain" }, "body": "User-agent: *\nDisallow: /private/\n" },
+      "target": "https://boards.example.test/private/1",
+      "expect": { "decision": "deny", "policyCode": null, "denialFamily": true, "contentRequests": 0 }
+    },
+    {
+      "id": "allow-empty-body",
+      "enforcement": "mandatory",
+      "note": "200 with a zero-byte body is an empty policy = allow.",
+      "robots": { "status": 200, "headers": { "content-type": "text/plain" }, "body": "" },
+      "target": "https://boards.example.test/jobs/4001",
+      "expect": { "decision": "allow", "policyCode": null, "contentRequests": 1 }
+    },
+    {
+      "id": "invalid-garbage-body",
+      "enforcement": "mandatory",
+      "note": "200 with an undecodable/garbage body (NUL bytes, no parsable directive) fails closed as policy_invalid. Frozen definition of 'garbage': the body contains a NUL byte and yields no parsable directive.",
+      "robots": { "status": 200, "headers": { "content-type": "text/plain" }, "body": "USER-AGENT\u0000\u0001\u0002\ufffd???\u0000not a policy\nDisallow\u0000/\n" },
+      "target": "https://boards.example.test/jobs/2",
+      "expect": { "decision": "deny", "policyCode": "policy_invalid", "contentRequests": 0 }
+    },
+    {
+      "id": "unreadable-401",
+      "enforcement": "mandatory",
+      "note": "401 means the policy cannot be read: fail closed.",
+      "robots": { "status": 401, "headers": { "content-type": "text/plain" }, "body": "Unauthorized" },
+      "target": "https://boards.example.test/jobs/3",
+      "expect": { "decision": "deny", "policyCode": "policy_unreadable", "contentRequests": 0 }
+    },
+    {
+      "id": "unreadable-403",
+      "enforcement": "mandatory",
+      "note": "403 means the policy cannot be read: fail closed.",
+      "robots": { "status": 403, "headers": { "content-type": "text/html" }, "body": "<html><body>Forbidden</body></html>" },
+      "target": "https://boards.example.test/jobs/4",
+      "expect": { "decision": "deny", "policyCode": "policy_unreadable", "contentRequests": 0 }
+    },
+    {
+      "id": "absent-404",
+      "enforcement": "mandatory",
+      "note": "404 means no published policy: allow.",
+      "robots": { "status": 404, "headers": { "content-type": "text/html" }, "body": "<html><body>Not found</body></html>" },
+      "target": "https://boards.example.test/jobs/5",
+      "expect": { "decision": "allow", "policyCode": "policy_absent", "contentRequests": 1 }
+    },
+    {
+      "id": "unreachable-500",
+      "enforcement": "mandatory",
+      "note": "5xx means the policy cannot be verified: fail closed.",
+      "robots": { "status": 500, "headers": { "content-type": "text/plain" }, "body": "server error" },
+      "target": "https://boards.example.test/jobs/6",
+      "expect": { "decision": "deny", "policyCode": "policy_unreachable", "contentRequests": 0 }
+    },
+    {
+      "id": "unreachable-503",
+      "enforcement": "mandatory",
+      "note": "5xx (503) fails closed the same way.",
+      "robots": { "status": 503, "headers": { "content-type": "text/plain", "retry-after": "0" }, "body": "unavailable" },
+      "target": "https://boards.example.test/jobs/7",
+      "expect": { "decision": "deny", "policyCode": "policy_unreachable", "contentRequests": 0 }
+    },
+    {
+      "id": "unreachable-timeout",
+      "enforcement": "mandatory",
+      "note": "Policy fetch timeout fails closed.",
+      "robots": { "throw": "timeout" },
+      "target": "https://boards.example.test/jobs/8",
+      "expect": { "decision": "deny", "policyCode": "policy_unreachable", "contentRequests": 0 }
+    },
+    {
+      "id": "unreachable-dns",
+      "enforcement": "mandatory",
+      "note": "Policy fetch DNS failure fails closed.",
+      "robots": { "throw": "dns" },
+      "target": "https://boards.example.test/jobs/9",
+      "expect": { "decision": "deny", "policyCode": "policy_unreachable", "contentRequests": 0 }
+    },
+    {
+      "id": "unreachable-tls",
+      "enforcement": "mandatory",
+      "note": "Policy fetch TLS failure fails closed.",
+      "robots": { "throw": "tls" },
+      "target": "https://boards.example.test/jobs/10",
+      "expect": { "decision": "deny", "policyCode": "policy_unreachable", "contentRequests": 0 }
+    },
+    {
+      "id": "blocked-429-retry-after",
+      "enforcement": "mandatory",
+      "note": "A 429 is not a policy: block and honour Retry-After with no persisted scheduler. The row asserts the immediate follow-up call issues zero new requests to that origin.",
+      "robots": { "status": 429, "headers": { "content-type": "text/plain", "retry-after": "30" }, "body": "slow down" },
+      "target": "https://boards.example.test/jobs/11",
+      "expect": { "decision": "deny", "policyCode": null, "denialFamily": true, "contentRequests": 0, "followUpRequests": 0 }
+    }
+  ],
+  "cacheProperties": {
+    "origin": "https://boards.example.test",
+    "allowRobots": { "status": 200, "headers": { "content-type": "text/plain" }, "body": "User-agent: *\nDisallow: /private/\n" },
+    "targets": ["https://boards.example.test/jobs/100", "https://boards.example.test/jobs/101"],
+    "note": "Two calls in one process must produce exactly one policy request and two content requests; a regular file must appear under PLUGIN_DATA; removing it must force revalidation."
+  }
+}

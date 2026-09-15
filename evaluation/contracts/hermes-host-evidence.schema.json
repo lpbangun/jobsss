@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "jobsss/sourcing-v1/hermes-host-evidence.schema.json",
+  "title": "Hermes-first host evidence bundle (check #9)",
+  "description": "Documentation of the recorded bundle that evaluation/check9-hermes-host.mjs validates. The checker validates this shape inline with no dependency (the repo allows no npm dependencies), so this file is the readable contract, not an executable validator. Every raw capture listed in evidence[] is re-hashed by the checker; the plugin-tree hash and the skill digest are recomputed by the checker itself (--emit-plugin-tree-hash / --emit-skill-digest), which is why no algorithm detail is recorded here.",
+  "type": "object",
+  "required": ["check", "startedAt", "finishedAt", "session", "hermes", "isolation", "skills", "commands", "mcp", "model", "claims", "summary", "evidence"],
+  "additionalProperties": true,
+  "properties": {
+    "check": { "const": 9 },
+    "rubricVersion": { "type": "string" },
+    "startedAt": { "type": "string", "description": "ISO timestamp; the run window used for transcript currency." },
+    "finishedAt": { "type": "string" },
+    "session": {
+      "type": "object",
+      "required": ["id"],
+      "properties": { "id": { "type": "string", "description": "Must appear in the transcript file name and in the transcript bytes." } }
+    },
+    "hermes": {
+      "type": "object",
+      "required": ["version", "installCommit", "versionCapture", "cleanInstall", "cleanInstallCapture"],
+      "properties": {
+        "version": { "type": "string", "description": "Output of hermes --version, also required to appear in versionCapture." },
+        "installCommit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Installed hermes-agent commit." },
+        "versionCapture": { "type": "string", "description": "Bundle-relative raw capture of hermes --version." },
+        "cleanInstall": { "const": true, "description": "A clean-install run against the recorded version must have happened." },
+        "cleanInstallCapture": { "type": "string" }
+      }
+    },
+    "isolation": {
+      "type": "object",
+      "required": ["hermesHome", "pluginData", "pluginRoot", "pluginTree", "envCapture"],
+      "properties": {
+        "hermesHome": { "type": "string", "description": "Absolute disposable HERMES_HOME beneath the real ~/.hermes tree, and not equal to it." },
+        "pluginData": { "type": "string", "description": "Absolute PLUGIN_DATA outside the plugin tree." },
+        "pluginRoot": { "type": "string" },
+        "pluginTree": {
+          "type": "object",
+          "required": ["beforeSha256", "afterSha256"],
+          "properties": {
+            "beforeSha256": { "type": "string", "description": "pluginTreeHash() before the run." },
+            "afterSha256": { "type": "string", "description": "Must equal beforeSha256 and the checker's recomputation of the current tree." }
+          }
+        },
+        "envCapture": { "type": "string", "description": "Raw capture of the MCP subprocess environment; must show PLUGIN_DATA=<pluginData> and contain no API-key/token/secret assignment." }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "required": ["preloaded", "digest"],
+      "properties": {
+        "preloaded": { "type": "array", "items": { "type": "string" }, "description": "Must include 'jobsss'." },
+        "digest": { "type": "string", "description": "skillDigest() of the canonical corpus, recomputed by the checker." }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "description": "Recorded invocations. One must be `hermes mcp test <server>` with exitCode 0; one must preload the skill with -s/--skills jobsss.",
+      "items": {
+        "type": "object",
+        "required": ["argv", "capture", "exitCode"],
+        "properties": {
+          "argv": { "type": "array", "items": { "type": "string" } },
+          "capture": { "type": "string" },
+          "exitCode": { "type": "integer" }
+        }
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "required": ["server", "observedTools"],
+      "properties": {
+        "server": { "type": "string", "description": "Must match the server key in mcp.json; the expected tool set is derived from the plugin, not from this list." },
+        "observedTools": { "type": "array", "items": { "type": "string" }, "description": "Every declared name must also appear in a raw capture; the set must equal the plugin's own registration as mcp_<server>_<tool>." }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["route", "transcript", "events"],
+      "properties": {
+        "route": {
+          "type": "object",
+          "required": ["expected", "resolved"],
+          "properties": {
+            "expected": { "$ref": "#/definitions/route" },
+            "resolved": { "$ref": "#/definitions/route", "description": "Must equal expected; a mismatch is needs_review, which fails this check." }
+          }
+        },
+        "transcript": { "type": "string", "description": "Absolute path to the Hermes-owned transcript inside the disposable HERMES_HOME; its file name carries the session id and its mtime must fall inside the run window." },
+        "events": {
+          "type": "array",
+          "description": "Normalized projection of the real provider events. The checker requires the resolved provider/model, the session id, each tool name and each paired callId to appear in the transcript bytes, so a schema difference between Hermes and this projection cannot be used to hide a missing invocation.",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": { "enum": ["assistant", "tool_call", "tool_result", "system", "user"] },
+              "provider": { "type": "string" },
+              "model": { "type": "string" },
+              "text": { "type": "string" },
+              "tool": { "type": "string" },
+              "callId": { "type": "string" },
+              "isError": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "description": "Exactly one asserted boundary label: source-skill+mcp-under-tool-only-isolation. Asserting native-plugin-loading or os-sandboxing inside this claim is an overclaim and fails the check.",
+      "items": {
+        "type": "object",
+        "required": ["boundary", "asserted"],
+        "properties": {
+          "boundary": { "type": "string" },
+          "asserted": { "type": "boolean" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "summary": { "type": "string", "description": "Reader-facing summary that must contain the boundary label." },
+    "evidence": {
+      "type": "array",
+      "description": "Every raw capture the record stands on. Paths are bundle-relative and each sha256 is recomputed by the checker.",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "route": {
+      "type": "object",
+      "required": ["provider", "model", "reasoning"],
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string", "description": "Fully-qualified id." },
+        "reasoning": { "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] }
+      }
+    }
+  }
+}

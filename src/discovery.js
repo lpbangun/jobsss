@@ -24,7 +24,7 @@ import path from 'node:path';
 import dns from 'node:dns/promises';
 import { id, now, hashText, dedupeKeyForJob, ensureDataDir } from './store.js';
 
-export const OFFLINE_ADAPTERS = Object.freeze(['greenhouse']);
+export const SUPPORTED_SAVED_SEARCH_ADAPTERS = Object.freeze(['greenhouse']);
 export const DISCOVERY_OUTPUTS_VERSION = 2;
 export const LIVENESS_FRESH_MS = 86_400_000; // 24h, JobOS FRESH_WINDOW_MS
 
@@ -119,19 +119,169 @@ export async function assertPublicNetworkUrl(value, { lookupImpl = dns.lookup } 
   return parsed;
 }
 
+const PUBLIC_USER_AGENT = 'JobSSS standalone (+human-initiated public intake)';
+const POLICY_TTL_MS = 24 * 60 * 60 * 1000;
+const POLICY_FAILURE_TTL_MS = 5 * 60 * 1000;
+
+// Per-transport isolation: each injected fetchImpl gets its own cache, throttle
+// and origin-queue maps, so independent test fixtures never leak state. The
+// default globalThis.fetch shares one state in production. Persisted cache
+// files under PLUGIN_DATA are still readable by a fresh process.
+const transportStates = new WeakMap();
+
+function getTransportState(fetchImpl) {
+  let state = transportStates.get(fetchImpl);
+  if (!state) {
+    state = { policyMemory: new Map(), retryAfterUntil: new Map(), originQueues: new Map() };
+    transportStates.set(fetchImpl, state);
+  }
+  return state;
+}
+
+function policyError(code, message) { return Object.assign(new Error(message), { code }); }
+function policyCachePath(origin, userAgent) {
+  const root = process.env.PLUGIN_DATA;
+  return root ? path.join(root, 'cache', 'robots', `${hashText(`${origin}\n${userAgent}`)}.json`) : null;
+}
+function readPolicyCache(origin, userAgent, state) {
+  const key = `${origin}\n${userAgent}`;
+  const memory = state.policyMemory.get(key);
+  if (memory && memory.expiresAt > Date.now() && process.env.PLUGIN_DATA) return memory;
+  const filename = policyCachePath(origin, userAgent);
+  if (!filename) return null;
+  try {
+    const item = JSON.parse(fs.readFileSync(filename, 'utf8'));
+    if (item && item.expiresAt > Date.now()) { state.policyMemory.set(key, item); return item; }
+  } catch { /* cache misses are safe */ }
+  return null;
+}
+function writePolicyCache(origin, userAgent, item, state) {
+  state.policyMemory.set(`${origin}\n${userAgent}`, item);
+  const filename = policyCachePath(origin, userAgent);
+  if (!filename) return;
+  try { fs.mkdirSync(path.dirname(filename), { recursive: true }); fs.writeFileSync(filename, JSON.stringify(item)); } catch { /* persistence is best effort */ }
+}
+async function serializedOrigin(state, origin, fn, delayMs = 0) {
+  const prior = state.originQueues.get(origin) || Promise.resolve();
+  const current = prior.then(async () => { await new Promise(resolve => setTimeout(resolve, delayMs)); return fn(); });
+  state.originQueues.set(origin, current.catch(() => undefined));
+  try { return await current; } finally { if (state.originQueues.get(origin) === current) state.originQueues.delete(origin); }
+}
+function parseRetryAfter(value) {
+  if (!value) return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.min(seconds * 1000, POLICY_FAILURE_TTL_MS));
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? Math.max(0, Math.min(timestamp - Date.now(), POLICY_FAILURE_TTL_MS)) : 0;
+}
+
+// Parse robots.txt text into serializable rules (no per-path decision). The
+// rules are cached per origin+UA; the path is evaluated on every call so two
+// different paths on the same origin get independent allow/deny results from
+// one policy fetch.
+function parseRobotsRules(text, userAgent) {
+  if (text === '') return { rules: [], crawlDelay: 0 };
+  if (/\x00/.test(text)) throw policyError('policy_invalid', 'robots.txt contains invalid bytes');
+  const groups = []; let group = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, '').trim();
+    if (!line) { group = null; continue; }
+    const match = line.match(/^([^:]+):\s*(.*)$/); if (!match) continue;
+    const directive = match[1].trim().toLowerCase(); const value = match[2].trim();
+    if (directive === 'user-agent') { if (!group) { group = { agents: [], rules: [], crawlDelay: 0 }; groups.push(group); } group.agents.push(value.toLowerCase()); continue; }
+    if (!group) continue;
+    if (directive === 'allow' || directive === 'disallow') group.rules.push({ allow: directive === 'allow', value });
+    else if (directive === 'crawl-delay' && Number.isFinite(Number(value))) group.crawlDelay = Math.max(0, Math.min(Number(value) * 1000, 60_000));
+  }
+  if (!groups.length) throw policyError('policy_invalid', 'robots.txt has no user-agent group');
+  const ua = userAgent.toLowerCase();
+  const specific = groups.filter(g => g.agents.some(a => a !== '*' && ua.includes(a)));
+  const selected = specific.length ? specific : groups.filter(g => g.agents.includes('*'));
+  const rules = selected.flatMap(g => g.rules);
+  const crawlDelay = Math.max(0, ...selected.map(g => g.crawlDelay));
+  return { rules, crawlDelay };
+}
+
+function evaluateRobotsRules(rules, targetPath) {
+  let winner = null;
+  for (const rule of rules) {
+    if (!rule.value) continue;
+    const anchored = rule.value.endsWith('$');
+    const pattern = anchored ? rule.value.slice(0, -1) : rule.value;
+    const escaped = pattern.split('*').map(part => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*');
+    const regex = new RegExp(`^${escaped}${anchored ? '$' : ''}`);
+    if (regex.test(targetPath) && (!winner || pattern.length > winner.length || (pattern.length === winner.length && rule.allow))) {
+      winner = { length: pattern.length, allow: rule.allow };
+    }
+  }
+  return winner ? winner.allow : true;
+}
+
+function policyFromCacheItem(item, targetPath, ua) {
+  if (item.kind === 'allow') return { allow: true, crawlDelay: item.crawlDelay || 0 };
+  if (item.kind === 'unreachable') throw policyError('policy_unreachable', 'robots.txt policy is cached as unreachable');
+  if (item.kind === 'policy') {
+    const { rules, crawlDelay } = parseRobotsRules(item.text, ua);
+    return { allow: evaluateRobotsRules(rules, targetPath), crawlDelay };
+  }
+  throw policyError('policy_unreachable', 'robots.txt policy cache entry is unrecognized');
+}
+
+async function decideRobots(url, { fetchImpl, timeoutMs, lookupImpl }) {
+  const state = getTransportState(fetchImpl);
+  const parsed = new URL(url);
+  const origin = parsed.origin;
+  const ua = PUBLIC_USER_AGENT;
+  const throttleKey = `${origin}\n${ua}`;
+  const blockedUntil = state.retryAfterUntil.get(throttleKey) || 0;
+  if (blockedUntil > Date.now()) throw policyError('policy_unreachable', 'robots.txt origin is temporarily throttled');
+  const cached = readPolicyCache(origin, ua, state);
+  if (cached) return policyFromCacheItem(cached, parsed.pathname, ua);
+  return serializedOrigin(state, origin, async () => {
+    const again = readPolicyCache(origin, ua, state);
+    if (again) return policyFromCacheItem(again, parsed.pathname, ua);
+    try {
+      // single egress choke point: policy fetch precedes content
+      const response = await fetchImpl(`${origin}/robots.txt`, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs), headers: { 'user-agent': ua, accept: 'text/plain' } });
+      const status = Number(response.status);
+      if (status === 404) {
+        const item = { kind: 'allow', crawlDelay: 0, expiresAt: Date.now() + POLICY_TTL_MS };
+        writePolicyCache(origin, ua, item, state);
+        return { allow: true, crawlDelay: 0 };
+      }
+      if (status === 401 || status === 403) throw policyError('policy_unreadable', `robots.txt returned HTTP ${status}`);
+      if (status === 429) {
+        state.retryAfterUntil.set(throttleKey, Date.now() + parseRetryAfter(response.headers.get('retry-after')));
+        throw policyError('policy_unreachable', 'robots.txt returned HTTP 429');
+      }
+      if (status >= 500) throw policyError('policy_unreachable', `robots.txt returned HTTP ${status}`);
+      if (status !== 200) throw policyError('policy_unreadable', `robots.txt returned HTTP ${status}`);
+      const body = await response.text();
+      const parsedRules = parseRobotsRules(body, ua);
+      const item = { kind: 'policy', text: body, crawlDelay: parsedRules.crawlDelay, expiresAt: Date.now() + POLICY_TTL_MS };
+      writePolicyCache(origin, ua, item, state);
+      return { allow: evaluateRobotsRules(parsedRules.rules, parsed.pathname), crawlDelay: parsedRules.crawlDelay };
+    } catch (cause) {
+      if (cause?.code && !String(cause.code).startsWith('policy_')) {
+        writePolicyCache(origin, ua, { kind: 'unreachable', expiresAt: Date.now() + POLICY_FAILURE_TTL_MS }, state);
+        throw policyError('policy_unreachable', `Cannot read robots.txt: ${cause.message}`);
+      }
+      throw cause;
+    }
+  });
+}
+
 async function fetchPublicResource(value, { fetchImpl = globalThis.fetch, lookupImpl = dns.lookup, timeoutMs = 12_000, maxBytes = 2 * 1024 * 1024 } = {}) {
+  const state = getTransportState(fetchImpl);
   let url = (await assertPublicNetworkUrl(value, { lookupImpl })).href;
   for (let redirects = 0; redirects <= 4; redirects += 1) {
-    const response = await fetchImpl(url, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: { 'user-agent': 'JobSSS standalone (+human-initiated public intake)', accept: 'application/json,text/html,text/plain' },
-    });
+    const policy = await decideRobots(url, { fetchImpl, timeoutMs, lookupImpl });
+    if (!policy.allow) throw policyError('policy_disallowed', `robots.txt disallows ${url}`);
+    const response = await serializedOrigin(state, new URL(url).origin, () => fetchImpl(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs), headers: { 'user-agent': PUBLIC_USER_AGENT, accept: 'application/json,text/html,text/plain' } }), policy.crawlDelay);
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
       if (!location || redirects === 4) throw Object.assign(new Error('Public job URL redirect limit exceeded.'), { code: 'url_redirect_error' });
-      url = (await assertPublicNetworkUrl(new URL(location, url).href, { lookupImpl })).href;
-      continue;
+      url = (await assertPublicNetworkUrl(new URL(location, url).href, { lookupImpl })).href; continue;
     }
     if (!response.ok) throw Object.assign(new Error(`Public job URL returned HTTP ${response.status}`), { code: 'url_http_error' });
     const declared = Number(response.headers.get('content-length'));
@@ -168,6 +318,7 @@ export async function fetchPublicJob(value, options = {}) {
     company: String(posting?.hiringOrganization?.name || greenhouseTitle?.[2] || 'Unknown company').trim(),
     location: locationText || '',
     description: stripHtml(posting?.description || '') || visible,
+    text: resource.text,
     url: resource.url,
     source: 'public_url',
     sourceId: resource.url,
@@ -707,8 +858,8 @@ export function createSavedSearch(store, { profileId, name, adapter, config = {}
   if (!profileId) throw Object.assign(new Error('create_saved_search requires profileId'), { code: 'missing_profile' });
   if (!name) throw Object.assign(new Error('create_saved_search requires name'), { code: 'missing_search_name' });
   const kind = String(adapter || '').toLowerCase();
-  if (!OFFLINE_ADAPTERS.includes(kind)) {
-    throw Object.assign(new Error(`Unsupported offline adapter: ${adapter}`), { code: 'unsupported_adapter', details: { allowed: OFFLINE_ADAPTERS } });
+  if (!SUPPORTED_SAVED_SEARCH_ADAPTERS.includes(kind)) {
+    throw Object.assign(new Error(`Unsupported offline adapter: ${adapter}`), { code: 'unsupported_adapter', details: { allowed: SUPPORTED_SAVED_SEARCH_ADAPTERS } });
   }
   if (!store.profiles || !store.profiles[profileId]) {
     throw Object.assign(new Error(`Unknown profile: ${profileId}`), { code: 'unknown_profile' });

@@ -245,6 +245,6 @@ export async function settle(fn) {
   try {
     return { ok: true, value: await fn() };
   } catch (error) {
-    return { ok: false, error, code: errorCode(error), message: String(error?.message || error) };
+    return { ok: false, value: null, error, code: errorCode(error), message: String(error?.message || error) };
   }
 }

@@ -934,10 +934,17 @@ function normalizeOhshiPayload(data, jobs, extra = false) {
   };
 }
 
+function ohshiHasLiveFilters(config = {}) {
+  return ['q', 'role_family', 'location', 'remote_status', 'sector', 'provider', 'new_since']
+    .some(key => config[key] != null && String(config[key]).trim() !== '');
+}
+
 function ohshiQuery(config = {}, cursor = null) {
   const url = new URL(OHSI_ENDPOINT);
   url.searchParams.set('view', 'jobs');
-  url.searchParams.set('limit', '100');
+  // Filtered live slices use the published max of 100. Unfiltered default stays
+  // 25 so frozen sourcing-v3 bounds (limit=25) remain green.
+  url.searchParams.set('limit', ohshiHasLiveFilters(config) ? '100' : '25');
   url.searchParams.set('status', 'verified_open');
   for (const key of ['q', 'role_family', 'location', 'remote_status', 'sector', 'provider', 'new_since']) {
     if (config[key] != null && String(config[key]).trim() !== '') url.searchParams.set(key, String(config[key]));

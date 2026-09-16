@@ -17,7 +17,7 @@
 //   - preview/export payloads are secret-safe (no resume text dumps, no env
 //     secrets) and never claim a sync or send happened
 import { id, now, hashText, tokenize, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
-import { resumeCopy, coverLetterCopy, exportPdf, supportedAchievement } from './documents.js';
+import { resumeCopy, coverLetterCopy, exportPdf, supportedAchievement, buildResumeMaterial } from './documents.js';
 
 // Local, human-reviewable application states. Anything that would attest an
 // external action (applied, submitted, sent, approved, ...) is rejected.
@@ -604,7 +604,7 @@ function buildCoverage(requirements, selected) {
  * present in profile proof points may appear as achievements; no metrics are
  * invented. Persists a review artifact and returns the document content.
  */
-function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir }) {
+function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir, style }) {
   format = String(format).toLowerCase();
   if (!['markdown', 'md', 'text', 'pdf'].includes(format)) throw Object.assign(new Error('Supported document formats: markdown, text, pdf.'), { code: 'unsupported_document_format' });
   const job = requireJobOwned(store, jobId, profileId);
@@ -622,17 +622,20 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   const selectedIds = selected.map(entry => entry.proof.id);
   const coverage = buildCoverage(requirements, selected);
   const selectedProofs = selected.map(entry => entry.proof);
+  let blocks = null;
   const body = kind === 'cover_letter'
     ? coverLetterCopy(profile, job, selectedProofs)
-    : resumeCopy(profile, selectedProofs, Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)), { preferences: profile.preferences, job });
-  // Draft metadata must record the owned selected proofs the copy was built
-  // from, even after display cleanup/paraphrase strips proof labels: match
-  // normalized claim tokens against the rendered copy and fall back to the
-  // requirement-selected proof ids rather than ever reporting an empty list.
-  // Historical/retired proof status can then be computed from the artifact.
-  // rc6: the citation pool is the proof set the copy was actually built from —
-  // for a cover letter that is the requirement-selected proofs only — so a
-  // draft never cites a proof outside selectedProofPointIds.
+    : (() => {
+      const material = buildResumeMaterial(
+        profile,
+        selectedProofs,
+        Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)),
+        { preferences: profile.preferences, job },
+      );
+      blocks = material.blocks;
+      return material.content;
+    })();
+  const styleId = String(style || 'navy').toLowerCase();
   const normClaim = text => tokenize(String(text || '')).join(' ');
   const citationPool = kind === 'cover_letter' ? selectedProofs : proofs;
   const usedProofIds = citationPool.filter(proof => {
@@ -641,8 +644,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     return ` ${normClaim(body)} `.includes(` ${claim} `);
   }).map(proof => proof.id);
   const proofPointIds = usedProofIds.length ? usedProofIds : selectedIds;
-  const pdf = format === 'pdf' ? exportPdf(dataDir, body) : null;
-  const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${format}:${hashText(body).slice(0, 12)}`);
+  const pdf = format === 'pdf' ? exportPdf(dataDir, body, { style: styleId, blocks }) : null;
+  const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${format}:${styleId}:${hashText(body).slice(0, 12)}`);
   const nowIso = now();
   const existingArtifact = ensure(store, 'artifacts')[artifactId];
   // Unchanged regeneration must retain trusted artifact approvals/rejections,
@@ -726,8 +729,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   };
 }
 
-export function tailorResume(store, { jobId, profileId, format = 'markdown', dataDir }) {
-  return buildMaterialDraft(store, { jobId, profileId, kind: 'resume', format, dataDir });
+export function tailorResume(store, { jobId, profileId, format = 'markdown', dataDir, style }) {
+  return buildMaterialDraft(store, { jobId, profileId, kind: 'resume', format, dataDir, style });
 }
 
 export function draftCoverLetter(store, { jobId, profileId, format = 'markdown', dataDir }) {

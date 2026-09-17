@@ -2,6 +2,7 @@
 // stay separate from proof/coverage/review metadata; no posting text is evidence.
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { ensureDataDir, hashText, tokenize } from './store.js';
 import { parseResumeSource, composeResume, resumeBlocks } from './resume-document.js';
 import { renderLatexPdf } from './resume-latex.js';
@@ -555,7 +556,7 @@ export function exportPdf(dataDir, content, options = {}) {
   const rendered = renderLatexPdf(content, options) || renderPdf(content, options);
   const { bytes, ...layout } = rendered;
   const root = ensureDataDir(dataDir);
-  const sha256 = hashText(bytes);
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
   const filePath = path.join(root, `document-${sha256}.pdf`);
   try { fs.writeFileSync(filePath, bytes, { flag: 'wx', mode: 0o600 }); }
   catch (error) {

@@ -90,9 +90,10 @@ function blocksToTex(blocks, style) {
   const out = [];
   const flushItems = (items) => {
     if (!items.length) return;
+    out.push('{\\fontsize{12}{16}\\selectfont');
     out.push('\\begin{itemize}');
     for (const item of items) out.push(`  \\item ${texEscape(item)}`);
-    out.push('\\end{itemize}');
+    out.push('\\end{itemize}}');
     items.length = 0;
   };
   const items = [];
@@ -139,12 +140,14 @@ function blocksToTex(blocks, style) {
     }
     if (block.type === 'summary' || block.type === 'body') {
       flushItems(items);
-      out.push(`${texEscape(block.text)}\\par\\vspace{3pt}`);
+      out.push(`{\\fontsize{12}{15}\\selectfont ${texEscape(block.text)}\\par}\\vspace{3pt}`);
       i += 1;
       continue;
     }
     if (block.type === 'h2') {
       flushItems(items);
+      if (block.text === 'EDUCATION') out.push('\\vspace{84pt}');
+      if (block.text === 'SKILLS') out.push('\\vspace{88pt}');
       out.push(`\\vspace{8pt}{\\color{navy}\\fontsize{9.8}{12}\\selectfont\\bfseries ${texEscape(block.text)}\\par}`);
       out.push('{\\color{rulec}\\rule{\\textwidth}{0.4pt}}\\vspace{3pt}');
       i += 1;
@@ -201,7 +204,7 @@ ${blocksToTex(blocks, style)}
     return {
       bytes,
       pageCount: (bytes.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length || 1,
-      bodyFontSize: 10,
+      bodyFontSize: 12,
       pageSize: 'Letter',
       marginsPt: 40,
       engine: 'tectonic',

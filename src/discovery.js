@@ -637,6 +637,22 @@ export function classifyLiveness(job = {}, opts = {}) {
       nowMs: opts.now ? asEpochMs(opts.now()) : Date.now(),
     });
   }
+  // Live ohshi.work intelligence is a public verified-open listing, not a
+  // manual paste. A public HTTP(S) URL from that adapter is current listing
+  // evidence; stamping manual_import/no_public_url made every live hit
+  // "uncertain" and blocked save→tailor journeys.
+  if (/^https?:\/\//i.test(url) && String(job.source || '') === 'ohshi') {
+    return listingLiveness({
+      url,
+      hint: {
+        kind: 'listed_in_public_ats',
+        request: { requestedUrl: url, httpStatus: 200 },
+      },
+      source: job.source,
+      jobId: job.jobId || job.id,
+      nowMs: opts.now ? asEpochMs(opts.now()) : Date.now(),
+    });
+  }
   return manualUncertainLiveness({ url, source: job.source, jobId: job.jobId || job.id });
 }
 

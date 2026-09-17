@@ -44,8 +44,47 @@ function parseMeta(line) {
   return { title: parts[0] || t, dates: parts.slice(1).join(' | ') };
 }
 
+function splitCompanyLine(line) {
+  const parts = clean(line).split(/\s+[—–-]\s+/);
+  return { company: parts[0], location: parts.slice(1).join(' - ') };
+}
+
+// Unlabelled resumes commonly put an employer line immediately before a
+// `Title | Month Year - Month Year` line. Treat that pair as chronology, not
+// as an achievement bullet. Requiring the following metadata line avoids
+// promoting ordinary prose or a bullet that happens to contain a dash.
+function isCompanyLine(line, nextLine) {
+  const raw = String(line || '').trim();
+  const text = clean(raw);
+  return Boolean(nextLine)
+    && !/^[-*•]\s/.test(raw)
+    && !/@|https?:\/\/|\|/.test(text)
+    && isMeta(nextLine);
+}
+
+function isEducationSchoolLine(line, nextLine) {
+  const raw = String(line || '').trim();
+  return Boolean(nextLine)
+    && !/^[-*•]\s/.test(raw)
+    && /\|\s*(?:19|20)\d{2}\b/.test(clean(nextLine));
+}
+
 function tokenize(text) {
   return String(text || '').toLowerCase().replace(/[^a-z0-9$%]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+}
+
+// Stable, tiny tie-breaker for otherwise-equivalent source bullets. It keeps
+// requirement matches ahead of fallbacks while allowing two distinct postings
+// to choose different truthful evidence when their live summaries expose no
+// discriminating requirements.
+function tailoringTieBreak(job, text) {
+  const seed = `${job?.id || ''}|${job?.title || ''}|${job?.company || ''}|${text}`;
+  let value = 2166136261;
+  for (const character of seed) {
+    value ^= character.charCodeAt(0);
+    value = Math.imul(value, 16777619) >>> 0;
+  }
+  return (value % 1000) / 1_000_000;
 }
 
 export function parseResumeSource(text) {
@@ -68,7 +107,9 @@ export function parseResumeSource(text) {
   };
   let current = null;
 
-  for (const raw of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const raw = lines[index];
+    const nextLine = lines[index + 1] || '';
     if (/^Name:\s*/i.test(raw)) {
       doc.identity = clean(raw.replace(/^Name:\s*/i, ''));
       continue;
@@ -118,14 +159,19 @@ export function parseResumeSource(text) {
 
     if (section === 'experience') {
       if (isHash(raw) && !headingKind(raw)) {
-        const companyLine = clean(raw);
-        const loc = companyLine.split(/\s+[—–-]\s+/);
-        current = pushRole(doc.experience, loc[0]);
-        current.location = loc.slice(1).join(' - ');
-        current.company = loc[0];
+        const parsed = splitCompanyLine(raw);
+        current = pushRole(doc.experience, parsed.company);
+        current.location = parsed.location;
         continue;
       }
-      if (isMeta(raw) && current) {
+      if (isCompanyLine(raw, nextLine)) {
+        const parsed = splitCompanyLine(raw);
+        current = pushRole(doc.experience, parsed.company);
+        current.location = parsed.location;
+        continue;
+      }
+      if (isMeta(raw)) {
+        if (!current) current = pushRole(doc.experience, '');
         const meta = parseMeta(raw);
         current.title = current.title || meta.title;
         current.dates = current.dates || meta.dates;
@@ -137,7 +183,7 @@ export function parseResumeSource(text) {
         continue;
       }
       if (current) current.bullets.push(supportedAchievement(clean(raw)));
-      else if (!current && raw) {
+      else if (raw) {
         current = pushRole(doc.experience, '');
         current.bullets.push(supportedAchievement(clean(raw)));
       }
@@ -165,18 +211,22 @@ export function parseResumeSource(text) {
 
     if (section === 'education') {
       if (isHash(raw) && !headingKind(raw)) {
-        const parts = clean(raw).split(/\s+[—–-]\s+/);
-        current = pushRole(doc.education, parts[0]);
-        current.company = parts[0];
-        current.location = parts.slice(1).join(' - ');
+        const parsed = splitCompanyLine(raw);
+        current = pushRole(doc.education, parsed.company);
+        current.location = parsed.location;
+        continue;
+      }
+      if (isEducationSchoolLine(raw, nextLine)) {
+        const parsed = splitCompanyLine(raw);
+        current = pushRole(doc.education, parsed.company);
+        current.location = parsed.location;
         continue;
       }
       if (current) {
         if (!current.title) current.title = clean(raw);
         else current.bullets.push(clean(raw));
       } else {
-        current = pushRole(doc.education, '');
-        current.title = clean(raw);
+        current = pushRole(doc.education, clean(raw));
       }
       continue;
     }
@@ -194,7 +244,7 @@ export function parseResumeSource(text) {
   return doc;
 }
 
-function rankText(text, selected, posting = '') {
+function rankText(text, selected, posting = '', job = null) {
   const want = selected.map(proof => tokenize(proof.summary || proof).join(' '));
   const have = tokenize(text).join(' ');
   let best = 0;
@@ -217,7 +267,7 @@ function rankText(text, selected, posting = '') {
   if (/implementation/.test(post) && /train-the-trainer|screening/.test(text.toLowerCase())) best -= 30;
   if (/education|instructional|workshop|learner/.test(post) && /train-the-trainer/.test(text.toLowerCase())) best += 50;
   if (/education|instructional|workshop|learner/.test(post) && /200\+/.test(text)) best -= 25;
-  return best;
+  return best + tailoringTieBreak(job, text);
 }
 
 export function selectAchievements(doc, selected = [], job = null) {
@@ -225,11 +275,11 @@ export function selectAchievements(doc, selected = [], job = null) {
   const pool = [];
   for (const role of doc.experience) {
     for (const bullet of role.bullets) {
-      pool.push({ owner: role, kind: 'experience', text: bullet, rank: rankText(bullet, selected, posting) });
+      pool.push({ owner: role, kind: 'experience', text: bullet, rank: rankText(bullet, selected, posting, job) });
     }
   }
   for (const project of doc.projects) {
-    if (project.text) pool.push({ owner: project, kind: 'project', text: project.text, rank: rankText(project.text, selected, posting) });
+    if (project.text) pool.push({ owner: project, kind: 'project', text: project.text, rank: rankText(project.text, selected, posting, job) });
   }
   pool.sort((a, b) => b.rank - a.rank);
   const chosen = [];
@@ -240,13 +290,13 @@ export function selectAchievements(doc, selected = [], job = null) {
     for (const item of pool) {
       if (chosen.includes(item)) continue;
       chosen.push(item);
-      if (chosen.length >= 4) break;
+      if (chosen.length >= 5) break;
     }
   }
   const byOwner = new Map();
   for (const item of chosen) {
     const list = byOwner.get(item.owner) || [];
-    const cap = item.owner === doc.experience[0] ? 3 : 1;
+    const cap = item.owner === doc.experience[0] ? 3 : 2;
     if (list.length >= cap) continue;
     list.push(item);
     byOwner.set(item.owner, list);
@@ -351,7 +401,11 @@ export function resumeBlocks(doc, selected, options = {}) {
   }
   if (doc.skills.length) {
     blocks.push({ type: 'h2', text: 'SKILLS' });
-    for (const line of doc.skills) blocks.push({ type: 'body', text: line });
+    for (const line of doc.skills) {
+      for (const skill of String(line).split(';').map(part => part.trim()).filter(Boolean)) {
+        blocks.push({ type: 'body', text: skill });
+      }
+    }
   }
   return blocks;
 }

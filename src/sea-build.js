@@ -58,6 +58,8 @@ const MODULES = Object.freeze([
   'version.js',
   'store.js',
   'compensation.js',
+  'resume-document.js',
+  'resume-latex.js',
   'documents.js',
   'scoring.js',
   'workflows.js',

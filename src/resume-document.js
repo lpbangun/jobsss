@@ -246,27 +246,25 @@ export function parseResumeSource(text) {
 
 function rankText(text, selected, posting = '', job = null) {
   const want = selected.map(proof => tokenize(proof.summary || proof).join(' '));
-  const have = tokenize(text).join(' ');
-  let best = 0;
+  const tokens = tokenize(text);
+  const have = tokens.join(' ');
+  let evidenceRank = 0;
   for (const [index, item] of want.entries()) {
     if (!item) continue;
-    if (have.includes(item) || (item.includes(have) && have.split(' ').length > 6)) {
-      best = Math.max(best, want.length - index);
+    const itemTokens = item.split(' ').filter(Boolean);
+    if (have === item || (itemTokens.length > 6 && item.startsWith(`${have} `))) {
+      evidenceRank = Math.max(evidenceRank, 100 + want.length - index);
     } else {
-      const overlap = tokenize(text).filter(token => item.split(' ').includes(token)).length;
-      if (overlap >= 6) best = Math.max(best, (want.length - index) * 0.5);
+      const itemSet = new Set(itemTokens);
+      const overlap = new Set(tokens.filter(token => itemSet.has(token))).size;
+      if (overlap >= 6) evidenceRank = Math.max(evidenceRank, 60 + (want.length - index) * 0.5);
     }
   }
+  // Evidence selection is authoritative; posting overlap only breaks ties
+  // among selected claims and cannot promote an unselected source sentence.
   const terms = new Set(tokenize(posting).filter(token => token.length > 4));
-  best += tokenize(text).filter(token => terms.has(token)).length;
-  const post = posting.toLowerCase();
-  if (/people operations|recruiting|coordinator/.test(post) && /screening|interview/.test(text.toLowerCase())) best += 40;
-  if (/education|instructional|workshop|learner/.test(post) && /needs assessments|learning materials/.test(text.toLowerCase())) best += 40;
-  if (/education|instructional/.test(post) && /screening/.test(text.toLowerCase())) best -= 30;
-  if (/implementation/.test(post) && /200\+|rural communities/.test(text.toLowerCase())) best += 40;
-  if (/implementation/.test(post) && /train-the-trainer|screening/.test(text.toLowerCase())) best -= 30;
-  if (/education|instructional|workshop|learner/.test(post) && /train-the-trainer/.test(text.toLowerCase())) best += 50;
-  if (/education|instructional|workshop|learner/.test(post) && /200\+/.test(text)) best -= 25;
+  const relevance = [...new Set(tokens)].filter(token => terms.has(token)).length;
+  const best = evidenceRank + Math.min(relevance, 12) * 0.25;
   return best + tailoringTieBreak(job, text);
 }
 
@@ -278,20 +276,35 @@ export function selectAchievements(doc, selected = [], job = null) {
       pool.push({ owner: role, kind: 'experience', text: bullet, rank: rankText(bullet, selected, posting, job) });
     }
   }
-  for (const project of doc.projects) {
-    if (project.text) pool.push({ owner: project, kind: 'project', text: project.text, rank: rankText(project.text, selected, posting, job) });
-  }
   pool.sort((a, b) => b.rank - a.rank);
   const chosen = [];
+  const selectionLimit = Math.min(5, Math.max(4, selected.length));
   for (const item of pool) {
-    if (item.rank > 0 && chosen.length < 8) chosen.push(item);
+    if (item.rank > 0 && chosen.length < selectionLimit) chosen.push(item);
   }
   if (chosen.length < 4) {
     for (const item of pool) {
       if (chosen.includes(item)) continue;
       chosen.push(item);
-      if (chosen.length >= 5) break;
+      if (chosen.length >= 4) break;
     }
+  }
+  // Preserve role coverage inside the same compact evidence budget. If a
+  // high-scoring set omits a dated role, replace the lowest-scoring duplicate
+  // owner rather than appending an unbounded fallback bullet later.
+  const ownerCount = owner => chosen.filter(item => item.owner === owner).length;
+  for (const role of doc.experience) {
+    if (chosen.some(item => item.owner === role)) continue;
+    const roleCandidates = pool.filter(item => item.owner === role && !chosen.includes(item));
+    const candidate = roleCandidates.find(item => item.rank >= 60)
+      || roleCandidates[0];
+    if (!candidate) continue;
+    const replaceable = [...chosen]
+      .filter(item => ownerCount(item.owner) > 1)
+      .sort((a, b) => a.rank - b.rank)[0]
+      || [...chosen].sort((a, b) => a.rank - b.rank)[0];
+    if (replaceable) chosen.splice(chosen.indexOf(replaceable), 1);
+    chosen.push(candidate);
   }
   const byOwner = new Map();
   for (const item of chosen) {

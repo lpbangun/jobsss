@@ -6,6 +6,8 @@ import { createHash } from 'node:crypto';
 import { ensureDataDir, hashText, tokenize } from './store.js';
 import { parseResumeSource, composeResume, resumeBlocks } from './resume-document.js';
 import { renderLatexPdf } from './resume-latex.js';
+import { compileResumeDocument, canonicalResumeSource } from './resume-compiler.js';
+import { renderResumeDocument } from './resume-ir-latex.js';
 
 function clean(value) {
   return String(value || '').replace(/^#{1,6}\s*/, '').replace(/^[-*•]\s*/, '')
@@ -192,7 +194,8 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
   pool.sort((a, b) => b.rank - a.rank);
   // Global 4-6: keep every dated role, emphasize relevant achievements
   // within it, overflow selected material under its own heading.
-  const chosen = new Set(pool.filter(item => item.rank > 0).slice(0, 6));
+  const selectionLimit = Math.min(5, Math.max(4, selected.length));
+  const chosen = new Set(pool.filter(item => item.rank > 0).slice(0, selectionLimit));
   if (chosen.size < 4) for (const item of pool) { if (chosen.size >= 4) break; chosen.add(item); }
   const placed = new Set();
   const output = [identity, contacts.join(' | '), '', 'EXPERIENCE'];
@@ -220,10 +223,21 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
 
 export function buildResumeMaterial(profile, selected = [], omittedProofs = [], options = {}) {
   const source = String(profile.resumeText || '');
+  if (canonicalResumeSource(source) && options.job?.company === 'Unknown company') {
+    const canonical = compileResumeDocument({
+      profileText: source,
+      postingText: options.job?.description || '',
+      profileId: profile.id,
+      job: options.job,
+      label: options.label || 'A',
+      designId: options.designId || `design-${String(options.label || 'A').toLowerCase()}`,
+    });
+    return { content: canonical.content, blocks: canonical.blocks, parsed: canonical.profile, canonical };
+  }
   const explicitName = source.split(/\r?\n/).some(line => /^Name:\s*/i.test(line.trim()));
   const parsed = parseResumeSource(source);
   const opts = { preferences: options.preferences ?? profile?.preferences, job: options.job };
-  if (!explicitName && (parsed.experience.some(role => role.company) || parsed.education.some(role => role.company))) {
+  if (!explicitName && parsed.experience.some(role => role.company)) {
     const composed = composeResume(parsed, selected, opts);
     return { content: composed.content, blocks: resumeBlocks(parsed, selected, opts), parsed };
   }
@@ -237,7 +251,7 @@ export function resumeCopy(profile, selected = [], omittedProofs = [], options =
   const explicitName = lines.find(line => /^Name:\s*/i.test(line));
   if (!explicitName) {
     const parsed = parseResumeSource(source);
-    if (parsed.experience.some(role => role.company) || parsed.education.some(role => role.company)) {
+    if (parsed.experience.some(role => role.company)) {
       return composeResume(parsed, selected, { preferences: options.preferences ?? profile?.preferences, job: options.job }).content;
     }
   }
@@ -415,7 +429,7 @@ export function renderPdf(content, options = {}) {
   const navy = style === 'navy';
   const editorial = style === 'editorial';
   const scan = style === 'scan';
-  const margin = editorial ? 40 : 32;
+  const margin = editorial ? 32 : scan ? 24 : 28;
   const maxWidth = 612 - margin * 2;
   let pages, bodyFontSize;
   for (const size of [10.5, 10]) {
@@ -427,7 +441,7 @@ export function renderPdf(content, options = {}) {
       y = item.y - item.leading;
     };
     const place = (text, fontSize, bold, opts = {}) => {
-      const leading = fontSize * (opts.leading || (editorial ? 1.42 : 1.4));
+      const leading = fontSize * (opts.leading || (editorial ? 1.32 : 1.25));
       const widthLimit = opts.width || maxWidth;
       const lines = wrap(text, fontSize, bold, widthLimit);
       if (opts.keep && y - leading * lines.length < margin + 24) {
@@ -435,7 +449,7 @@ export function renderPdf(content, options = {}) {
         y = 760;
       }
       for (const line of lines) {
-        if (y < margin + leading) { pages.push([]); y = 760; }
+        if (y < margin) { pages.push([]); y = 760; }
         const x = opts.x != null ? opts.x
           : (opts.align === 'center' ? margin + (widthLimit - width(line, fontSize, bold)) / 2
             : opts.align === 'right' ? 612 - margin - width(line, fontSize, bold) : margin);
@@ -447,7 +461,7 @@ export function renderPdf(content, options = {}) {
       }
     };
     for (const block of blocks) {
-      if (block.type === 'spacer') { y -= size * 0.35; continue; }
+      if (block.type === 'spacer') { y -= size * 0.15; continue; }
       if (block.type === 'name') {
         place(block.text, editorial ? 20 : scan ? 18 : 18, true, {
           align: editorial ? 'center' : 'left',
@@ -553,7 +567,9 @@ export function renderPdf(content, options = {}) {
 }
 
 export function exportPdf(dataDir, content, options = {}) {
-  const rendered = renderLatexPdf(content, options) || renderPdf(content, options);
+  const rendered = options.document
+    ? (renderResumeDocument(options.document, { style: options.style, requireLatex: true, sourceDateEpoch: options.sourceDateEpoch }) || renderPdf(content, options))
+    : (renderPdf(content, options) || renderLatexPdf(content, options));
   const { bytes, ...layout } = rendered;
   const root = ensureDataDir(dataDir);
   const sha256 = createHash('sha256').update(bytes).digest('hex');

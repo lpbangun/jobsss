@@ -194,7 +194,7 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
   pool.sort((a, b) => b.rank - a.rank);
   // Global 4-6: keep every dated role, emphasize relevant achievements
   // within it, overflow selected material under its own heading.
-  const selectionLimit = Math.min(5, Math.max(4, selected.length));
+  const selectionLimit = Math.min(6, Math.max(4, selected.length));
   const chosen = new Set(pool.filter(item => item.rank > 0).slice(0, selectionLimit));
   if (chosen.size < 4) for (const item of pool) { if (chosen.size >= 4) break; chosen.add(item); }
   const placed = new Set();
@@ -569,7 +569,7 @@ export function renderPdf(content, options = {}) {
 export function exportPdf(dataDir, content, options = {}) {
   const rendered = options.document
     ? (renderResumeDocument(options.document, { style: options.style, requireLatex: true, sourceDateEpoch: options.sourceDateEpoch }) || renderPdf(content, options))
-    : (renderPdf(content, options) || renderLatexPdf(content, options));
+    : (renderLatexPdf(content, options) || renderPdf(content, options));
   const { bytes, ...layout } = rendered;
   const root = ensureDataDir(dataDir);
   const sha256 = createHash('sha256').update(bytes).digest('hex');

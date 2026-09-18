@@ -278,7 +278,10 @@ export function selectAchievements(doc, selected = [], job = null) {
   }
   pool.sort((a, b) => b.rank - a.rank);
   const chosen = [];
-  const selectionLimit = Math.min(5, Math.max(4, selected.length));
+  // Keep enough ranked evidence available for the per-role ownership caps
+  // below. A small selected-proof set must not collapse a dated role to one
+  // bullet merely because the posting had few lexical matches.
+  const selectionLimit = 8;
   for (const item of pool) {
     if (item.rank > 0 && chosen.length < selectionLimit) chosen.push(item);
   }

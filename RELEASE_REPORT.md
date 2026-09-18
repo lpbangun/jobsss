@@ -19,7 +19,7 @@ The release pipeline still uses the sole native implementation in `src/packaging
 Complete evidence is recorded once:
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `be2936dfd4b0c1f86bd1f5861feaaadc723c55fb1254229f3e5dd0945b227c22`
+- SHA-256: `6fee7a11228612099c0642634b59d4e4a322ddcc2135c453e16a1b565444526c`
 - Exact reproduction command:
 
 ```bash

@@ -9,6 +9,7 @@ const MONTH = '(?:January|February|March|April|May|June|July|August|September|Oc
 const ROLE_DATE_RE = new RegExp(`^${MONTH}\\.?\\s+\\d{4}\\s*[–—-]\\s*(?:${MONTH}\\.?\\s+\\d{4}|Present)$`, 'i');
 const GENERIC_JOB_TITLE_RE = /^(?:Imported role|Unknown role)$/i;
 const OUTCOME_RE = /\b(?:fell|dropped|reduced|improved|climbed|cut|grew|increased|closed|adopted|reached|eliminated)\b/i;
+const PROJECT_SUBSTANTIVE_RE = /\b(?:fell|dropped|reduced|improved|climbed|cut|grew|increased|closed|adopted|reached|eliminated|built|created|designed|shipped|launched|delivered|automated|migrated|used by|adopted by)\b/i;
 const WEAK_REQUIREMENT_TOKENS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'for', 'from', 'have', 'in',
   'into', 'is', 'of', 'on', 'or', 'our', 'the', 'to', 'with', 'across',
@@ -60,6 +61,54 @@ function metricAtoms(value) {
 
 function stripTrailingPeriod(value) {
   return String(value ?? '').replace(/[.]+$/, '');
+}
+
+function sentence(value) {
+  const text = stripTrailingPeriod(value).trim();
+  return text ? text + '.' : '';
+}
+
+function joinList(values) {
+  const items = values.filter(Boolean);
+  if (items.length <= 1) return items[0] || '';
+  if (items.length === 2) return items[0] + ' and ' + items[1];
+  return items.slice(0, -1).join(', ') + ', and ' + items.at(-1);
+}
+
+function contentTokens(value) {
+  return unique(tokens(value).filter(token => token.length > 2 && !FUNCTION_WORDS.has(token) && !/^\d+$/.test(token)));
+}
+
+function projectItemHasSubstantiveEvidence(item) {
+  return metricAtoms(item.text).length > 0 || PROJECT_SUBSTANTIVE_RE.test(item.text);
+}
+
+function selectProjects(projects, experience) {
+  const experienceText = experience
+    .flatMap(role => [role.employer, role.title, role.dates, ...role.bullets.map(bullet => bullet.text)])
+    .join(' ');
+  const normalizedExperience = normalize(experienceText);
+  const experienceTokens = new Set(contentTokens(experienceText));
+
+  return projects.map(project => {
+    const titleTokens = contentTokens(project.title).filter(token => !/^\d+$/.test(token));
+    const titlePhrase = normalize(titleTokens.join(' '));
+    const titleOverlapsExperience = titleTokens.length >= 2
+      && (titlePhrase && normalizedExperience.includes(titlePhrase)
+        || titleTokens.filter(token => experienceTokens.has(token)).length / titleTokens.length >= 0.75);
+    if (!titleOverlapsExperience) return project.items.length ? project : null;
+
+    const uniqueSubstantiveItems = project.items.filter(item => {
+      if (!projectItemHasSubstantiveEvidence(item)) return false;
+      const itemTokens = contentTokens(item.text);
+      const overlap = itemTokens.length
+        ? itemTokens.filter(token => experienceTokens.has(token)).length / itemTokens.length
+        : 0;
+      const exactDuplicate = normalize(item.text) && normalizedExperience.includes(normalize(item.text));
+      return !exactDuplicate && overlap < 0.8;
+    });
+    return uniqueSubstantiveItems.length ? { ...project, items: uniqueSubstantiveItems } : null;
+  }).filter(Boolean);
 }
 
 function isCompanyLine(line, next) {
@@ -367,20 +416,26 @@ function makeClaimFactory(profile, profileId) {
 
 function buildSummary(profile, claims) {
   const sourceSummary = profile.summary.trim();
-  const role = profile.experience[0];
-  const firstClaims = profile.experience.flatMap(item => item.bullets).slice(0, 2).map(item => stripTrailingPeriod(item.text));
-  let text;
-  if (sourceSummary) {
-    const additions = firstClaims.length ? firstClaims : profile.experience.flatMap(item => item.bullets).slice(0, 1).map(item => stripTrailingPeriod(item.text));
-    text = [sourceSummary, ...additions].join('. ') + (additions.length ? '.' : '');
-  } else {
-    const skills = profile.skills.flatMap(group => group.items).slice(0, 6);
-    const opening = [role?.title, skills.length ? `with ${skills.join(', ')} experience` : 'with experience'].filter(Boolean).join(' ');
-    text = `${opening}. ${firstClaims.join('; ')}.`;
-  }
-  const normalized = text.replace(/\.\s*\./g, '.').trim();
-  const summaryClaims = claims.filter(claim => claim.status === 'active');
-  return { text: normalized, claimIds: summaryClaims.map(claim => claim.claimId) };
+  const roleTitles = unique(profile.experience.map(role => role.title.trim()).filter(Boolean));
+  const primaryTitle = roleTitles[0] || '';
+  const skills = unique(profile.skills.flatMap(group => group.items.map(item => item.trim())).filter(Boolean)).slice(0, 10);
+  const sentences = [];
+
+  if (sourceSummary) sentences.push(sentence(sourceSummary));
+  const descriptor = [
+    primaryTitle,
+    skills.length ? 'with ' + joinList(skills) + ' experience' : primaryTitle ? 'with experience' : '',
+  ].filter(Boolean).join(' ');
+  if (descriptor) sentences.push(sentence(descriptor));
+  if (!sourceSummary && roleTitles.length > 1) sentences.push(sentence('Experience spans ' + joinList(roleTitles) + ' roles'));
+  if (!sentences.length) sentences.push('Experience grounded in the supplied profile.');
+
+  const skillQuotes = new Set(profile.skills.map(group => sourceQuote(group.sourceLine)));
+  const preferredClaims = claims.filter(claim => claim.status === 'active'
+    && (skillQuotes.has(claim.sourceQuote) || (sourceSummary && claim.sourceQuote === sourceSummary)));
+  const fallbackClaims = claims.filter(claim => claim.status === 'active' && !preferredClaims.includes(claim));
+  const summaryClaims = [...preferredClaims, ...fallbackClaims].slice(0, Math.max(2, preferredClaims.length));
+  return { text: sentences.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(), claimIds: summaryClaims.map(claim => claim.claimId) };
 }
 
 function node(nodes, input) {
@@ -441,6 +496,7 @@ export function compileResumeDocument({ profileText, postingText = '', profileId
   for (const role of profile.experience) {
     for (const bullet of role.bullets) factory.add({ quote: bullet.sourceQuote, roleIndex: role.index });
   }
+  if (profile.summary.trim()) factory.add({ quote: profile.summary });
   for (const group of profile.skills) factory.add({ quote: group.sourceLine });
   for (const item of profile.education) factory.add({ quote: item.sourceQuote });
   for (const project of profile.projects) {
@@ -480,7 +536,7 @@ export function compileResumeDocument({ profileText, postingText = '', profileId
       if (selectedCount() >= 8) break;
     }
   }
-  const achievementText = value => /^Co-owned\s+/i.test(value) ? value.replace(/^Co-owned\s+/i, 'Co-owned with ') : value;
+  const selectedProjects = selectProjects(profile.projects, profile.experience);
   const nodes = [];
   node(nodes, { type: 'name', text: profile.name, structuralReason: 'Candidate identity copied from the source profile header.' });
   node(nodes, { type: 'contact', text: profile.contact, structuralReason: 'Contact line copied from the source profile header.' });
@@ -497,15 +553,15 @@ export function compileResumeDocument({ profileText, postingText = '', profileId
     for (const bullet of selectedByRole.get(role) || []) {
       node(nodes, {
         type: 'achievement',
-        text: achievementText(bullet.text),
+        text: bullet.text,
         claimIds: claimIdsFor(factory, bullet.sourceQuote, role.index),
         roleRef: { employer: role.employer, title: role.title, dates: role.dates, roleIndex: role.index },
       });
     }
   }
-  if (profile.projects.length) {
+  if (selectedProjects.length) {
     node(nodes, { type: 'section_heading', text: 'PROJECTS', structuralReason: 'Source projects section heading.' });
-    for (const project of profile.projects) {
+    for (const project of selectedProjects) {
       node(nodes, { type: 'project', text: project.title, claimIds: claimIdsFor(factory, project.sourceQuote), structuralReason: null });
       for (const item of project.items) node(nodes, { type: 'project_item', text: item.text, claimIds: claimIdsFor(factory, item.sourceQuote), structuralReason: null });
     }

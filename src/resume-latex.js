@@ -147,7 +147,7 @@ function blocksToTex(blocks, style) {
     if (block.type === 'h2') {
       flushItems(items);
       if (block.text === 'EDUCATION') out.push('\\vspace{84pt}');
-      if (block.text === 'SKILLS') out.push('\\vspace{88pt}');
+      if (block.text === 'SKILLS') out.push('\\vspace{56pt}');
       out.push(`\\vspace{8pt}{\\color{navy}\\fontsize{9.8}{12}\\selectfont\\bfseries ${texEscape(block.text)}\\par}`);
       out.push('{\\color{rulec}\\rule{\\textwidth}{0.4pt}}\\vspace{3pt}');
       i += 1;

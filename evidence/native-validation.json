@@ -5,7 +5,7 @@
       "arch": "arm64",
       "basename": "injected-darwin-arm64",
       "case": "darwin-arm64",
-      "executableOutputSha256": "76d60f9e847963452572b983df02c3633133d0a5f59d76547932bcb28c53bde6",
+      "executableOutputSha256": "2b5f1540f464c9e6285fc5b3c844db56814fe5720deeedeb3c342529f51a6850",
       "format": "macho",
       "kind": "macho",
       "macho": {
@@ -30,10 +30,10 @@
         "NODE_SEA": {
           "cmd": 25,
           "fileAligned": true,
-          "fileEnd": 87162196,
+          "fileEnd": 87162244,
           "fileInBounds": true,
           "fileoff": 86605824,
-          "filesize": 556372,
+          "filesize": 556420,
           "name": "segment_command_64",
           "nsects": 1,
           "sections": [
@@ -43,7 +43,7 @@
               "offset": 86605824,
               "sectname": "__NODE_SEA_BLOB",
               "segname": "NODE_SEA",
-              "size": 556372
+              "size": 556420
             }
           ],
           "segname": "NODE_SEA",
@@ -57,7 +57,7 @@
           "offset": 86605824,
           "sectname": "__NODE_SEA_BLOB",
           "segname": "NODE_SEA",
-          "size": 556372
+          "size": 556420
         },
         "chainedFixups": {
           "present": false
@@ -289,10 +289,10 @@
           {
             "cmd": 25,
             "fileAligned": true,
-            "fileEnd": 87162196,
+            "fileEnd": 87162244,
             "fileInBounds": true,
             "fileoff": 86605824,
-            "filesize": 556372,
+            "filesize": 556420,
             "name": "segment_command_64",
             "nsects": 1,
             "sections": [
@@ -302,7 +302,7 @@
                 "offset": 86605824,
                 "sectname": "__NODE_SEA_BLOB",
                 "segname": "NODE_SEA",
-                "size": 556372
+                "size": 556420
               }
             ],
             "segname": "NODE_SEA",
@@ -610,14 +610,14 @@
             "kind": "segment",
             "name": "NODE_SEA",
             "offset": 86605824,
-            "size": 556372
+            "size": 556420
           },
           {
             "inBounds": true,
             "kind": "section",
             "name": "NODE_SEA/__NODE_SEA_BLOB",
             "offset": 86605824,
-            "size": 556372
+            "size": 556420
           },
           {
             "inBounds": true,
@@ -751,8 +751,8 @@
         },
         "hasCodeSignature": false,
         "ncmds": 20,
-        "payloadLength": 556372,
-        "payloadSha256": "a61e90a4012ead6855c2c8923d42bd90927b66b313bd613f1500a60787a014eb",
+        "payloadLength": 556420,
+        "payloadSha256": "8701c7d64068ef82e39b2c31710d9997a7a11471a9c460725c481b099a64227a",
         "segmentOrder": [
           "__PAGEZERO",
           "__TEXT",
@@ -771,7 +771,7 @@
           "symoff": 88766176
         }
       },
-      "sha256": "76d60f9e847963452572b983df02c3633133d0a5f59d76547932bcb28c53bde6",
+      "sha256": "2b5f1540f464c9e6285fc5b3c844db56814fe5720deeedeb3c342529f51a6850",
       "validators": {
         "macholib": "1.16.3",
         "pefile": "2024.8.26"
@@ -781,7 +781,7 @@
       "arch": "x64",
       "basename": "injected-darwin-x64",
       "case": "darwin-x64",
-      "executableOutputSha256": "f3aad49bab77baf29044a8c06f4e5971ff0054bc769433433001bfdc3a6960b9",
+      "executableOutputSha256": "7062a1740c9ed19b84189702503040217c16ed56e29797f0a59fb2ed53a78b0c",
       "format": "macho",
       "kind": "macho",
       "macho": {
@@ -806,10 +806,10 @@
         "NODE_SEA": {
           "cmd": 25,
           "fileAligned": true,
-          "fileEnd": 89406804,
+          "fileEnd": 89406852,
           "fileInBounds": true,
           "fileoff": 88850432,
-          "filesize": 556372,
+          "filesize": 556420,
           "name": "segment_command_64",
           "nsects": 1,
           "sections": [
@@ -819,7 +819,7 @@
               "offset": 88850432,
               "sectname": "__NODE_SEA_BLOB",
               "segname": "NODE_SEA",
-              "size": 556372
+              "size": 556420
             }
           ],
           "segname": "NODE_SEA",
@@ -833,7 +833,7 @@
           "offset": 88850432,
           "sectname": "__NODE_SEA_BLOB",
           "segname": "NODE_SEA",
-          "size": 556372
+          "size": 556420
         },
         "chainedFixups": {
           "present": false
@@ -1065,10 +1065,10 @@
           {
             "cmd": 25,
             "fileAligned": true,
-            "fileEnd": 89406804,
+            "fileEnd": 89406852,
             "fileInBounds": true,
             "fileoff": 88850432,
-            "filesize": 556372,
+            "filesize": 556420,
             "name": "segment_command_64",
             "nsects": 1,
             "sections": [
@@ -1078,7 +1078,7 @@
                 "offset": 88850432,
                 "sectname": "__NODE_SEA_BLOB",
                 "segname": "NODE_SEA",
-                "size": 556372
+                "size": 556420
               }
             ],
             "segname": "NODE_SEA",
@@ -1386,14 +1386,14 @@
             "kind": "segment",
             "name": "NODE_SEA",
             "offset": 88850432,
-            "size": 556372
+            "size": 556420
           },
           {
             "inBounds": true,
             "kind": "section",
             "name": "NODE_SEA/__NODE_SEA_BLOB",
             "offset": 88850432,
-            "size": 556372
+            "size": 556420
           },
           {
             "inBounds": true,
@@ -1527,8 +1527,8 @@
         },
         "hasCodeSignature": false,
         "ncmds": 20,
-        "payloadLength": 556372,
-        "payloadSha256": "a61e90a4012ead6855c2c8923d42bd90927b66b313bd613f1500a60787a014eb",
+        "payloadLength": 556420,
+        "payloadSha256": "8701c7d64068ef82e39b2c31710d9997a7a11471a9c460725c481b099a64227a",
         "segmentOrder": [
           "__PAGEZERO",
           "__TEXT",
@@ -1547,7 +1547,7 @@
           "symoff": 91027952
         }
       },
-      "sha256": "f3aad49bab77baf29044a8c06f4e5971ff0054bc769433433001bfdc3a6960b9",
+      "sha256": "7062a1740c9ed19b84189702503040217c16ed56e29797f0a59fb2ed53a78b0c",
       "validators": {
         "macholib": "1.16.3",
         "pefile": "2024.8.26"
@@ -1557,7 +1557,7 @@
       "arch": "x64",
       "basename": "injected-win-x64.exe",
       "case": "win-x64-after",
-      "executableOutputSha256": "42bc3dfe040d0bcc27b250c0c211cdeef205d95f9e80e79159251f043cd54d8f",
+      "executableOutputSha256": "a6ec29cd2f900cc8482cb1899003798bbc804d9fd926255ef632b6b110f09029",
       "format": "pe",
       "kind": "pe",
       "pe": {
@@ -1647,15 +1647,15 @@
         "overlayOffset": null,
         "overlaySha256": null,
         "overlaySize": 0,
-        "payloadLength": 556372,
-        "payloadSha256": "a61e90a4012ead6855c2c8923d42bd90927b66b313bd613f1500a60787a014eb",
+        "payloadLength": 556420,
+        "payloadSha256": "8701c7d64068ef82e39b2c31710d9997a7a11471a9c460725c481b099a64227a",
         "resourcePreservation": {
           "added": [
             {
               "language": "0",
               "name": "NODE_SEA_BLOB",
-              "sha256": "a61e90a4012ead6855c2c8923d42bd90927b66b313bd613f1500a60787a014eb",
-              "size": 556372,
+              "sha256": "8701c7d64068ef82e39b2c31710d9997a7a11471a9c460725c481b099a64227a",
+              "size": 556420,
               "type": "RT_RCDATA"
             }
           ],
@@ -1713,8 +1713,8 @@
           {
             "language": "0",
             "name": "NODE_SEA_BLOB",
-            "sha256": "a61e90a4012ead6855c2c8923d42bd90927b66b313bd613f1500a60787a014eb",
-            "size": 556372,
+            "sha256": "8701c7d64068ef82e39b2c31710d9997a7a11471a9c460725c481b099a64227a",
+            "size": 556420,
             "type": "RT_RCDATA"
           },
           {
@@ -1796,7 +1796,7 @@
           "size": 0
         }
       },
-      "sha256": "42bc3dfe040d0bcc27b250c0c211cdeef205d95f9e80e79159251f043cd54d8f",
+      "sha256": "a6ec29cd2f900cc8482cb1899003798bbc804d9fd926255ef632b6b110f09029",
       "validators": {
         "macholib": "1.16.3",
         "pefile": "2024.8.26"
@@ -2087,8 +2087,8 @@
   ],
   "officialNodeVersion": "22.22.3",
   "payload": {
-    "length": 556372,
-    "sha256": "a61e90a4012ead6855c2c8923d42bd90927b66b313bd613f1500a60787a014eb"
+    "length": 556420,
+    "sha256": "8701c7d64068ef82e39b2c31710d9997a7a11471a9c460725c481b099a64227a"
   },
   "productVersion": "0.1.0",
   "publishedBase": "a380827d3cfd58c7c4dca014a109ead0326db18c",

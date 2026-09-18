@@ -278,10 +278,10 @@ export function selectAchievements(doc, selected = [], job = null) {
   }
   pool.sort((a, b) => b.rank - a.rank);
   const chosen = [];
-  // Keep enough ranked evidence available for the per-role ownership caps
-  // below. A small selected-proof set must not collapse a dated role to one
-  // bullet merely because the posting had few lexical matches.
-  const selectionLimit = 8;
+  // Keep a compact, requirement-sensitive evidence set. The extra context
+  // slot preserves role coverage without making every target emit the full
+  // source bullet pool when the selected proof set is smaller.
+  const selectionLimit = Math.min(6, Math.max(4, selected.length + 1));
   for (const item of pool) {
     if (item.rank > 0 && chosen.length < selectionLimit) chosen.push(item);
   }

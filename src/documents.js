@@ -432,7 +432,7 @@ export function renderPdf(content, options = {}) {
   const margin = editorial ? 32 : scan ? 24 : 28;
   const maxWidth = 612 - margin * 2;
   let pages, bodyFontSize;
-  for (const size of [10.5, 10]) {
+  for (const size of [10.5, 10, 9.5]) {
     pages = [[]];
     let y = 778;
     const color = navy ? '0.145 0.235 0.314' : '0 0 0';

@@ -48,15 +48,14 @@
     },
     "claude": {
       "id": "claude",
-      "status": "verified",
+      "status": "unverified",
       "loading": "native",
       "version": "2.1.222",
       "versionObservedAt": "2026-09-07T03:00:00Z",
-      "versionNote": "availability observation only (binary present); not a new integration verification, status unchanged",
+      "versionNote": "historical availability observation from 2026-09-07 while the binary was present; not current and not integration verification",
       "adapter": "compat/claude/mcp.json.template",
       "probe": "./bin/jobsss compat-probe --client claude --config-dir <temp> --plugin-root <plugin>",
-      "verifiedBy": "real isolated launch: claude mcp list reported the jobsss stdio server as Connected under a temporary CLAUDE_CONFIG_DIR",
-      "notes": "verified by the compat-probe isolated launch; unverified clients and platforms are never claimed as verified."
+      "notes": "unverified: the Claude executable is absent on this host, so the real isolated compat-probe returns unverified; no current Claude launch was verified. The version above is historical availability context only."
     }
   },
   "targets": {
@@ -80,6 +79,6 @@
     "language": "local preparation and local drafts stay local; an externally observed application status is human observation recorded via the trusted local surface and attributed to the human, never to JobSSS; unsupported behavior (external sending, submission, scheduling, browser automation) is blocked or unavailable and never claimed.",
     "never": "unproven clients and platforms are labeled unverified; nothing implies this plugin performed an external send, submission, or application action."
   },
-  "updated": "2026-09-07T03:00:00Z",
+  "updated": "2026-09-18T19:26:21Z",
   "versionPolicy": "client version strings are last-observed availability notes, never integration proof; only a real isolated launch sets verified"
 }

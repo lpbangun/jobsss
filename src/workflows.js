@@ -17,7 +17,7 @@
 //   - preview/export payloads are secret-safe (no resume text dumps, no env
 //     secrets) and never claim a sync or send happened
 import { id, now, hashText, tokenize, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
-import { resumeCopy, coverLetterCopy, exportPdf, supportedAchievement } from './documents.js';
+import { resumeCopy, coverLetterCopy, exportPdf, supportedAchievement, buildResumeMaterial } from './documents.js';
 
 // Local, human-reviewable application states. Anything that would attest an
 // external action (applied, submitted, sent, approved, ...) is rejected.
@@ -473,12 +473,25 @@ function requirementCategoryFor(sourceText, section) {
   return 'skill';
 }
 
+function normalizeMatchToken(term) {
+  const value = String(term || '').toLowerCase();
+  if (value.length > 5 && value.endsWith('ing')) return value.slice(0, -3);
+  if (value.length > 4 && value.endsWith('ed')) {
+    const root = value.slice(0, -2);
+    if (root.endsWith('at')) return `${root}e`;
+    if (root.endsWith('ign')) return `${root}n`;
+    return root;
+  }
+  if (value.length > 4 && value.endsWith('s')) return value.slice(0, -1);
+  return value;
+}
+
 function requirementMatchTerms(sourceText) {
   const lower = String(sourceText || '').toLowerCase();
   const phrases = REQUIREMENT_SKILL_PHRASES.filter(term => lower.includes(term));
   const words = tokenize(sourceText).filter(term => !REQUIREMENT_STOP.has(term) && !/^\d+$/.test(term));
-  const informative = words.filter(term => term.length >= 4).slice(0, 10);
-  return [...new Set([...phrases.flatMap(term => tokenize(term)), ...informative])].slice(0, 12);
+  const informative = words.filter(term => term.length >= 4).map(normalizeMatchToken).slice(0, 10);
+  return [...new Set([...phrases.flatMap(term => tokenize(term).map(normalizeMatchToken)), ...informative])].slice(0, 12);
 }
 
 function requirementLine(line, section) {
@@ -531,7 +544,7 @@ function extractRequirements(job = {}) {
 
 function proofTermSet(proof) {
   const skills = Array.isArray(proof.skills) ? proof.skills : [];
-  return new Set(tokenize(`${String(proof.summary || '')} ${skills.join(' ')}`));
+  return new Set(tokenize(`${String(proof.summary || '')} ${skills.join(' ')}`).map(normalizeMatchToken));
 }
 
 function proofStrengthForRequirement(requirement, proof) {
@@ -565,12 +578,40 @@ function selectRelevantProofs(store, profileId, requirements) {
         totalStrength += match.strength;
       }
     }
-    entries.push({ proof, matches, totalStrength });
+    const summary = String(proof.summary || '');
+    const metrics = Array.isArray(proof.metrics) ? proof.metrics.length : 0;
+    const quantified = /\b\d[\d,]*(?:\+|%)/i.test(summary)
+      || /\b\d[\d,]*\s+(?:participants?|users?|customers?|communities|leaders|teams?|projects?|years?|months?)\b/i.test(summary);
+    const outcome = /\b(?:increased|improved|reduced|cut|raised|grew|delivered|launched|built|created|designed|trained|automated)\b/i.test(summary);
+    const evidenceQuality = Math.min(metrics, 2) * 0.75 + (quantified ? 1.5 : 0) + (outcome ? 0.25 : 0);
+    entries.push({ proof, matches, totalStrength, rankStrength: totalStrength + evidenceQuality });
   }
   const ranked = entries.sort((a, b) =>
-    b.totalStrength - a.totalStrength || String(a.proof.id).localeCompare(String(b.proof.id))
+    b.rankStrength - a.rankStrength || String(a.proof.id).localeCompare(String(b.proof.id))
   );
-  const selected = ranked.filter(entry => entry.totalStrength > 0).slice(0, 8);
+  const relevant = ranked.filter(entry => entry.totalStrength > 0);
+  // Keep a compact, job-specific evidence set: enough depth for a readable
+  // resume, while greedily covering distinct must-have requirements before
+  // filling any remaining slots by overall evidence strength.
+  const selectionLimit = Math.min(5, Math.max(4, Math.ceil(relevant.length * 0.75)));
+  const uncovered = new Set(requirements.filter(item => item.priority === 'must_have').map(item => item.id));
+  const selected = [];
+  while (selected.length < selectionLimit && selected.length < relevant.length) {
+    const candidates = relevant.filter(entry => !selected.includes(entry));
+    candidates.sort((a, b) => {
+      const aNew = a.matches.filter(match => uncovered.has(match.requirementId));
+      const bNew = b.matches.filter(match => uncovered.has(match.requirementId));
+      const aStrength = aNew.reduce((sum, match) => sum + match.strength, 0);
+      const bStrength = bNew.reduce((sum, match) => sum + match.strength, 0);
+      return b.rankStrength - a.rankStrength || bNew.length - aNew.length || bStrength - aStrength
+        || String(a.proof.id).localeCompare(String(b.proof.id));
+    });
+    const next = candidates[0];
+    if (!next) break;
+    selected.push(next);
+    for (const match of next.matches) uncovered.delete(match.requirementId);
+    if (!uncovered.size && selected.length >= selectionLimit) break;
+  }
   return { ranked, selected };
 }
 
@@ -604,7 +645,7 @@ function buildCoverage(requirements, selected) {
  * present in profile proof points may appear as achievements; no metrics are
  * invented. Persists a review artifact and returns the document content.
  */
-function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir }) {
+function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir, style, label, designId }) {
   format = String(format).toLowerCase();
   if (!['markdown', 'md', 'text', 'pdf'].includes(format)) throw Object.assign(new Error('Supported document formats: markdown, text, pdf.'), { code: 'unsupported_document_format' });
   const job = requireJobOwned(store, jobId, profileId);
@@ -622,17 +663,22 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   const selectedIds = selected.map(entry => entry.proof.id);
   const coverage = buildCoverage(requirements, selected);
   const selectedProofs = selected.map(entry => entry.proof);
+  let blocks = null;
+  let canonical = null;
   const body = kind === 'cover_letter'
     ? coverLetterCopy(profile, job, selectedProofs)
-    : resumeCopy(profile, selectedProofs, Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)), { preferences: profile.preferences, job });
-  // Draft metadata must record the owned selected proofs the copy was built
-  // from, even after display cleanup/paraphrase strips proof labels: match
-  // normalized claim tokens against the rendered copy and fall back to the
-  // requirement-selected proof ids rather than ever reporting an empty list.
-  // Historical/retired proof status can then be computed from the artifact.
-  // rc6: the citation pool is the proof set the copy was actually built from —
-  // for a cover letter that is the requirement-selected proofs only — so a
-  // draft never cites a proof outside selectedProofPointIds.
+    : (() => {
+      const material = buildResumeMaterial(
+        profile,
+        selectedProofs,
+        Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)),
+        { preferences: profile.preferences, job, label, designId },
+      );
+      blocks = material.blocks;
+      canonical = material.canonical || null;
+      return material.content;
+    })();
+  const styleId = String(style || 'navy').toLowerCase();
   const normClaim = text => tokenize(String(text || '')).join(' ');
   const citationPool = kind === 'cover_letter' ? selectedProofs : proofs;
   const usedProofIds = citationPool.filter(proof => {
@@ -641,8 +687,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     return ` ${normClaim(body)} `.includes(` ${claim} `);
   }).map(proof => proof.id);
   const proofPointIds = usedProofIds.length ? usedProofIds : selectedIds;
-  const pdf = format === 'pdf' ? exportPdf(dataDir, body) : null;
-  const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${format}:${hashText(body).slice(0, 12)}`);
+  const pdf = format === 'pdf' ? exportPdf(dataDir, body, { style: styleId, blocks, document: canonical?.ir }) : null;
+  const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${format}:${styleId}:${hashText(body).slice(0, 12)}`);
   const nowIso = now();
   const existingArtifact = ensure(store, 'artifacts')[artifactId];
   // Unchanged regeneration must retain trusted artifact approvals/rejections,
@@ -670,6 +716,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
         selectedProofPointIds: selectedIds,
         requirements,
         gaps: coverage.gaps,
+        ...(canonical ? { resumeDocument: canonical } : {}),
       },
       proofPointIds: existingArtifact.proofPointIds || proofPointIds,
       format: existingArtifact.format || format,
@@ -686,6 +733,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     proofPointIds,
     contentHash: hashText(body),
     ...(pdf ? { export: pdf } : {}),
+    ...(canonical ? { resumeDocument: canonical } : {}),
     reviewNote: 'human verification required',
     format,
     content: body,
@@ -718,6 +766,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
       selectedProofPointIds: selectedIds,
       requirements,
       gaps: coverage.gaps,
+      ...(canonical ? { resumeDocument: canonical } : {}),
     },
     proofPointIds,
     format,
@@ -726,8 +775,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   };
 }
 
-export function tailorResume(store, { jobId, profileId, format = 'markdown', dataDir }) {
-  return buildMaterialDraft(store, { jobId, profileId, kind: 'resume', format, dataDir });
+export function tailorResume(store, { jobId, profileId, format = 'markdown', dataDir, style, label, designId }) {
+  return buildMaterialDraft(store, { jobId, profileId, kind: 'resume', format, dataDir, style, label, designId });
 }
 
 export function draftCoverLetter(store, { jobId, profileId, format = 'markdown', dataDir }) {

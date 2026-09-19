@@ -2,7 +2,12 @@
 // stay separate from proof/coverage/review metadata; no posting text is evidence.
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { ensureDataDir, hashText, tokenize } from './store.js';
+import { parseResumeSource, composeResume, resumeBlocks } from './resume-document.js';
+import { renderLatexPdf } from './resume-latex.js';
+import { compileResumeDocument, canonicalResumeSource } from './resume-compiler.js';
+import { renderResumeDocument } from './resume-ir-latex.js';
 
 function clean(value) {
   return String(value || '').replace(/^#{1,6}\s*/, '').replace(/^[-*•]\s*/, '')
@@ -189,7 +194,8 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
   pool.sort((a, b) => b.rank - a.rank);
   // Global 4-6: keep every dated role, emphasize relevant achievements
   // within it, overflow selected material under its own heading.
-  const chosen = new Set(pool.filter(item => item.rank > 0).slice(0, 6));
+  const selectionLimit = Math.min(6, Math.max(4, selected.length));
+  const chosen = new Set(pool.filter(item => item.rank > 0).slice(0, selectionLimit));
   if (chosen.size < 4) for (const item of pool) { if (chosen.size >= 4) break; chosen.add(item); }
   const placed = new Set();
   const output = [identity, contacts.join(' | '), '', 'EXPERIENCE'];
@@ -215,11 +221,40 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
   return output.join('\n').trim() + '\n';
 }
 
+export function buildResumeMaterial(profile, selected = [], omittedProofs = [], options = {}) {
+  const source = String(profile.resumeText || '');
+  if (canonicalResumeSource(source) && options.job?.company === 'Unknown company') {
+    const canonical = compileResumeDocument({
+      profileText: source,
+      postingText: options.job?.description || '',
+      profileId: profile.id,
+      job: options.job,
+      label: options.label || 'A',
+      designId: options.designId || `design-${String(options.label || 'A').toLowerCase()}`,
+    });
+    return { content: canonical.content, blocks: canonical.blocks, parsed: canonical.profile, canonical };
+  }
+  const explicitName = source.split(/\r?\n/).some(line => /^Name:\s*/i.test(line.trim()));
+  const parsed = parseResumeSource(source);
+  const opts = { preferences: options.preferences ?? profile?.preferences, job: options.job };
+  if (!explicitName && parsed.experience.some(role => role.company)) {
+    const composed = composeResume(parsed, selected, opts);
+    return { content: composed.content, blocks: resumeBlocks(parsed, selected, opts), parsed };
+  }
+  return { content: resumeCopy(profile, selected, omittedProofs, options), blocks: null, parsed };
+}
+
 export function resumeCopy(profile, selected = [], omittedProofs = [], options = {}) {
   const source = String(profile.resumeText || '');
   const omitted = new Set(omittedProofs.map(proof => clean(proof.summary)));
   const lines = source.split(/\r?\n/).map(line => line.trim()).filter(line => line && !omitted.has(clean(line)));
   const explicitName = lines.find(line => /^Name:\s*/i.test(line));
+  if (!explicitName) {
+    const parsed = parseResumeSource(source);
+    if (parsed.experience.some(role => role.company)) {
+      return composeResume(parsed, selected, { preferences: options.preferences ?? profile?.preferences, job: options.job }).content;
+    }
+  }
   const identity = explicitName ? clean(explicitName.replace(/^Name:\s*/i, ''))
     : profile.resume?.identity?.name || profile.name;
   // Labeled source records carry preference/audit sections, not applicant prose.
@@ -371,22 +406,122 @@ function wrap(text, size, bold, maxWidth) {
   if (line) out.push(line);
   return out;
 }
-export function renderPdf(content) {
-  const source = content.split('\n');
+function resolveStyle(style) {
+  const id = String(style || 'navy').toLowerCase().replace(/_/g, '-');
+  if (id === 'editorial' || id === 'a') return 'editorial';
+  if (id === 'scan' || id === 'recruiter-scan' || id === 'c') return 'scan';
+  return 'navy';
+}
+
+function markdownBlocks(content) {
+  return String(content || '').split('\n').map((raw, index) => {
+    if (!raw.trim()) return { type: 'spacer' };
+    if (index === 0) return { type: 'name', text: clean(raw) };
+    if (/^[A-Z][A-Z\s]+$/.test(clean(raw))) return { type: 'h2', text: clean(raw) };
+    if (raw.startsWith('- ')) return { type: 'bullet', text: clean(raw) };
+    return { type: 'body', text: clean(raw) };
+  });
+}
+
+export function renderPdf(content, options = {}) {
+  const style = resolveStyle(options.style);
+  const blocks = Array.isArray(options.blocks) && options.blocks.length ? options.blocks : markdownBlocks(content);
+  const navy = style === 'navy';
+  const editorial = style === 'editorial';
+  const scan = style === 'scan';
+  const margin = editorial ? 32 : scan ? 24 : 28;
+  const maxWidth = 612 - margin * 2;
   let pages, bodyFontSize;
-  for (const size of [11, 10.5, 10]) {
-    pages = [[]]; let y = 748;
-    for (const [index, raw] of source.entries()) {
-      if (!raw.trim()) { y -= size * 0.45; continue; }
-      const text = clean(raw);
-      const heading = index === 0 || /^[A-Z][A-Z\s]+$/.test(text);
-      const fontSize = index === 0 ? 18 : heading ? 11 : size;
-      const lineHeight = fontSize * 1.2;
-      for (const line of wrap(raw.startsWith('- ') ? `• ${text}` : text, fontSize, heading, 524)) {
-        if (y < 44 + lineHeight) { pages.push([]); y = 748; }
-        pages.at(-1).push({ text: line, size: fontSize, bold: heading, y });
-        y -= lineHeight;
+  for (const size of [10.5, 10, 9.5]) {
+    pages = [[]];
+    let y = 778;
+    const color = navy ? '0.145 0.235 0.314' : '0 0 0';
+    const push = (item) => {
+      pages.at(-1).push(item);
+      y = item.y - item.leading;
+    };
+    const place = (text, fontSize, bold, opts = {}) => {
+      const leading = fontSize * (opts.leading || (editorial ? 1.32 : 1.25));
+      const widthLimit = opts.width || maxWidth;
+      const lines = wrap(text, fontSize, bold, widthLimit);
+      if (opts.keep && y - leading * lines.length < margin + 24) {
+        pages.push([]);
+        y = 760;
       }
+      for (const line of lines) {
+        if (y < margin) { pages.push([]); y = 760; }
+        const x = opts.x != null ? opts.x
+          : (opts.align === 'center' ? margin + (widthLimit - width(line, fontSize, bold)) / 2
+            : opts.align === 'right' ? 612 - margin - width(line, fontSize, bold) : margin);
+        push({
+          text: line, size: fontSize, bold, y, x, leading,
+          color: opts.color || '0 0 0',
+          rule: opts.rule || 0,
+        });
+      }
+    };
+    for (const block of blocks) {
+      if (block.type === 'spacer') { y -= size * 0.15; continue; }
+      if (block.type === 'name') {
+        place(block.text, editorial ? 20 : scan ? 18 : 18, true, {
+          align: editorial ? 'center' : 'left',
+          color, leading: 1.05,
+        });
+        continue;
+      }
+      if (block.type === 'contact') {
+        if (scan) {
+          const parts = String(block.text).split('|').map(part => part.trim()).filter(Boolean);
+          let cy = y + size * 1.1;
+          for (const part of parts) {
+            place(part, 8, false, { align: 'right', x: undefined, leading: 1.2 });
+          }
+          y = Math.min(y, cy);
+          place(' ', 4, false);
+          pages.at(-1).push({ text: '', size: 0.1, bold: false, y, x: margin, leading: 6, color: '0 0 0', rule: 2.2 });
+          y -= 10;
+          continue;
+        }
+        place(block.text, editorial ? 8.2 : 8.3, false, { align: editorial ? 'center' : 'left', leading: 1.2 });
+        pages.at(-1).push({
+          text: '', size: 0.1, bold: false, y, x: margin, leading: 8,
+          color: navy ? color : '0 0 0',
+          rule: navy ? 1.6 : editorial ? 0.6 : 1,
+        });
+        y -= 10;
+        continue;
+      }
+      if (block.type === 'focus' || block.type === 'target') {
+        place(block.text, 10.2, true, { color: navy ? color : '0 0 0' });
+        continue;
+      }
+      if (block.type === 'summary') {
+        place(block.text, size, false);
+        continue;
+      }
+      if (block.type === 'h2') {
+        y -= 4;
+        place(block.text, 9.4, true, { color: navy ? color : '0 0 0', leading: 1.1 });
+        pages.at(-1).push({
+          text: '', size: 0.1, bold: false, y, x: margin, leading: 6,
+          color: navy ? color : '0.2 0.2 0.2', rule: editorial ? 0.5 : 0.6,
+        });
+        y -= 6;
+        continue;
+      }
+      if (block.type === 'h3') {
+        place(block.text, 9.8, true, { keep: block.keep });
+        continue;
+      }
+      if (block.type === 'meta') {
+        place(block.text, 8.6, false, { keep: block.keep });
+        continue;
+      }
+      if (block.type === 'bullet') {
+        place(`• ${block.text}`, size, false, { keep: block.keep });
+        continue;
+      }
+      place(block.text, size, false);
     }
     bodyFontSize = size;
     if (pages.length === 1) break;
@@ -408,7 +543,17 @@ export function renderPdf(content) {
   const regular = add(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /ToUnicode ${unicode} 0 R >>`);
   const bold = add(`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding /ToUnicode ${unicode} 0 R >>`);
   const ids = pages.map(page => {
-    const commands = page.map(line => `BT /${line.bold ? 'F2' : 'F1'} ${line.size} Tf 1 0 0 1 44 ${line.y.toFixed(2)} Tm <${encode(line.text)}> Tj ET`).join('\n');
+    const commands = page.map(line => {
+      const bits = [];
+      if (line.color) bits.push(`${line.color} rg`);
+      if (line.text) {
+        bits.push(`BT /${line.bold ? 'F2' : 'F1'} ${line.size} Tf 1 0 0 1 ${(line.x ?? 44).toFixed(2)} ${line.y.toFixed(2)} Tm <${encode(line.text)}> Tj ET`);
+      }
+      if (line.rule) {
+        bits.push(`${line.color || '0 0 0'} RG`, `${line.rule} w`, `${margin} ${line.y.toFixed(2)} m ${612 - margin} ${line.y.toFixed(2)} l S`);
+      }
+      return bits.join('\n');
+    }).filter(Boolean).join('\n');
     const contents = add(stream(commands));
     return add(`<< /Type /Page /Parent ${pageTree} 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${contents} 0 R >>`);
   });
@@ -418,13 +563,16 @@ export function renderPdf(content) {
   objects.forEach((value, index) => { offsets.push(Buffer.byteLength(pdf)); pdf += `${index + 1} 0 obj\n${value}\nendobj\n`; });
   const xref = Buffer.byteLength(pdf);
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10,'0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-  return { bytes: Buffer.from(pdf), pageCount: pages.length, bodyFontSize, pageSize: 'Letter', marginsPt: 44, atsReadability: 'Searchable single-column text; no proprietary ATS score or compatibility guarantee.' };
+  return { bytes: Buffer.from(pdf), pageCount: pages.length, bodyFontSize, pageSize: 'Letter', marginsPt: 44, engine: 'native', style, atsReadability: 'Searchable single-column text; no proprietary ATS score or compatibility guarantee.' };
 }
 
-export function exportPdf(dataDir, content) {
-  const { bytes, ...layout } = renderPdf(content);
+export function exportPdf(dataDir, content, options = {}) {
+  const rendered = options.document
+    ? (renderResumeDocument(options.document, { style: options.style, requireLatex: true, sourceDateEpoch: options.sourceDateEpoch }) || renderPdf(content, options))
+    : (renderLatexPdf(content, options) || renderPdf(content, options));
+  const { bytes, ...layout } = rendered;
   const root = ensureDataDir(dataDir);
-  const sha256 = hashText(bytes);
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
   const filePath = path.join(root, `document-${sha256}.pdf`);
   try { fs.writeFileSync(filePath, bytes, { flag: 'wx', mode: 0o600 }); }
   catch (error) {

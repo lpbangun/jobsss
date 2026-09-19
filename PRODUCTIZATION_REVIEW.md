@@ -21,7 +21,7 @@ The authoritative JobSSS product version is **0.1.0** from `plugin.json`. The re
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `ed092707db1ea0e7c5c4000393ab6a27cd244482f18eaebefe3fe6366d1b9aec`
+- SHA-256: `95784bb9450e741375b70b9a4570ecfe4a14d7e638a93905f4fc993b3b69f0ad`
 - Exact reproduction command:
 
 ```bash

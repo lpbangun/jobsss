@@ -1,0 +1,30 @@
+{
+  "schema": "jobsss.batch-fixture/v1",
+  "case": "logical-duplicate",
+  "class": "fixture",
+  "fictional": true,
+  "live": false,
+  "note": "Two distinct postings (different wording, different source URLs) for the same employer/role/location. They are one logical job, so the batch prepares one item and reports the other as a duplicate instead of creating a second application directory, score, or packet.",
+  "jobs": [
+    {
+      "key": "dup-original",
+      "posting": "# Product Manager, Logistics\n\nCompany: Ironside Freight Co\nLocation: Remote US\n\nIronside Freight Co coordinates freight for regional carriers.\n\n## Responsibilities\n\n- Lead discovery with carrier operations teams.\n- Own the logistics roadmap and metrics.\n\n## Requirements\n\n- 4+ years product management or logistics operations experience.\n- Evidence of launching products with measurable outcomes.\n\nCompensation range $131k-$153k. Remote work. This posting is synthetic.\n"
+    },
+    {
+      "key": "dup-repost",
+      "posting": "# Product Manager, Logistics\n\nCompany: Ironside Freight Co\nLocation: Remote US\n\nIronside Freight Co coordinates freight for regional carriers and is reposting the same opening with updated wording.\n\n## Responsibilities\n\n- Drive discovery with carrier operations and support partners.\n- Prioritise the logistics roadmap against adoption evidence.\n- Partner with engineering and design to ship increments weekly.\n\n## Requirements\n\n- 4+ years product management, operations, or logistics experience.\n- Evidence of launching workflow products with measurable outcomes.\n- Strong written communication.\n\nCompensation range $131k-$153k. Remote work. This posting is synthetic.\n"
+    }
+  ],
+  "contacts": [],
+  "blockedJobIds": [],
+  "expect": {
+    "items": 2,
+    "prepared": 1,
+    "failed": 0,
+    "blocked": 0,
+    "duplicates": 1,
+    "batchStatus": "partial_success",
+    "externalActions": 0,
+    "applicationDirectories": 1
+  }
+}

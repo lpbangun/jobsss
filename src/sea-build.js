@@ -56,6 +56,11 @@ export const SEA_BUILD_REL = path.join('.tmp', 'jobsss' + '-productization', 'se
 
 const MODULES = Object.freeze([
   'version.js',
+  // Pure dependency-free helpers first, then the modules that import them:
+  // checklist.js is the shared readiness gate; projection.js renders the
+  // deterministic Markdown workspace projection and is imported by store.js.
+  'checklist.js',
+  'projection.js',
   'store.js',
   'compensation.js',
   'resume-document.js',
@@ -68,6 +73,8 @@ const MODULES = Object.freeze([
   'relationships.js',
   'discovery.js',
   'domain.js',
+  // Host composition composes the domain/relationship operations above.
+  'composition.js',
   'authority.js',
   'packaging.js',
   'mcp.js',

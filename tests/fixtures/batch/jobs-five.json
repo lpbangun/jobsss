@@ -1,0 +1,72 @@
+{
+  "schema": "jobsss.batch-fixture/v1",
+  "case": "five-job",
+  "class": "fixture",
+  "fictional": true,
+  "live": false,
+  "note": "Synthetic five-job preparation batch (no provider access, no live sourcing). Every employer, person, address and URL below is fictional and uses reserved example domains. Used by tests/jobsss-composition.test.mjs to prove five-job batch mechanics, deterministic regeneration, and per-item status reporting offline (frozen NC8 fixture mechanics; never a live assertion).",
+  "jobs": [
+    {
+      "key": "learning-platform",
+      "posting": "# Product Manager, Learning Platform\n\nCompany: Northwind Learning Co\nLocation: Remote US\n\nNorthwind Learning Co builds tools for educators and workforce teams. We are looking for a Product Manager to lead discovery, roadmap planning, and launch execution for AI-assisted learning workflows.\n\n## Responsibilities\n\n- Lead customer discovery with educators, learners, and enterprise stakeholders.\n- Define product strategy, metrics, and roadmap for an early-stage learning product.\n- Partner with engineering and design to ship usable software in weekly increments.\n\n## Requirements\n\n- 4+ years product management, education technology, learning design, or related operator experience.\n- Strong written communication and stakeholder management.\n- Evidence of launching products or programs with measurable outcomes.\n\nCompensation range $130k-$165k. Remote work. This posting is synthetic.\n"
+    },
+    {
+      "key": "analytics-reporting",
+      "posting": "# Product Manager, Analytics Reporting\n\nCompany: Brightwell Analytics Works\nLocation: Remote US\n\nBrightwell Analytics Works builds self-service reporting for operations teams. We are hiring a Product Manager to own reporting quality and metric definitions.\n\n## Responsibilities\n\n- Own the reporting roadmap and metric definitions with data and operations partners.\n- Run discovery with analysts and business stakeholders.\n- Ship incremental improvements measured against adoption and retention.\n\n## Requirements\n\n- 4+ years product management, analytics, or reporting experience.\n- Evidence of improving a reporting or data product with measurable outcomes.\n- Comfort with remote collaboration across US time zones.\n\nCompensation range $150k-$180k. Remote work. This posting is synthetic.\n"
+    },
+    {
+      "key": "onboarding",
+      "posting": "# Product Manager, Onboarding\n\nCompany: Tideline Fintech Labs\nLocation: Remote US\n\nTideline Fintech Labs is improving account onboarding for small businesses.\n\n## Responsibilities\n\n- Lead discovery with operations and support teams to find onboarding friction.\n- Prioritize a roadmap from activation and retention evidence.\n- Partner with engineering and design to ship weekly increments.\n\n## Requirements\n\n- 4+ years product management or related operator experience.\n- Experience launching workflow products with measurable outcomes.\n- Strong written communication.\n\nCompensation range $128k-$150k. Remote work. This posting is synthetic.\n"
+    },
+    {
+      "key": "care-operations",
+      "posting": "# Product Manager, Care Operations\n\nCompany: Cedarline Health Co\nLocation: Remote US\n\nCedarline Health Co supports care operations teams with scheduling and intake software.\n\n## Responsibilities\n\n- Lead discovery with care teams and operations managers.\n- Define the roadmap and success metrics for intake automation.\n- Work with engineering and design to ship improvements in weekly increments.\n\n## Requirements\n\n- 4+ years product management, healthcare operations, or related experience.\n- Evidence of launching programs with measurable outcomes.\n- Comfort with remote work across US time zones.\n\nCompensation range $125k-$145k. Remote work. This posting is synthetic.\n"
+    },
+    {
+      "key": "marketplace",
+      "posting": "# Product Manager, Marketplace\n\nCompany: Harborview Commerce Group\nLocation: Remote US\n\nHarborview Commerce Group runs a marketplace for independent sellers.\n\n## Responsibilities\n\n- Lead discovery with sellers and support teams.\n- Own the marketplace roadmap and experiment cadence.\n- Partner with engineering and design on weekly increments.\n\n## Requirements\n\n- 4+ years product management or marketplace operator experience.\n- Evidence of improving seller activation or retention.\n- Strong written communication.\n\nRemote work. Compensation is not stated in this posting. This posting is synthetic.\n"
+    }
+  ],
+  "contacts": [
+    {
+      "jobKey": "learning-platform",
+      "subjectName": "Robin Fielding",
+      "subjectCompany": "Northwind Learning Co",
+      "role": "Engineering Manager",
+      "status": "contact_brief",
+      "email": "robin.fielding@northwind-learning.test",
+      "provider": "contact-brief",
+      "runId": "fixture-run-five-1",
+      "class": "fixture",
+      "evidence": [
+        { "kind": "public_profile", "ref": "https://northwind-learning.test/team/robin" }
+      ],
+      "notes": "Synthetic contact evidence for fixture coverage."
+    },
+    {
+      "jobKey": "care-operations",
+      "subjectName": "Sam Corbin",
+      "subjectCompany": "Cedarline Health Co",
+      "status": "miss",
+      "missReasonCode": "no_public_channel",
+      "missReasonDetail": "No attributable public professional address is published for this team (synthetic fixture).",
+      "class": "fixture",
+      "evidence": [
+        { "kind": "provider_note", "ref": "fixture-no-public-channel" }
+      ]
+    }
+  ],
+  "blockedJobIds": [],
+  "expect": {
+    "items": 5,
+    "prepared": 5,
+    "failed": 0,
+    "blocked": 0,
+    "duplicates": 0,
+    "batchStatus": "prepared",
+    "contactBriefs": 1,
+    "contactMisses": 1,
+    "externalActions": 0,
+    "applicationDirectories": 5
+  }
+}

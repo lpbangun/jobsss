@@ -2,6 +2,7 @@
 // Framing/lifecycle concepts are attributed to JobOS src/mcp.js and are
 // reimplemented here for the standalone PLUGIN_DATA runtime.
 import * as domain from './domain.js';
+import * as composition from './composition.js';
 import { ensureDataDir, redactSecrets } from './store.js';
 import { listDecisionHandoffs, createDecisionHandoff } from './authority.js';
 import { PRODUCT_VERSION } from './version.js';
@@ -60,6 +61,10 @@ const TOOLS = [
   tool('preview_sync', 'Return a secret-safe local sync/export preview; transmits nothing.', schema(profile, ['profileId'])),
   tool('list_decision_handoffs', 'List pending non-authoritative decision handoffs for a profile. Completion requires the trusted local CLI ./bin/jobsss decide; MCP never completes or forges human decisions.', schema(profile, ['profileId'])),
   tool('create_decision_handoff', 'Create a non-authoritative local handoff marker for human review. Grants no authority, performs no action, and never completes a human decision.', schema({ ...profile, kind: string, note: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('prepare_applications_batch', 'Prepare up to five owned jobs for one profile in one bounded local request: score, pursue, tailor materials, record host-supplied people evidence, and persist the tracker/next actions. Provider-neutral composition of the same operations the individual tools expose; performs no people search, no sending, no submission, and no application. Per-item failures are isolated, a contact miss is non-fatal with a structured reason, and re-running the same request adds no duplicate logical job or contact.', schema({ ...profile, jobIds: { type: 'array' }, limit: { type: 'integer' }, format: string, coverLetter: { type: 'boolean' }, contacts: { type: 'array' }, class: { type: 'string', enum: ['live', 'replay', 'fixture'] }, provider: string, runId: string, capturedAt: string, outreachGoal: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('record_contact_discovery', 'Record one bounded contact-discovery outcome for a profile/job: attributed contact evidence (provider-reported address, never a verified mailbox) or an honest structured miss with a reason code. Never searches, sends, marks human approval, or invents an address pattern; a miss is non-fatal.', schema({ ...profile, jobId: string, subjectName: string, subjectCompany: string, role: string, email: string, status: { type: 'string', enum: ['contact_brief', 'miss'] }, missReasonCode: string, missReasonDetail: string, class: { type: 'string', enum: ['live', 'replay', 'fixture'] }, provider: string, runId: string, capturedAt: string, evidence: { type: 'array' }, notes: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('list_preparation_batches', 'Read back recorded local preparation batches and their per-item statuses from PLUGIN_DATA.', schema(profile, ['profileId'])),
+  tool('list_contact_discoveries', 'Read back recorded local contact evidence and misses for a profile (optionally one job).', schema({ ...profile, jobId: string }, ['profileId'])),
 ];
 
 const HANDLERS = Object.freeze({
@@ -84,6 +89,10 @@ const HANDLERS = Object.freeze({
   interview_debrief_handoff: domain.interviewDebriefHandoff, preview_sync: domain.previewSync,
   list_decision_handoffs: listDecisionHandoffs,
   create_decision_handoff: createDecisionHandoff,
+  prepare_applications_batch: composition.prepareApplicationsBatch,
+  record_contact_discovery: composition.recordContactDiscovery,
+  list_preparation_batches: composition.listPreparationBatches,
+  list_contact_discoveries: composition.listContactDiscoveries,
 });
 
 function result(value) { return { content: [{ type: 'text', text: redactSecrets(JSON.stringify(value, null, 2)) }] }; }

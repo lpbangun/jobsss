@@ -28,6 +28,9 @@ import {
   listInterviewStories, interviewPrep, getInterviewPrep, interviewDebriefHandoff,
 } from './relationships.js';
 import { PRODUCT_VERSION } from './version.js';
+import { unansweredRequiredFor } from './checklist.js';
+
+export { unansweredRequiredFor };
 
 // Plugin root. In source mode this resolves to the repository root; in the
 // standalone SEA bundle it derives from the binary's own location (see
@@ -864,36 +867,11 @@ function greenhouseMarkers(job) {
 }
 
 /**
- * P1b: compute the pre-decide readiness gate for a job with linked
- * application detail: required questions (minus saved answers) plus
- * required documents (minus produced drafts). Returns null when the job
- * has no linked ask list.
+ * P1b readiness gate (required questions minus saved answers, plus required
+ * documents minus produced drafts). Implementation lives in src/checklist.js
+ * so the deterministic workspace projection can render the identical gate
+ * without importing this module (and without an import cycle).
  */
-export function unansweredRequiredFor(store, job) {
-  const detail = job && job.applicationDetail;
-  if (!detail || !Array.isArray(detail.questions)) return null;
-  const norm = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const answered = new Set(
-    Object.values(store.answers || {})
-      .filter(item => item && item.profileId === job.profileId)
-      .map(item => norm(item.question))
-  );
-  const unanswered = [];
-  for (const item of detail.questions) {
-    if (item && item.required && item.label && !answered.has(norm(item.label))) unanswered.push(String(item.label));
-  }
-  const artifacts = Object.values(store.artifacts || {})
-    .filter(item => item && item.jobId === job.id && item.profileId === job.profileId && !item.retiredAt);
-  const hasResume = artifacts.some(item => item.kind === 'resume_draft');
-  const hasCover = artifacts.some(item => item.kind === 'cover_letter_draft');
-  for (const item of Array.isArray(detail.documents) ? detail.documents : []) {
-    if (!item || !item.required) continue;
-    if (item.kind === 'resume' && hasResume) continue;
-    if (item.kind === 'cover_letter' && hasCover) continue;
-    unanswered.push(`Required document: ${item.kind}`);
-  }
-  return unanswered;
-}
 
 export async function importJobUrl(dataDir, args = {}) {
   const profileId = String(args.profileId || '').trim();

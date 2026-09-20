@@ -1,0 +1,25 @@
+{
+  "schema": "jobsss.batch-fixture/v1",
+  "case": "single-item",
+  "class": "fixture",
+  "fictional": true,
+  "live": false,
+  "note": "One-job batch: proves the batch path degrades to a single deterministic item with the same per-item status shape as a five-job batch.",
+  "jobs": [
+    {
+      "key": "single-role",
+      "posting": "# Product Manager, Integrations\n\nCompany: Ridgeline Integrations Co\nLocation: Remote US\n\nRidgeline Integrations Co connects internal tools for operations teams.\n\n## Responsibilities\n\n- Lead discovery with operations and support partners.\n- Own the integrations roadmap and prioritization.\n- Ship increments with engineering and design weekly.\n\n## Requirements\n\n- 4+ years product management or related operator experience.\n- Evidence of launching products with measurable outcomes.\n- Strong written communication.\n\nCompensation range $132k-$158k. Remote work. This posting is synthetic.\n"
+    }
+  ],
+  "contacts": [],
+  "blockedJobIds": [],
+  "expect": {
+    "items": 1,
+    "prepared": 1,
+    "failed": 0,
+    "blocked": 0,
+    "batchStatus": "prepared",
+    "externalActions": 0,
+    "applicationDirectories": 1
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "jobsss.batch-fixture/v1",
+  "case": "empty",
+  "class": "fixture",
+  "fictional": true,
+  "live": false,
+  "note": "Empty request: no jobs are selected and no job ids are supplied. The batch must return an honest no_items result with an explicit reason and must never fabricate a job, score, or artifact to reach a target count.",
+  "jobs": [],
+  "contacts": [],
+  "blockedJobIds": [],
+  "expect": {
+    "items": 0,
+    "prepared": 0,
+    "failed": 0,
+    "blocked": 0,
+    "batchStatus": "no_items",
+    "reason": "no_jobs_selected",
+    "externalActions": 0,
+    "applicationDirectories": 0
+  }
+}

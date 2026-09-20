@@ -56,6 +56,55 @@ sub-intents for networking, interview planning, or scheduling.
 | Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep`, `get_interview_prep`, `interview_debrief_handoff` | Local stories, prep, coverage gaps, and a non-attesting handoff; verification/debrief confirmation stays human-only CLI/TUI. |
 | Sync preview | `preview_sync` | Dry-run, secret-safe preview of derived/export data; no auto or cloud sync. |
 
+## Host composition — multi-job preparation batch
+
+`prepare_applications_batch` (MCP) prepares up to five owned jobs for one
+profile in one bounded local request. Argument shapes:
+
+- `profileId` (required) — the owning profile.
+- `jobIds` (optional string array, ≤ 5) — the jobs to prepare, in order.
+  Omitted: the profile's already-tracked eligible jobs, ranked by the stored
+  deterministic score. JobSSS never sources jobs for this call.
+- `class` (required for people evidence: `live` | `replay` | `fixture`) —
+  the provenance class of the supplied people results. A `live` class also
+  requires `provider` plus `runId` or `capturedAt`; `replay` must name the
+  original run.
+- `contacts` (optional array, ≤ 8 per job) — host-supplied people results:
+  `{ jobId, subjectName, subjectCompany, role, email, status: 'contact_brief'
+  | 'miss', missReasonCode, missReasonDetail, evidence[], class, provider,
+  runId }`. Discovery belongs to the host plugin; JobSSS only records, joins,
+  and projects it.
+- `format` (`markdown` | `pdf`), `coverLetter` (`true` | `false`, default:
+  draft when the posting justifies one), `outreachGoal`
+  (`informational` | `referral` | `interview_prep`).
+
+Per item the batch runs the same operations the individual tools expose —
+`score_job`, `pursue_job`, `tailor_resume`, `draft_cover_letter`,
+`import_contact`/`record_research`, `plan_outreach`/`draft_outreach` — so an
+explicit tool sequence and one composed request converge on the same durable
+state. It returns `{ batchId, status, summary, items[] }` where each item
+carries `status` (`prepared` | `partial` | `failed` | `blocked` | `duplicate`
+| `skipped`), its `reason`, the score summary, artifact ids, review gaps,
+contact outcomes, and `preservedProtectedFields`. The same request re-run
+reuses the same batch record (`runs`) and adds no duplicate job, contact,
+artifact, research record, or outreach draft.
+
+Record one outcome directly with `record_contact_discovery`
+(`status: 'contact_brief'` needs an attributed `email` plus `provider`; a
+`miss` needs a `missReasonCode`). A miss is non-fatal. Read state back with
+`list_preparation_batches` and `list_contact_discoveries`.
+
+Per-item artifacts are projected under `PLUGIN_DATA` on every commit:
+`applications/<jobId>/application.md` (job/source snapshot, fit rationale,
+materials with coverage gaps, checklist/review-gap truth, people and contact
+brief or miss, unsent outreach draft, outcome history), `resume.md`,
+`cover-letter.md` when one exists, and
+`applications/<jobId>/contacts/<contactKey>.md`, plus
+`profiles/<profileId>/profile.md` and `profiles/<profileId>/tracker.md`.
+Regeneration is deterministic and never overwrites human-only decisions
+(artifact approval, contact approval/suppression, externally observed
+statuses).
+
 ## Blocked / human-only boundary
 
 These must not appear on `tools/list` and are not MCP-attestable — hand off to

@@ -1,0 +1,50 @@
+{
+  "schema": "jobsss.batch-fixture/v1",
+  "case": "partial-and-blocked",
+  "class": "fixture",
+  "fictional": true,
+  "live": false,
+  "note": "Independent item failure isolation: three jobs that can be prepared, one job whose posting carries no scorable evidence (honest partial packet, not fabricated), and one job id that does not exist in this profile's store (blocked). One failing item must never collapse the batch, and the summary must stay honest about partial success. Five requested items fit the bounded batch size.",
+  "jobs": [
+    {
+      "key": "partial-a",
+      "posting": "# Product Manager, Billing\n\nCompany: Meadowbrook Billing Works\nLocation: Remote US\n\nMeadowbrook Billing Works improves invoicing for service businesses.\n\n## Responsibilities\n\n- Lead discovery with finance and support partners.\n- Own the billing roadmap and prioritisation.\n\n## Requirements\n\n- 4+ years product management or related experience.\n- Evidence of launching products with measurable outcomes.\n\nCompensation range $134k-$156k. Remote work. This posting is synthetic.\n"
+    },
+    {
+      "key": "partial-b",
+      "posting": "# Product Manager, Scheduling\n\nCompany: Stonebridge Scheduling Co\nLocation: Remote US\n\nStonebridge Scheduling Co helps field teams coordinate visits.\n\n## Responsibilities\n\n- Lead discovery with dispatch and support teams.\n- Own the scheduling roadmap and success metrics.\n\n## Requirements\n\n- 4+ years product management or related operator experience.\n- Evidence of launching workflow products with measurable outcomes.\n\nCompensation range $129k-$151k. Remote work. This posting is synthetic.\n"
+    },
+    {
+      "key": "partial-c",
+      "posting": "# Product Manager, Compliance\n\nCompany: Pinecrest Compliance Labs\nLocation: Remote US\n\nPinecrest Compliance Labs automates policy review for regulated teams.\n\n## Responsibilities\n\n- Lead discovery with compliance and audit stakeholders.\n- Own the compliance roadmap and review cadence.\n\n## Requirements\n\n- 4+ years product management or compliance operations experience.\n- Evidence of shipping review workflows with measurable outcomes.\n\nCompensation range $140k-$162k. Remote work. This posting is synthetic.\n"
+    },
+    {
+      "key": "thin-no-evidence",
+      "posting": "# Warehouse Associate, Night Shift\n\nCompany: Northwind Depot Co\nLocation: Onsite Cedar Falls\n\nWe are hiring across several teams and shifts. Apply now.\n"
+    }
+  ],
+  "contacts": [
+    {
+      "jobKey": "partial-a",
+      "subjectName": "Casey Fixture",
+      "subjectCompany": "Meadowbrook Billing Works",
+      "status": "miss",
+      "missReasonCode": "not_enriched",
+      "missReasonDetail": "Paid enrichment was not attempted for this person (fixture: budget preserved).",
+      "class": "fixture"
+    }
+  ],
+  "blockedJobIds": [
+    "job_ffffffffffffffff"
+  ],
+  "expect": {
+    "items": 5,
+    "prepared": 3,
+    "partial": 1,
+    "failed": 0,
+    "blocked": 1,
+    "batchStatus": "partial_success",
+    "externalActions": 0,
+    "applicationDirectories": 4
+  }
+}

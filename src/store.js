@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { workspaceProjectionWrites } from './projection.js';
 
 const PLUGIN_ROOT = fs.realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 
@@ -28,6 +29,9 @@ const COLLECTIONS = Object.freeze([
   'profiles', 'resumes', 'proofPoints', 'jobs', 'scores', 'applications', 'artifacts',
   'searches', 'tasks', 'answers', 'contacts', 'research', 'outreachPlans',
   'outreachDrafts', 'interviewStories', 'interviewPrep',
+  // Host-composition additions (additive): bounded contact discovery evidence
+  // (brief or structured miss) and one record per prepared multi-job batch.
+  'contactDiscoveries', 'preparationBatches',
 ]);
 
 export function slug(value) {
@@ -578,6 +582,9 @@ function assertProjectionRootsSafe(dir) {
   assertProjectionPathSafe(dir, ['projections']);
   assertProjectionPathSafe(dir, ['jobs']);
   assertProjectionPathSafe(dir, ['applications']);
+  // Workspace projection roots (deterministic Markdown alongside the JSON
+  // projections): profile.md/tracker.md and per-job application.md.
+  assertProjectionPathSafe(dir, ['profiles']);
 }
 
 function isLivePid(pid) {
@@ -825,6 +832,12 @@ export function commitStore(dataDir, { expectedRevision = null } = {}, mutate = 
     assertProjectionRootsSafe(dir);
     const targets = deriveProjectionTargets(result);
     for (const target of targets) assertProjectionTargetSafe(dir, target);
+    // Deterministic human-readable workspace projection (profile.md,
+    // tracker.md, applications/<jobId>/application.md, resume.md,
+    // cover-letter.md, contacts/<key>.md). Validated with the same no-follow
+    // confinement lens as every other projection BEFORE anything is staged.
+    const workspaceWrites = workspaceProjectionWrites(result);
+    for (const write of workspaceWrites) assertProjectionPathSafe(dir, write.segments.slice(0, -1));
     bumpMeta(result);
     incrementRevision(result);
     const writes = [
@@ -835,6 +848,11 @@ export function commitStore(dataDir, { expectedRevision = null } = {}, mutate = 
         content: target.text != null
           ? redactSecrets(String(target.text))
           : redactSecrets(JSON.stringify(target.value, null, 2)),
+      })),
+      ...workspaceWrites.map(write => ({
+        segments: write.segments,
+        abs: path.join(dir, ...write.segments),
+        content: redactSecrets(String(write.content)),
       })),
       // Canonical store is the last file renamed: it is the logical commit point.
       { segments: [], abs: p, content: redactSecrets(JSON.stringify(result, null, 2)) },

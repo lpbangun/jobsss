@@ -1,0 +1,81 @@
+{
+  "schema_version": "contact-brief.v1",
+  "generated_at": "2026-09-19T21:40:00Z",
+  "subject": {
+    "name": "Nadia Okonkwo",
+    "company": "Lumen Learning Works"
+  },
+  "identity": {
+    "status": "matched",
+    "confidence": "medium",
+    "evidence": [
+      {
+        "url": "https://lumen-learning.test/team/nadia",
+        "fetched_at": "2026-09-19T21:39:00Z",
+        "published_at": null,
+        "quote": "FICTIONAL FIXTURE: Nadia Okonkwo leads engineering at Lumen Learning Works.",
+        "kind": "profile"
+      }
+    ],
+    "conflicts": []
+  },
+  "email": {
+    "address": "nadia.okonkwo@lumen-learning.test",
+    "attribution": "provider_reported",
+    "evidence": [
+      {
+        "url": "https://lumen-learning.test/contact",
+        "fetched_at": "2026-09-19T21:39:30Z",
+        "published_at": null,
+        "quote": "FICTIONAL FIXTURE: provider-reported address for the fixture subject.",
+        "kind": "exa"
+      }
+    ],
+    "lookup": {
+      "provider": "exa_agent_fiber",
+      "status": "provider_reported",
+      "provider_run_id": "fixture-run-contact-brief-1",
+      "retrieved_at": "2026-09-19T21:39:30Z",
+      "cost_usd": 0,
+      "attribution": "FICTIONAL FIXTURE: synthetic contact-brief run; no provider was called.",
+      "source_urls": [
+        "https://lumen-learning.test/contact"
+      ],
+      "usage": null,
+      "cost": null,
+      "detail": "Fictional fixture: provider-reported address, mailbox never checked."
+    },
+    "mailbox": {
+      "status": "not_checked",
+      "method": "none",
+      "checked_at": null,
+      "detail": "Fictional fixture: no mailbox check was performed; deliverability is not attested."
+    }
+  },
+  "coverage": {
+    "linkedin": {
+      "status": "not_attempted",
+      "reason": "No native evidence supplied",
+      "actions": [],
+      "profile_url": null,
+      "identity_matched": false
+    },
+    "x": {
+      "status": "not_attempted",
+      "reason": "No native evidence supplied",
+      "actions": [],
+      "profile_url": null,
+      "identity_matched": false
+    }
+  },
+  "signals": [],
+  "candidate_facts": [],
+  "draft": null,
+  "acceptance": {
+    "passed": false,
+    "blockers": [
+      "linkedin: native person search, matched profile and authored activity not complete",
+      "x: native person search, matched profile and authored activity not complete"
+    ]
+  }
+}

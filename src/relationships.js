@@ -109,6 +109,138 @@ function parseContactCard(text) {
   return parsed;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CONTACT_BRIEF_SCHEMA = 'contact-brief.v1';
+// Bounded provenance trail: an idempotent re-import adds nothing (its entry key
+// already exists), so the cap only bounds genuinely distinct history.
+const PROVENANCE_HISTORY_LIMIT = 20;
+
+function asObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+/** First non-empty trimmed candidate; explicit arguments beat parsed source. */
+function pickField(...values) {
+  for (const value of values) {
+    const text = field(value);
+    if (text) return text;
+  }
+  return '';
+}
+
+/**
+ * Parse the documented `contact-brief.v1` JSON contract (Contact Brief plugin
+ * `references/contact-brief.schema.json`): the `subject` identity, an optionally
+ * inspected role, and `email.address` together with the attribution and mailbox
+ * status that qualify it.
+ *
+ * A staged/inline payload is recognised as a brief only when it is JSON
+ * carrying the `contact-brief.v1` schema marker, or when its shape is
+ * unambiguous (`subject` identity plus the `email.attribution` + `email.mailbox`
+ * block that only this contract defines). Everything else — a plain contact
+ * card, free text, or unrelated JSON — returns null so the generic card parser
+ * still handles it. A provider-reported address is extracted verbatim and never
+ * promoted to a verified mailbox.
+ */
+export function parseContactBrief(text) {
+  const raw = String(text == null ? '' : text).trim();
+  if (!raw.startsWith('{')) return null;
+  let doc;
+  try { doc = JSON.parse(raw); } catch { return null; }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return null;
+  const subject = asObject(doc.subject);
+  const emailBlock = asObject(doc.email);
+  const schemaVersion = field(doc.schema_version);
+  const recognised = schemaVersion === CONTACT_BRIEF_SCHEMA
+    || (Boolean(field(subject.name) && field(subject.company))
+      && Object.prototype.hasOwnProperty.call(emailBlock, 'attribution')
+      && Object.prototype.hasOwnProperty.call(emailBlock, 'mailbox'));
+  if (!recognised) return null;
+  const address = field(emailBlock.address).toLowerCase();
+  const hasAddress = EMAIL_RE.test(address);
+  const lookup = asObject(emailBlock.lookup);
+  const mailbox = asObject(emailBlock.mailbox);
+  const emailEvidence = Array.isArray(emailBlock.evidence) ? emailBlock.evidence : [];
+  const identityEvidence = Array.isArray(asObject(doc.identity).evidence) ? asObject(doc.identity).evidence : [];
+  const evidenceUrls = [...emailEvidence, ...identityEvidence]
+    .map(item => field(asObject(item).url))
+    .filter(Boolean)
+    .slice(0, 8);
+  return {
+    schemaVersion: schemaVersion || CONTACT_BRIEF_SCHEMA,
+    generatedAt: field(doc.generated_at) || null,
+    name: field(subject.name),
+    company: field(subject.company),
+    // `role` is not part of the frozen contract body; it is read when the
+    // producing run records it, and stays null otherwise (never invented).
+    role: pickField(subject.role, doc.role, doc.title) || null,
+    email: hasAddress ? address : null,
+    // An attribution only qualifies the address it belongs to: an address-less
+    // brief carries no attributed address at all.
+    emailAttribution: hasAddress ? (pickField(emailBlock.attribution, 'unknown') || null) : null,
+    mailboxStatus: pickField(mailbox.status, 'not_checked'),
+    lookupProvider: field(lookup.provider) || null,
+    lookupStatus: field(lookup.status) || null,
+    providerRunId: field(lookup.provider_run_id) || null,
+    retrievedAt: field(lookup.retrieved_at) || null,
+    evidenceUrls,
+  };
+}
+
+/** Attributed, non-verified provenance carried from a contact-brief payload. */
+function contactBriefProvenance(brief) {
+  return {
+    schema: brief.schemaVersion,
+    generatedAt: brief.generatedAt,
+    emailAttribution: brief.emailAttribution,
+    mailboxStatus: brief.mailboxStatus,
+    lookupProvider: brief.lookupProvider,
+    lookupStatus: brief.lookupStatus,
+    providerRunId: brief.providerRunId,
+    retrievedAt: brief.retrievedAt,
+    evidenceUrls: brief.evidenceUrls,
+  };
+}
+
+/**
+ * A record is "clearly machine-created" only while no human has acted on it:
+ * no approval/suppression flag, no human-only decision in the canonical ledger,
+ * and no human note. Reconciliation is limited to these records.
+ */
+function humanProtectedContact(store, contact) {
+  if (!contact) return true;
+  if (contact.humanApproved === true || contact.doNotUse === true) return true;
+  if (contact.approvedAt || contact.suppressedAt || contact.approvedBy || contact.suppressedBy) return true;
+  if (field(contact.humanNote) || field(contact.decisionNote)) return true;
+  return Boolean(store.decisions && store.decisions[contact.id]);
+}
+
+// The key identifies the import *event* (route + attributed address), not the
+// label of the code path that handled it: replaying the same payload over the
+// same route is one event, so its entry is recorded once and a restart cannot
+// grow the trail. A genuinely different route (staged vs inline) or a different
+// attributed address is a different event and is recorded.
+function contactProvenanceKey(entry) {
+  return ['import', entry.source || '', entry.address || '', entry.attribution || '',
+    entry.provider || '', entry.providerRunId || '', entry.schemaVersion || ''].join('|');
+}
+
+/**
+ * Append one explicit provenance/history entry. Idempotent: a repeated identical
+ * import is recognised by its stable key and appends nothing, so a restart never
+ * grows the trail with duplicates. Returns whether a new entry was recorded.
+ */
+function recordContactProvenance(contact, entry) {
+  const key = contactProvenanceKey(entry);
+  const history = Array.isArray(contact.provenanceHistory) ? contact.provenanceHistory : [];
+  if (history.some(item => item && item.key === key)) {
+    contact.provenanceHistory = history;
+    return false;
+  }
+  contact.provenanceHistory = [...history, { ...entry, key }].slice(-PROVENANCE_HISTORY_LIMIT);
+  return true;
+}
+
 function ensureCollection(store, name) {
   if (!store[name] || typeof store[name] !== 'object' || Array.isArray(store[name])) store[name] = {};
   return store[name];
@@ -121,11 +253,32 @@ function expectedRevisionOf(args) {
 /**
  * Inline or PLUGIN_DATA-staged contact import. Arbitrary paths are rejected
  * (frozen B16); no mail or messaging is ever sent from here.
+ *
+ * Two documented source shapes are accepted and never confused with each other:
+ *   - a generic contact card or free text (the unchanged `parseContactCard`
+ *     path), or
+ *   - the `contact-brief.v1` JSON that a host contact-brief run produces, whose
+ *     `subject` identity and attribution-labelled provider-reported address are
+ *     read natively so the caller does not have to restate them inline.
+ *
+ * Every record created here is `humanApproved: false`, never suppressed, and
+ * keeps the provider attribution plus the `not_checked` mailbox status: a
+ * provider-reported address is never presented as a verified mailbox.
+ *
+ * Duplicate logical contacts are prevented on both directions of a re-import:
+ * an import carrying the provider-reported address fills the one clearly
+ * machine-created, same-name+company record that lacks an address, and an
+ * address-less import reconciles onto the one machine-created record for the
+ * same normalized name+company that already holds it. Human-approved,
+ * suppressed, do-not-use, human-note and conflicting-address records are never
+ * touched or collapsed.
  */
 export function importContact(dataDir, args = {}) {
   const { profileId } = args;
   const requested = args.path || args.filePath || null;
+  const inlineBrief = args.brief && typeof args.brief === 'object' && !Array.isArray(args.brief) ? args.brief : null;
   let sourceText = String(args.text || args.content || '');
+  if (inlineBrief) sourceText = JSON.stringify(inlineBrief);
   if (requested) {
     const root = ensureDataDir(dataDir);
     let real;
@@ -137,30 +290,126 @@ export function importContact(dataDir, args = {}) {
     if (!fs.statSync(real).isFile()) throw Object.assign(new Error('Staged contact path must be a regular file.'), { code: 'arbitrary_path' });
     sourceText = fs.readFileSync(real, 'utf8');
   }
-  const parsed = parseContactCard(sourceText);
-  const name = field(args.name, parsed.name);
+  const brief = parseContactBrief(sourceText);
+  const parsed = brief ? {} : parseContactCard(sourceText);
+  const name = pickField(args.name, brief && brief.name, parsed.name);
   if (!name) throw Object.assign(new Error('import_contact requires name'), { code: 'missing_name' });
-  const suppliedEmail = field(args.email, parsed.email || '').toLowerCase();
-  const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(suppliedEmail) ? suppliedEmail : null;
-  const company = field(args.company, parsed.company) || null;
-  const role = field(args.role, parsed.role) || null;
+  const suppliedEmail = pickField(args.email, brief && brief.email, parsed.email).toLowerCase();
+  const email = EMAIL_RE.test(suppliedEmail) ? suppliedEmail : null;
+  const company = pickField(args.company, brief && brief.company, parsed.company) || null;
+  const role = pickField(args.role, brief && brief.role, parsed.role) || null;
+  const relationship = pickField(args.relationship, parsed.relationship);
   const source = requested ? 'staged_file' : sourceText ? 'inline_text' : 'mcp_inline';
+  // Only a brief's own attribution label is carried as attribution; an inline
+  // address with no stated attribution stays unattributed rather than being
+  // upgraded to "provider-reported".
+  const attribution = email && brief ? (brief.emailAttribution || 'unknown') : null;
+  const emailStatus = email ? (brief ? 'provider_reported' : 'not_checked') : 'not_checked';
   const expectedRevision = expectedRevisionOf(args);
   let outcome = null;
 
   commitStore(dataDir, { expectedRevision }, store => {
     requireProfile(store, profileId);
     const contacts = ensureCollection(store, 'contacts');
-    const existing = email
-      ? Object.values(contacts).find(c => c.profileId === profileId && c.email && c.email.toLowerCase() === email)
+    const at = now();
+    const wantedName = normalizeCompany(name);
+    const wantedCompany = normalizeCompany(company);
+    const records = Object.values(contacts).filter(Boolean);
+    const sameIdentity = contact => contact.profileId === profileId
+      && normalizeCompany(contact.name) === wantedName
+      && normalizeCompany(contact.company) === wantedCompany;
+    const machineCreated = contact => !humanProtectedContact(store, contact);
+    const provenance = extra => ({
+      at, source, address: email, attribution,
+      provider: brief ? brief.lookupProvider : null,
+      providerRunId: brief ? brief.providerRunId : null,
+      retrievedAt: brief ? brief.retrievedAt : null,
+      mailboxStatus: brief ? brief.mailboxStatus : 'not_checked',
+      schemaVersion: brief ? brief.schemaVersion : null,
+      ...extra,
+    });
+
+    // 1. One profile-owned address is one logical contact. A human-protected
+    // record for that address is reused untouched (never overwritten).
+    const byAddress = email
+      ? records.find(contact => contact.profileId === profileId && contact.email
+        && contact.email.toLowerCase() === email)
       : null;
-    if (existing) {
-      existing.updatedAt = now();
-      outcome = { contactId: existing.id, id: existing.id, contact: existing, created: false };
+    if (byAddress) {
+      if (machineCreated(byAddress)) {
+        if (!byAddress.role && role) byAddress.role = role;
+        recordContactProvenance(byAddress, provenance({ kind: 'reimport_same_address' }));
+        byAddress.updatedAt = at;
+      }
+      outcome = {
+        contactId: byAddress.id, id: byAddress.id, contact: byAddress,
+        created: false, reconciled: true, reconciliation: 'same_address',
+      };
       return store;
     }
-    const at = now();
-    const contactId = id('contact', `${profileId}:${name}:${email || company || at}`);
+
+    // 2. Deterministic re-import identity: repeating the same import lands on
+    // the same record id instead of minting a second one.
+    const contactSeed = `${profileId}:${name}:${email || company || ''}`;
+    const contactId = id('contact', contactSeed);
+    const sameSeed = contacts[contactId];
+    if (sameSeed && sameSeed.profileId === profileId) {
+      if (machineCreated(sameSeed)) {
+        if (!sameSeed.role && role) sameSeed.role = role;
+        recordContactProvenance(sameSeed, provenance({ kind: 'reimport_same_identity' }));
+        sameSeed.updatedAt = at;
+      }
+      outcome = {
+        contactId: sameSeed.id, id: sameSeed.id, contact: sameSeed,
+        created: false, reconciled: true, reconciliation: 'same_identity',
+      };
+      return store;
+    }
+
+    // 3. Safe, bounded reconciliation for one name+company (normalized) inside
+    // the same profile. Only clearly machine-created records are eligible, and
+    // only when exactly one side of the pair holds the provider-reported
+    // address: two address-bearing records are conflicting-address records and
+    // are never collapsed.
+    const peers = records.filter(sameIdentity);
+    const openPeers = peers.filter(machineCreated);
+    const peersWithAddress = openPeers.filter(contact => Boolean(contact.email));
+    const peersWithoutAddress = openPeers.filter(contact => !contact.email);
+
+    if (email && peersWithoutAddress.length === 1 && peersWithAddress.length === 0) {
+      // The address-bearing import fills the single address-less peer instead of
+      // creating a second logical contact; the merge stays explicit in history.
+      const target = peersWithoutAddress[0];
+      target.email = email;
+      target.emailAttribution = attribution;
+      target.emailStatus = emailStatus;
+      target.contactBrief = brief ? contactBriefProvenance(brief) : null;
+      if (!target.role && role) target.role = role;
+      recordContactProvenance(target, provenance({ kind: 'merged_provider_reported_address', previousEmail: null }));
+      target.updatedAt = at;
+      outcome = {
+        contactId: target.id, id: target.id, contact: target,
+        created: false, reconciled: true, reconciliation: 'merged_provider_reported_address',
+      };
+      return store;
+    }
+
+    if (!email && peersWithAddress.length === 1) {
+      // An address-less import for a name+company that already has one
+      // machine-created address-bearing record is a re-import of that contact,
+      // not a new person: reconcile onto it and keep the address.
+      const target = peersWithAddress[0];
+      if (!target.role && role) target.role = role;
+      recordContactProvenance(target, provenance({ kind: 'reconciled_addressless_import', address: target.email, attribution: target.emailAttribution || null }));
+      target.updatedAt = at;
+      outcome = {
+        contactId: target.id, id: target.id, contact: target,
+        created: false, reconciled: true, reconciliation: 'reused_address_bearing_record',
+      };
+      return store;
+    }
+
+    // 4. No eligible peer: create the record.
     const contact = {
       id: contactId,
       profileId,
@@ -168,10 +417,13 @@ export function importContact(dataDir, args = {}) {
       role,
       company,
       email,
+      emailAttribution: attribution,
+      emailStatus,
+      contactBrief: brief ? contactBriefProvenance(brief) : null,
       source,
       sourceText,
       provenance: field(args.source, source),
-      relationshipEvidence: field(args.relationship, parsed.relationship),
+      relationshipEvidence: relationship,
       notes: field(args.notes),
       humanApproved: false,
       doNotUse: false,
@@ -179,8 +431,9 @@ export function importContact(dataDir, args = {}) {
       createdAt: at,
       updatedAt: at,
     };
+    recordContactProvenance(contact, provenance({ kind: brief ? 'staged_contact_brief' : 'imported_record' }));
     contacts[contactId] = contact;
-    outcome = { contactId, id: contactId, contact, created: true };
+    outcome = { contactId, id: contactId, contact, created: true, reconciled: false, reconciliation: null };
     return store;
   });
   return {

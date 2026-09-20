@@ -44,7 +44,7 @@ sub-intents for networking, interview planning, or scheduling.
 | --- | --- | --- |
 | Secure intake | `import_job` | Accepts inline `text`/`content` or a path under `PLUGIN_DATA`; rejects arbitrary absolute paths. Deduplicates on content. |
 | Secure intake | `import_job_url` | Fetches and parses public HTTP(S) posting content; rejects `file:`, credentialed, private-address, unsafe-redirect, oversized, and failed responses. |
-| Secure intake | `import_contact`, `list_contacts` | Inline contact card (`name`, `email`, `company`) or a `PLUGIN_DATA` path; never arbitrary paths. |
+| Secure intake | `import_contact`, `list_contacts` | Inline contact card (`name`, `email`, `company`), inline `contact-brief.v1` JSON (as `text`/`content` or a `brief` object), or a `PLUGIN_DATA` path; never arbitrary paths. |
 | Migration & state | `start` | Migrates a legacy `store.json` losslessly into versioned persistence with an audit trail under `PLUGIN_DATA`; ids are preserved. |
 | Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `add_proof_point` | Profile preferences, structured resume revisions, and proof candidates remain profile-owned and need human verification. |
 | Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery` | Fetches public Greenhouse boards by `boardToken`, with staged offline search data under `PLUGIN_DATA` as the offline path; no keys. Discoveries stay database-only until saved/pursued. |
@@ -104,6 +104,52 @@ brief or miss, unsent outreach draft, outcome history), `resume.md`,
 Regeneration is deterministic and never overwrites human-only decisions
 (artifact approval, contact approval/suppression, externally observed
 statuses).
+
+## Contact intake — plain cards and `contact-brief.v1`
+
+`import_contact` accepts either shape, inline or staged under `PLUGIN_DATA`:
+
+- a plain contact card/free text (`Name:`, `Company:`, `Role:`, `Email:`,
+  `Relationship:` lines), or
+- the documented `contact-brief.v1` JSON that a host contact-brief/people run
+  produces (`schema_version: "contact-brief.v1"`, `subject.name`,
+  `subject.company`, an optional producer-supplied `subject.role`,
+  `email.address` with `email.attribution`, `email.lookup`
+  (`provider`/`status`/`provider_run_id`/`retrieved_at`) and
+  `email.mailbox.status`). Pass it as `text`/`content`, as a `brief` object, or
+  as a file staged under `PLUGIN_DATA`.
+
+From a brief, the subject identity and the provider-reported address are read
+natively — the caller does not have to restate `name`/`company`/`email`
+inline. An explicit argument (or a plain card) always wins over the parsed
+payload. A JSON payload is treated as a brief only when it carries the
+`contact-brief.v1` marker or the unambiguous `subject` + `email.attribution` +
+`email.mailbox` shape; every other payload keeps the generic card parse.
+
+Every imported record is `humanApproved: false` and `doNotUse: false`, and
+keeps the attribution (`provider_reported` | `source_supported` |
+`user_supplied` | `unknown`), the resolved `not_checked` mailbox status, the
+brief's lookup provenance, and an explicit `provenanceHistory` entry. A
+provider-reported address is never a verified mailbox, and nothing is
+composed, sent, or submitted from this path.
+
+### One logical contact per person
+
+Re-importing must not fork one person into two records:
+
+- the same profile-owned address always resolves to the same record;
+- repeating the same name/company import resolves to the same record id;
+- when one clearly machine-created record for the same normalized
+  name+company holds the provider-reported address and the import does not,
+  the import reconciles onto that record — and the reverse direction fills the
+  single address-less machine record with the address — with the merge
+  recorded explicitly in `provenanceHistory`
+  (`merged_provider_reported_address`, `reconciled_addressless_import`).
+
+Reconciliation never touches a record a human has acted on (`humanApproved`,
+`doNotUse`, a trusted `decide` ledger entry, a human note), never collapses two
+conflicting addresses, and never merges same-name people at different
+companies. A restart therefore adds no duplicate logical contact.
 
 ## Blocked / human-only boundary
 

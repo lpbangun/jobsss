@@ -1,0 +1,71 @@
+{
+  "schema_version": "contact-brief.v1",
+  "generated_at": "2026-09-19T22:05:00Z",
+  "subject": {
+    "name": "  NADIA   OKONKWO ",
+    "company": "lumen LEARNING works"
+  },
+  "identity": {
+    "status": "matched",
+    "confidence": "medium",
+    "evidence": [
+      {
+        "url": "https://lumen-learning.test/team/nadia",
+        "fetched_at": "2026-09-19T22:04:00Z",
+        "published_at": null,
+        "quote": "FICTIONAL FIXTURE: same subject as the address-bearing fixture, address not looked up.",
+        "kind": "profile"
+      }
+    ],
+    "conflicts": []
+  },
+  "email": {
+    "address": null,
+    "attribution": "unknown",
+    "evidence": [],
+    "lookup": {
+      "provider": "none",
+      "status": "not_attempted",
+      "provider_run_id": null,
+      "retrieved_at": null,
+      "cost_usd": null,
+      "attribution": null,
+      "source_urls": [],
+      "usage": null,
+      "cost": null,
+      "detail": "Fictional fixture: no provider email lookup performed."
+    },
+    "mailbox": {
+      "status": "not_checked",
+      "method": "none",
+      "checked_at": null,
+      "detail": "Fictional fixture: no mailbox check performed."
+    }
+  },
+  "coverage": {
+    "linkedin": {
+      "status": "not_attempted",
+      "reason": "No native evidence supplied",
+      "actions": [],
+      "profile_url": null,
+      "identity_matched": false
+    },
+    "x": {
+      "status": "not_attempted",
+      "reason": "No native evidence supplied",
+      "actions": [],
+      "profile_url": null,
+      "identity_matched": false
+    }
+  },
+  "signals": [],
+  "candidate_facts": [],
+  "draft": null,
+  "acceptance": {
+    "passed": false,
+    "blockers": [
+      "linkedin: native person search, matched profile and authored activity not complete",
+      "x: native person search, matched profile and authored activity not complete"
+    ]
+  }
+}

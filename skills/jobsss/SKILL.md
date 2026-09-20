@@ -76,7 +76,7 @@ and browser actions stay blocked or human-only.
 
 | Workflow | MCP tools | Notes |
 | --- | --- | --- |
-| Secure intake | `import_job` (inline `text`/`content` or a path under `PLUGIN_DATA`), `import_job_url` (fetches public HTTP(S), rejects `file:`/private URLs), `import_contact` (inline card, inline `contact-brief.v1` JSON, or a `PLUGIN_DATA` path), `list_contacts` | No arbitrary absolute filesystem paths are read. Re-importing the same job deduplicates to one id, and a repeat or address-less contact re-import reconciles onto the existing logical contact instead of duplicating it. |
+| Secure intake | `import_job` (inline `text`/`content` or a path under `PLUGIN_DATA`), `import_job_url` (fetches public HTTP(S), rejects `file:`/private URLs), `import_contact` (inline card, inline `contact-brief.v1` JSON, or a `PLUGIN_DATA` path), `list_contacts` | No arbitrary absolute filesystem paths are read. Re-importing the same job deduplicates to one id, and a repeat or address-less contact re-import reconciles onto the existing logical contact instead of duplicating it; an address-bearing contact re-import also reconciles the unprotected address-less machine duplicate an older release left beside it. |
 | Migration & state | `start` | A legacy `store.json` migrates losslessly into versioned persistence with an audit trail; never drop or rewrite ids. |
 | Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `get_resume`, `add_proof_point` | Versioned structured resumes, preferences, and proof candidates remain profile-owned and require human verification. `get_resume` is a read-only restart readback that returns the full current resume text and identity. |
 | Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`, `save_job`, `skip_job`, `archive_job`, `list_jobs` | Fetch public Greenhouse ATS boards by `boardToken`, or select the public ohshi.work intelligence saved-search source with query filters; staged offline search data under `PLUGIN_DATA` is also supported. ohshi data is CC BY 4.0 and must retain attribution. Discoveries stay database-only until saved/pursued. |
@@ -175,7 +175,10 @@ inline fields; the record stays `humanApproved: false` with the mailbox
 `not_checked` and its attribution and provenance kept. A repeat import, or an
 address-less import for a name/company that already has one machine-created
 address-bearing record, reconciles onto the existing logical contact instead of
-creating a second one — human-approved, suppressed, do-not-use, human-note and
+creating a second one — an address-bearing re-import also reconciles the
+address-less machine duplicate an older release may have left beside it, keeping
+that record's id and source metadata in the survivor's history — while
+human-approved, suppressed, do-not-use, human-note, decision-ledger and
 conflicting-address records are never collapsed. Maps and plans distinguish
 cold professional email access, weak acquaintance, and channel-pending
 stakeholders. A profile URL is not a messaging channel, and same-name people at

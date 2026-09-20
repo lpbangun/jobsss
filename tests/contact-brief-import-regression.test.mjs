@@ -15,8 +15,12 @@
 //     provenance entry;
 //   * `record_contact_discovery` followed by an address-less staged import of the
 //     same normalized name+company produces ONE logical contact;
-//   * human-approved, suppressed, do-not-use, human-note and conflicting-address
-//     records are never deleted, overwritten or collapsed;
+//   * a re-import of an address that a machine-created record already holds also
+//     reconciles the address-less machine duplicate a pre-fix staged import left
+//     behind (its id and source metadata are kept in the survivor's provenance,
+//     and a recorded contact-discovery join is repointed, never orphaned);
+//   * human-approved, suppressed, do-not-use, human-note, decision-ledger and
+//     conflicting-address records are never deleted, overwritten or collapsed;
 //   * the arbitrary-path guard and the staged-file requirement are intact.
 //
 // Everything here is offline and synthetic: fixtures under
@@ -24,7 +28,8 @@
 // isolated temporary PLUGIN_DATA, no provider call, no send, no approval.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { REPO_ROOT, pluginPath } from './helpers/jobsss-gate0.mjs';
@@ -73,6 +78,100 @@ function contactsOf(ctx) {
 
 function provenanceLength(contact) {
   return Array.isArray(contact?.provenanceHistory) ? contact.provenanceHistory.length : 0;
+}
+
+const LEGACY_CREATED_AT = '2026-09-19T21:15:00.000Z';
+
+/**
+ * Pre-fix legacy state: the address-less machine contact record that the
+ * importer as shipped before 880aac5 wrote for a staged people-evidence brief
+ * (`source: 'staged_file'`, `email: null`, no `emailStatus`, no
+ * `provenanceHistory`). Its id is the deterministic pre-fix seed id for an
+ * address-less import — `id('contact', `${profileId}:${name}:${company}`)` —
+ * which is why it differs from the id of the address-bearing contact for the
+ * same person. Current code cannot produce this state any more: an address-less
+ * import for an identity that already holds one machine address-bearing record
+ * reconciles onto that record instead (case G5-c), which is exactly the state
+ * this fixture simulates having been written by an older release.
+ */
+function legacyStagedContact(profileId, overrides = {}) {
+  const record = { ...briefFixture('legacy-staged-contact-no-address.json'), ...overrides };
+  const id = `contact_${createHash('sha256').update(`${profileId}:${record.name}:${record.company}`).digest('hex').slice(0, 16)}`;
+  return {
+    ...record,
+    id,
+    profileId,
+    sourceText: readFileSync(path.join(BRIEF_DIR, 'contact-brief-v1-no-address.json'), 'utf8'),
+    createdAt: LEGACY_CREATED_AT,
+    updatedAt: LEGACY_CREATED_AT,
+  };
+}
+
+/** Write legacy records straight into the canonical store (state from an older run). */
+function seedLegacyContacts(ctx, records) {
+  const store = readStore(ctx.dataDir);
+  store.contacts = store.contacts || {};
+  for (const record of records) store.contacts[record.id] = record;
+  writeFileSync(path.join(ctx.dataDir, 'store.json'), JSON.stringify(store, null, 2));
+  return records;
+}
+
+/** Deep copy of one stored contact, for an untouched-record comparison. */
+function snapshotContact(ctx, contactId) {
+  return structuredClone(readStore(ctx.dataDir).contacts[contactId]);
+}
+
+/** Current-code id seed for an address-bearing machine contact record. */
+function machineAddressBearingContact(profileId, { name, company, email }) {
+  const id = `contact_${createHash('sha256').update(`${profileId}:${name}:${email}`).digest('hex').slice(0, 16)}`;
+  return {
+    id,
+    profileId,
+    name,
+    role: null,
+    company,
+    email,
+    emailAttribution: null,
+    emailStatus: 'not_checked',
+    contactBrief: null,
+    source: 'mcp_inline',
+    sourceText: '',
+    provenance: 'mcp_inline',
+    relationshipEvidence: '',
+    notes: '',
+    humanApproved: false,
+    doNotUse: false,
+    lastContactAt: null,
+    createdAt: LEGACY_CREATED_AT,
+    updatedAt: LEGACY_CREATED_AT
+  };
+}
+
+/**
+ * A trusted `decide` ledger revision the record still carries (shape from
+ * src/authority.js). It protects the record from reconciliation even though no
+ * approval/suppression flag is set on it.
+ */
+function seedLedgerEntry(ctx, contactId, profileId) {
+  const store = readStore(ctx.dataDir);
+  store.decisions = store.decisions || {};
+  store.decisions[contactId] = {
+    id: contactId,
+    entityType: 'contact',
+    profileId,
+    revision: 1,
+    contentHash: null,
+    kind: 'contact.approve',
+    createdAt: LEGACY_CREATED_AT,
+    updatedAt: LEGACY_CREATED_AT,
+    history: [{ action: 'contact.approve', revision: 1, actor: 'trusted_local', createdAt: LEGACY_CREATED_AT, note: null }]
+  };
+  writeFileSync(path.join(ctx.dataDir, 'store.json'), JSON.stringify(store, null, 2));
+}
+
+/** Case-insensitive, whitespace-collapsed identity comparison for assertions. */
+function normalizeTestIdentity(value) {
+  return String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function decide(ctx, args) {
@@ -386,4 +485,238 @@ test('G5-e the arbitrary-path guard and the staged-file requirement are intact',
   const accepted = await importContact(ctx, { profileId, path: stage(ctx, 'contact-brief-v1.json') });
   assert.equal(accepted.value?.ok, true, `a PLUGIN_DATA-staged brief must import: ${JSON.stringify(accepted.value)}`);
   assert.equal(contactsOf(ctx).length, 1);
+});
+
+test('G5-f an address re-import reconciles the address-less duplicate a pre-fix staged import left', async t => {
+  const ctx = isolate(t, 'jobsss-g5f-legacy-duplicate');
+  const profileId = await createProfile(ctx);
+
+  // 1. record_contact_discovery with the provider-reported address: the
+  // machine-created, non-human-approved address-bearing contact.
+  const jobSession = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'import_job', {
+      profileId,
+      text: 'Engineering Manager, Lumen Learning Works (fictional fixture).\nBuild learning products with a small platform team.\n'
+    })
+  ], { timeoutMs: 60_000 });
+  const jobId = requireOk(jobSession, 2, 'import_job').jobId;
+
+  const recorded = await mcp(ctx, [
+    initializeRequest(1),
+    callRequest(2, 'record_contact_discovery', {
+      profileId,
+      jobId,
+      subjectName: 'Nadia Okonkwo',
+      subjectCompany: 'Lumen Learning Works',
+      role: 'Engineering Manager',
+      status: 'contact_brief',
+      email: 'nadia.okonkwo@lumen-learning.test',
+      provider: 'exa_agent_fiber',
+      runId: 'fixture-run-contact-brief-1',
+      class: 'fixture'
+    })
+  ], { timeoutMs: 60_000 });
+  const discovery = requireOk(recorded, 2, 'record_contact_discovery').discovery;
+  const afterDiscovery = contactsOf(ctx);
+  assert.equal(afterDiscovery.length, 1, 'a recorded brief creates exactly one contact');
+  assert.equal(afterDiscovery[0].id, discovery.contactId);
+
+  // 2. the state a pre-fix staged import left behind: one address-less machine
+  // record for the same person (different id, no address, no human action).
+  const legacy = seedLegacyContacts(ctx, [legacyStagedContact(profileId)])[0];
+  assert.notEqual(legacy.id, discovery.contactId, 'the two machine records hold distinct ids');
+  assert.equal(legacy.email, null);
+  assert.equal(contactsOf(ctx).length, 2, 'the legacy state holds two logical contacts for one person');
+
+  // 3. the fixed staged contact-brief import: the address it carries is already
+  // held by the discovery contact, so the re-import must reconcile the leftover
+  // address-less duplicate instead of returning early and leaving it behind.
+  const staged = stage(ctx, 'contact-brief-v1.json');
+  const { value } = await importContact(ctx, { profileId, path: staged });
+  assert.equal(value?.ok, true, `the staged re-import must succeed: ${JSON.stringify(value)}`);
+  assert.equal(value.created, false, 'the re-import must not create a third record');
+  assert.equal(value.contactId, discovery.contactId, 'the address-bearing contact survives as the logical contact');
+  assert.equal(value.reconciliation, 'reconciled_legacy_no_address_duplicate');
+  assert.deepEqual(value.reconciledContactIds, [legacy.id], 'the re-import must report exactly the reconciled duplicate');
+  assert.doesNotMatch(JSON.stringify(value), /\bsent\b|\bsubmitted\b/i, 'no message is sent or submitted from the import path');
+
+  // 4. one logical contact, and the reconciled record is really gone.
+  const contacts = contactsOf(ctx);
+  assert.equal(contacts.length, 1, 'exactly one logical contact must remain');
+  const survivor = contacts[0];
+  assert.equal(survivor.id, discovery.contactId);
+  assert.equal(survivor.email, 'nadia.okonkwo@lumen-learning.test', 'the provider-reported address is kept');
+  assert.equal(survivor.emailAttribution, null, 'the discovery-recorded address stays unattributed on the record; the brief attribution is kept in provenance');
+  assert.equal(survivor.humanApproved, false, 'reconciliation grants no human approval');
+  assert.equal(survivor.doNotUse, false);
+  const durable = readStore(ctx.dataDir);
+  assert.equal(durable.contacts[legacy.id], undefined, 'the reconciled duplicate must be removed from the store');
+  assert.equal(durable.contactDiscoveries[discovery.id].contactId, survivor.id, 'the discovery keeps joining the surviving logical contact');
+
+  // 5. the survivor keeps its own history and now carries the reconciled
+  // record's id plus its source metadata.
+  assert.ok(survivor.provenanceHistory.some(entry => entry.kind === 'imported_record'), 'the original discovery-sourced import stays in the history');
+  const reconciledEntry = survivor.provenanceHistory.find(entry => entry.kind === 'reconciled_legacy_no_address_duplicate');
+  assert.ok(reconciledEntry, `the reconciliation must be explicit in provenance: ${JSON.stringify(survivor.provenanceHistory)}`);
+  assert.equal(reconciledEntry.reconciledContacts.length, 1);
+  const kept = reconciledEntry.reconciledContacts[0];
+  assert.equal(kept.id, legacy.id, 'the reconciled record id must be preserved');
+  assert.equal(kept.source, 'staged_file');
+  assert.equal(kept.provenance, 'staged_file');
+  assert.equal(kept.sourceText, legacy.sourceText, 'the reconciled record source payload must be preserved');
+  assert.equal(kept.createdAt, LEGACY_CREATED_AT);
+  assert.equal(kept.name, legacy.name);
+  assert.equal(kept.company, legacy.company);
+  assert.equal(kept.reconciledInto, survivor.id);
+  assert.equal(kept.email, null);
+  assert.equal(reconciledEntry.attribution, 'provider_reported', 'the brief attribution of the re-import is kept in provenance');
+  assert.equal(reconciledEntry.mailboxStatus, 'not_checked', 'the mailbox status stays not_checked: no verification ran');
+  const provenanceAfterReconcile = provenanceLength(survivor);
+
+  // 6. readback through the tool surface, not only the write response.
+  const readback = await mcp(ctx, [initializeRequest(1), callRequest(2, 'list_contacts', { profileId })], { timeoutMs: 60_000 });
+  const listed = requireOk(readback, 2, 'list_contacts');
+  assert.equal(listed.count, 1, 'the tool surface must read back one logical contact');
+  assert.equal(listed.contacts[0].id, survivor.id);
+
+  // 7. restart: a NEW MCP process replays the staged import. Still one contact,
+  // the same id, and a provenance trail that does not grow.
+  const restarted = await importContact(ctx, { profileId, path: staged });
+  assert.equal(restarted.value?.ok, true, `the restarted import must succeed: ${JSON.stringify(restarted.value)}`);
+  assert.equal(restarted.value.created, false);
+  assert.equal(restarted.value.contactId, survivor.id, 'a restart must resolve to the same logical contact');
+  assert.deepEqual(restarted.value.reconciledContactIds, [], 'after the reconciliation there is nothing left to reconcile');
+  const afterRestart = contactsOf(ctx);
+  assert.equal(afterRestart.length, 1, 'a restart remains exactly one logical contact');
+  assert.equal(provenanceLength(afterRestart[0]), provenanceAfterReconcile, 'a restart must not grow the provenance trail');
+  assert.deepEqual(
+    afterRestart[0].provenanceHistory.find(entry => entry.kind === 'reconciled_legacy_no_address_duplicate'),
+    reconciledEntry,
+    'the recorded reconciliation must not be rewritten or duplicated by a restart'
+  );
+  assert.equal(afterRestart[0].email, 'nadia.okonkwo@lumen-learning.test');
+  assert.equal(afterRestart[0].createdAt, survivor.createdAt, 'the surviving record identity stays stable');
+  assert.equal(readStore(ctx.dataDir).contacts[legacy.id], undefined, 'the removed duplicate must not come back');
+});
+
+test('G5-g protected or unrelated machine records are never removed by an address re-import', async t => {
+  const ctx = isolate(t, 'jobsss-g5g-protected-legacy');
+  const profileId = await createProfile(ctx);
+  const otherProfileId = await createProfile(ctx, 'Casey Example');
+  const payloadFor = (name, company, address) => JSON.stringify({
+    ...briefFixture('contact-brief-v1-with-role.json'),
+    subject: { name, company },
+    email: { ...briefFixture('contact-brief-v1-with-role.json').email, address }
+  });
+
+  // One address-bearing contact per identity, each created the way the live
+  // journey created it (record_contact_discovery), plus the legacy address-less
+  // machine duplicate an older release left next to it.
+  const cases = [
+    { key: 'reconcile-control', name: 'Sofia Delacroix', company: 'Larkspur Test Partners', address: 'sofia.delacroix@larkspur-test.test', reconciled: true },
+    { key: 'human-approved', name: 'Owen Marsh', company: 'Tideline Fintech Labs', address: 'owen.marsh@tideline-fintech.test', approve: true, identicalPeers: 2 },
+    { key: 'suppressed', name: 'Priya Raman', company: 'Cascade Test Labs', address: 'priya.raman@cascade-test.test', suppress: true, identicalPeers: 2 },
+    { key: 'human-note', name: 'Dana Whitfield', company: 'Harborlight Test Co', address: 'dana.whitfield@harborlight.test', legacy: { humanNote: 'Human note: this is the record a human is working from.' }, identicalPeers: 2 },
+    { key: 'ledger-protected', name: 'Ilse Vandenberg', company: 'Rowan Test Works', address: 'ilse.vandenberg@rowan-test.test', ledger: true, identicalPeers: 2 },
+    { key: 'different-name', name: 'Marcus Bell', company: 'Signalgrove Test Ltd', address: 'marcus.bell@signalgrove.test', legacy: { name: 'Marcus Bellamy' } },
+    { key: 'different-company', name: 'Tomas Neary', company: 'Kestrel Test Group', address: 'tomas.neary@kestrel-test.test', legacy: { company: 'Kestrel Test Group Ltd' } },
+    { key: 'different-profile', name: 'Rina Okafor', company: 'Ferrant Test Systems', address: 'rina.okafor@ferrant-test.test', otherProfile: true, identicalPeers: 2 },
+    { key: 'conflicting-address', name: 'Bea Lindqvist', company: 'Northgate Test Labs', address: 'bea.lindqvist@northgate-test.test', conflictingAddress: 'bea.lindqvist@northgate-legacy.test', identicalPeers: 3 }
+  ];
+
+  // The address-bearing machine contacts, all in one bounded MCP session.
+  const discoverySession = await mcp(ctx, [
+    initializeRequest(1),
+    ...cases.map((item, index) => callRequest(index + 2, 'record_contact_discovery', {
+      profileId,
+      subjectName: item.name,
+      subjectCompany: item.company,
+      status: 'contact_brief',
+      email: item.address,
+      provider: 'exa_agent_fiber',
+      runId: `fixture-run-${item.key}`,
+      class: 'fixture'
+    }))
+  ], { timeoutMs: 60_000 });
+  const discoveries = new Map();
+  cases.forEach((item, index) => {
+    const discovery = requireOk(discoverySession, index + 2, `record_contact_discovery ${item.key}`).discovery;
+    assert.equal(discovery.email, item.address);
+    discoveries.set(item.key, discovery);
+  });
+
+  // Legacy state: one address-less machine record per identity (the
+  // different-profile case belongs to another profile), plus a second
+  // address-bearing machine record for the conflicting-address identity.
+  const legacies = new Map();
+  for (const item of cases) {
+    const owner = item.otherProfile ? otherProfileId : profileId;
+    legacies.set(item.key, legacyStagedContact(owner, { name: item.name, company: item.company, ...(item.legacy || {}) }));
+  }
+  const conflictPeer = machineAddressBearingContact(profileId, {
+    name: 'Bea Lindqvist',
+    company: 'Northgate Test Labs',
+    email: cases.find(item => item.key === 'conflicting-address').conflictingAddress
+  });
+  seedLegacyContacts(ctx, [...legacies.values(), conflictPeer]);
+  seedLedgerEntry(ctx, legacies.get('ledger-protected').id, profileId);
+
+  // Human actions in the trusted local surface (approval, suppression).
+  humanDecision(ctx, 'contact.approve', legacies.get('human-approved').id);
+  humanDecision(ctx, 'contact.suppress', legacies.get('suppressed').id);
+
+  const before = new Map();
+  for (const [key, record] of legacies) before.set(key, snapshotContact(ctx, record.id));
+  const conflictBefore = snapshotContact(ctx, conflictPeer.id);
+  assert.equal(before.get('human-approved').humanApproved, true, 'the approved legacy record must carry the human approval');
+  assert.equal(before.get('suppressed').doNotUse, true, 'the suppressed legacy record must carry do-not-use');
+
+  // Re-import each identity's address-bearing brief.
+  const importSession = await mcp(ctx, [
+    initializeRequest(1),
+    ...cases.map((item, index) => callRequest(index + 2, 'import_contact', { profileId, text: payloadFor(item.name, item.company, item.address) }))
+  ], { timeoutMs: 60_000 });
+  cases.forEach((item, index) => {
+    const value = requireOk(importSession, index + 2, `import_contact ${item.key}`);
+    assert.equal(value.contactId, discoveries.get(item.key).contactId, `${item.key}: the same address stays one record`);
+    if (item.reconciled) {
+      assert.equal(value.reconciliation, 'reconciled_legacy_no_address_duplicate', `${item.key}: an unprotected machine duplicate is reconciled`);
+      assert.deepEqual(value.reconciledContactIds, [legacies.get(item.key).id]);
+    } else {
+      assert.equal(value.reconciliation, 'same_address', `${item.key}: nothing was reconciled for this identity`);
+      assert.deepEqual(value.reconciledContactIds, [], `${item.key}: no record may be removed`);
+    }
+  });
+
+  const durable = readStore(ctx.dataDir);
+  for (const item of cases.filter(entry => !entry.reconciled)) {
+    const record = legacies.get(item.key);
+    assert.ok(durable.contacts[record.id], `${item.key}: the machine record must still be in the store`);
+    assert.deepEqual(snapshotContact(ctx, record.id), before.get(item.key), `${item.key}: the machine record must be untouched`);
+    const discoveryContact = durable.contacts[discoveries.get(item.key).contactId];
+    assert.ok(discoveryContact, `${item.key}: the address-bearing contact must still exist`);
+    assert.equal(discoveryContact.email, item.address);
+    assert.equal(durable.contactDiscoveries[discoveries.get(item.key).id].contactId, discoveries.get(item.key).contactId, `${item.key}: the discovery join is unchanged`);
+    if (item.identicalPeers) {
+      const matching = contactsOf(ctx).filter(contact => normalizeTestIdentity(contact.name) === normalizeTestIdentity(item.name)
+        && normalizeTestIdentity(contact.company) === normalizeTestIdentity(item.company));
+      assert.equal(matching.length, item.identicalPeers, `${item.key}: every record carrying this identity is kept`);
+    }
+  }
+  assert.deepEqual(snapshotContact(ctx, conflictPeer.id), conflictBefore, 'conflicting-address: the second address-bearing record must be untouched');
+
+  // The identical control proves the protected records survive because they are
+  // protected, not because the reconciliation is inert.
+  assert.equal(durable.contacts[legacies.get('reconcile-control').id], undefined, 'reconcile-control: the unprotected duplicate is removed');
+  assert.equal(
+    contactsOf(ctx).filter(contact => normalizeTestIdentity(contact.name) === 'sofia delacroix').length,
+    1,
+    'reconcile-control: one logical contact remains'
+  );
+  assert.equal(
+    contactsOf(ctx).find(contact => contact.id === discoveries.get('reconcile-control').contactId).email,
+    cases[0].address,
+    'reconcile-control: the address-bearing contact survives with its address'
+  );
 });

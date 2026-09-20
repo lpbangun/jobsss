@@ -144,12 +144,21 @@ Re-importing must not fork one person into two records:
   the import reconciles onto that record — and the reverse direction fills the
   single address-less machine record with the address — with the merge
   recorded explicitly in `provenanceHistory`
-  (`merged_provider_reported_address`, `reconciled_addressless_import`).
+  (`merged_provider_reported_address`, `reconciled_addressless_import`);
+- an address-bearing re-import of a record that is already stored also
+  reconciles the leftover address-less machine duplicate an older release
+  could leave next to it (for example a pre-fix staged brief import): the
+  address-less duplicate is removed, and its id and source metadata are kept in
+  the surviving record's `provenanceHistory`
+  (`reconciled_legacy_no_address_duplicate`), so the recorded evidence of the
+  removed record and any contact-discovery join to it are not lost.
 
 Reconciliation never touches a record a human has acted on (`humanApproved`,
 `doNotUse`, a trusted `decide` ledger entry, a human note), never collapses two
-conflicting addresses, and never merges same-name people at different
-companies. A restart therefore adds no duplicate logical contact.
+conflicting addresses (an identity with a second address is ambiguous and its
+address-less record is left alone), and never merges same-name people at
+different companies or across profiles. A restart therefore adds no duplicate
+logical contact and does not grow the provenance trail.
 
 ## Blocked / human-only boundary
 

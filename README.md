@@ -180,9 +180,27 @@ floor.
 
 ### As an Agent Plugin (preferred)
 
-The repository root **is** the plugin: `plugin.json` + `mcp.json` +
-`skills/jobsss/` + `bin/jobsss`. Install it with your host's plugin mechanism and
-the host expands `${PLUGIN_DATA}` to a writable directory.
+The repository root **is** the canonical plugin: `plugin.json` + `mcp.json` +
+`skills/jobsss/` + `bin/jobsss`, and the installing agent expands
+`${PLUGIN_DATA}` to a writable directory.
+
+### Thin install surface (`agent-plugin/`)
+
+The root also carries reviewer-owned benchmark evidence (`BENCHMARK.md`, `docs/`,
+`evaluation/`, `tests/`), so hosts that scan the tree they install — for example
+Hermes' install-time plugin guard — must be pointed at the generated package
+subdirectory instead of the repository root:
+
+```bash
+node scripts/build-agent-plugin.mjs              # regenerate the package from the root
+node scripts/build-agent-plugin.mjs --check      # fail on any drift
+hermes plugins install lpbangun/jobsss/agent-plugin
+```
+
+`agent-plugin/` is a byte-for-byte mirror of `plugin.json`, `mcp.json`, `bin/`,
+`src/`, and `skills/` — never a second source of truth; `tests/agent-plugin-parity.test.mjs`
+fails on any missing, extra, or changed byte. Install identifier:
+`lpbangun/jobsss/agent-plugin` (equivalently `https://github.com/lpbangun/jobsss.git#agent-plugin`).
 
 ```jsonc
 // mcp.json — the only runtime entry point

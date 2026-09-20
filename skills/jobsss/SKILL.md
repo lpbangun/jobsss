@@ -86,6 +86,52 @@ and browser actions stay blocked or human-only.
 | Networking drafts | `record_research`, `list_research`, `map_reachable_network`, `plan_outreach`, `draft_outreach`, `list_outreach` | Local people/company research, maps, plans, follow-ups, and drafts only. Sending stays human-only; `mark_outreach_sent` is not MCP. |
 | Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep`, `get_interview_prep`, `interview_debrief_handoff` | Local story drafting, preparation, coverage gaps, and a non-attesting handoff. Verification/debrief confirmation stays human-only via trusted CLI/TUI. |
 | Sync preview | `preview_sync` | Dry-run, secret-safe preview of derived/export data. No automatic or cloud sync. |
+| Host composition (multi-job preparation) | `prepare_applications_batch`, `record_contact_discovery`, `list_preparation_batches`, `list_contact_discoveries` | One bounded local request prepares up to five owned jobs for one profile (score → pursue → tailor materials → record host-supplied people evidence → unsent outreach draft → tracker/next actions) with honest per-item statuses. JobSSS never searches for people or jobs here: the host supplies people evidence (people-finder / contact-brief) and it is recorded, joined, and projected. A contact miss is non-fatal and carries a structured reason code. Re-running the same request reuses the same records instead of duplicating jobs, contacts, drafts, or packets. Still no sending, no submission, no application. |
+
+### Host composition: one request, many jobs
+
+Use `prepare_applications_batch` when the user asks for several jobs to be
+prepared in one go ("select the best five eligible jobs for my profile and
+complete preparation for every selected job"). Route it by MCP tool name or
+natural language; no slash sub-intent is needed.
+
+- Provider-neutral by design: the tool selects from jobs already in the local
+  store, never fetches a board or a people provider, and never invents a
+  person. People evidence arrives in `contacts[]` (`subjectName`,
+  `subjectCompany`, `role`, `email`, `status`, `missReasonCode`, `class`,
+  `provider`, `runId`) from the host plugin that owns discovery.
+- Evidence class is mandatory: `class: live | replay | fixture`. `live`
+  requires current-run metadata (`provider` plus `runId` or `capturedAt`) and
+  `replay` must name the original run, so a replayed or synthetic payload can
+  never be presented as fresh live discovery. A provider-reported address is
+  recorded as `provider_reported`, never as a verified mailbox, and an
+  unattributed address is refused.
+- A contact miss is bounded preparation, not a failure: it is recorded with a
+  structured reason code (`no_public_channel`, `not_found`,
+  `identity_mismatch`, `uncertain`, `not_enriched`, `no_candidates`,
+  `budget_exhausted`, `provider_error`, `timeout`, `rate_limited`,
+  `replay_no_match`) and the job's packet still completes.
+- Per-item status is honest: `prepared`, `partial` (for example no profile
+  proof matches any extracted requirement), `failed`, `blocked`, `duplicate`
+  (one logical employer/role/location posting), or `skipped` (an item the
+  local record already closed). One item's failure never collapses the rest,
+  and nothing is fabricated to reach a target count.
+- Both entry points are equivalent: running `prepare_applications_batch` and
+  running the individual tools (`score_job`, `pursue_job`, `tailor_resume`,
+  `draft_cover_letter`, `import_contact`, `record_research`, `plan_outreach`,
+  `draft_outreach`) in that order leave the same durable JobSSS state.
+- The projection is deterministic: every local commit regenerates
+  `profiles/<profileId>/profile.md`, `profiles/<profileId>/tracker.md`, and,
+  per prepared job, `applications/<jobId>/application.md` (job/source
+  snapshot, fit rationale, materials and their coverage gaps, checklist and
+  review-gap truth, people/contact brief or miss, unsent outreach draft,
+  outcome history), `resume.md`, `cover-letter.md` when one exists, and
+  `applications/<jobId>/contacts/<contactKey>.md`. Human-only state
+  (artifact approval, contact approval or suppression, recorded external
+  outcomes) is preserved across regeneration and is never overwritten.
+- Read back at any time with `list_preparation_batches` and
+  `list_contact_discoveries`; both are plain local reads from `PLUGIN_DATA`.
+
 
 See `references/standalone-journey.md` for argument shapes and the frozen
 human-only catalog.

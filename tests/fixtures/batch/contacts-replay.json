@@ -1,0 +1,68 @@
+{
+  "schema": "jobsss.batch-fixture/v1",
+  "case": "replay-and-non-live",
+  "class": "replay",
+  "fictional": true,
+  "live": false,
+  "note": "Non-live replay coverage plus the negative controls that must be rejected by the product, not by the test harness: a replay payload re-presents an earlier recorded run (never a fresh live discovery), a 'live'-labelled payload without current-run metadata is refused, a provider-reported address without an attribution provider is refused, and a miss without a structured reason code is refused. No provider was called and no address was verified.",
+  "jobs": [],
+  "replayPayloads": [
+    {
+      "subjectName": "Dana Reyes",
+      "subjectCompany": "Tideline Fintech Labs",
+      "role": "Engineering Manager",
+      "status": "contact_brief",
+      "email": "dana.replay@tideline-fintech.test",
+      "provider": "contact-brief",
+      "runId": "recorded-run-2026-09-19T22:10:00Z",
+      "class": "replay",
+      "evidence": [
+        { "kind": "recorded_envelope", "ref": "replay://recorded-run-2026-09-19T22:10:00Z" }
+      ],
+      "expect": "recorded"
+    },
+    {
+      "subjectName": "Kim Replay",
+      "subjectCompany": "Harborview Commerce Group",
+      "status": "miss",
+      "missReasonCode": "replay_no_match",
+      "missReasonDetail": "Recorded run matched no attributable public channel.",
+      "class": "replay",
+      "runId": "recorded-run-2026-09-19T22:11:00Z",
+      "expect": "recorded"
+    },
+    {
+      "subjectName": "Adele Marlowe",
+      "subjectCompany": "Tideline Fintech Labs",
+      "status": "contact_brief",
+      "email": "fake.live@tideline-fintech.test",
+      "provider": "contact-brief",
+      "class": "live",
+      "expect": "rejected",
+      "expectCode": "live_evidence_without_run"
+    },
+    {
+      "subjectName": "Ines Vale",
+      "subjectCompany": "Tideline Fintech Labs",
+      "status": "contact_brief",
+      "email": "unattributed@tideline-fintech.test",
+      "class": "fixture",
+      "expect": "rejected",
+      "expectCode": "unattributed_address"
+    },
+    {
+      "subjectName": "Owen Pike",
+      "subjectCompany": "Tideline Fintech Labs",
+      "status": "miss",
+      "class": "fixture",
+      "expect": "rejected",
+      "expectCode": "missing_miss_reason"
+    }
+  ],
+  "expect": {
+    "recorded": 2,
+    "rejected": 3,
+    "liveClaims": 0,
+    "externalActions": 0
+  }
+}

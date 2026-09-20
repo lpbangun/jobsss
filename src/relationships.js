@@ -215,6 +215,67 @@ function humanProtectedContact(store, contact) {
   return Boolean(store.decisions && store.decisions[contact.id]);
 }
 
+/** Recorded contact-discovery evidence that still joins to one contact id. */
+function contactDiscoveryJoins(store, contactId) {
+  return Object.values(store.contactDiscoveries || {}).filter(record => record && record.contactId === contactId);
+}
+
+/**
+ * Legacy-state correction for the address re-import path.
+ *
+ * A pre-fix staged import could leave a second, address-less machine record for
+ * the same normalized name+company next to the address-bearing record that a
+ * recorded `record_contact_discovery` actually created. Re-importing the
+ * address-bearing brief resolves to the address-bearing record, so without this
+ * step that address-less duplicate would survive forever as a second logical
+ * contact for one person.
+ *
+ * Eligibility is deliberately narrow — every duplicate must be clearly
+ * machine-created and unprotected:
+ *   - same profile, same normalized name+company, and no address of its own;
+ *   - not human-approved, suppressed/do-not-use, human-note, or
+ *     decision-ledger protected (`humanProtectedContact`);
+ *   - and the identity must not already carry a second address: two addresses
+ *     for one name+company are conflicting-address records that are never
+ *     collapsed, so that identity is ambiguous and the address-less peer is
+ *     left alone.
+ *
+ * Nothing is lost by removing an eligible peer: its id and full source metadata
+ * are returned to the caller and kept in the surviving contact's provenance, and
+ * a recorded contact-discovery join is repointed to the survivor instead of
+ * dangling on a removed duplicate.
+ */
+function reconcileAddresslessMachinePeers(store, contacts, survivor, records, profileId, at) {
+  const wantedName = normalizeCompany(survivor.name);
+  const wantedCompany = normalizeCompany(survivor.company);
+  const peers = records.filter(contact => contact && contact.id !== survivor.id
+    && contact.profileId === profileId
+    && normalizeCompany(contact.name) === wantedName
+    && normalizeCompany(contact.company) === wantedCompany);
+  if (peers.some(contact => Boolean(contact.email))) return [];
+  const reconciled = [];
+  for (const peer of peers) {
+    if (peer.email || humanProtectedContact(store, peer)) continue;
+    for (const join of contactDiscoveryJoins(store, peer.id)) {
+      join.contactId = survivor.id;
+      join.updatedAt = at;
+      join.history = [...(Array.isArray(join.history) ? join.history : []), {
+        status: join.status,
+        class: field(join.class) || null,
+        at,
+        provider: asObject(join.provider).name || null,
+        runId: asObject(join.provider).runId || null,
+        reason: 'contact_reconciled_to_surviving_record',
+        reconciledContactId: peer.id,
+        contactId: survivor.id,
+      }];
+    }
+    delete contacts[peer.id];
+    reconciled.push({ ...peer, reconciledAt: at, reconciledInto: survivor.id });
+  }
+  return reconciled;
+}
+
 // The key identifies the import *event* (route + attributed address), not the
 // label of the code path that handled it: replaying the same payload over the
 // same route is one event, so its entry is recorded once and a restart cannot
@@ -330,20 +391,34 @@ export function importContact(dataDir, args = {}) {
     });
 
     // 1. One profile-owned address is one logical contact. A human-protected
-    // record for that address is reused untouched (never overwritten).
+    // record for that address is reused untouched (never overwritten). On a
+    // machine-created record the re-import also reconciles legacy address-less
+    // duplicates of the same person (see reconcileAddresslessMachinePeers), so
+    // state left behind by a pre-fix staged import ends at one logical contact.
     const byAddress = email
       ? records.find(contact => contact.profileId === profileId && contact.email
         && contact.email.toLowerCase() === email)
       : null;
     if (byAddress) {
+      let reconciled = [];
       if (machineCreated(byAddress)) {
+        reconciled = reconcileAddresslessMachinePeers(store, contacts, byAddress, records, profileId, at);
         if (!byAddress.role && role) byAddress.role = role;
-        recordContactProvenance(byAddress, provenance({ kind: 'reimport_same_address' }));
+        // One entry per import event: when duplicates were reconciled the event
+        // is that reconciliation (which carries their ids and source metadata);
+        // otherwise it is a plain same-address re-import. The entry key is
+        // route+address, so replaying this import after the duplicates are gone
+        // adds nothing and the trail cannot grow.
+        recordContactProvenance(byAddress, provenance(reconciled.length
+          ? { kind: 'reconciled_legacy_no_address_duplicate', reconciledContacts: reconciled }
+          : { kind: 'reimport_same_address' }));
         byAddress.updatedAt = at;
       }
       outcome = {
         contactId: byAddress.id, id: byAddress.id, contact: byAddress,
-        created: false, reconciled: true, reconciliation: 'same_address',
+        created: false, reconciled: true,
+        reconciliation: reconciled.length ? 'reconciled_legacy_no_address_duplicate' : 'same_address',
+        reconciledContactIds: reconciled.map(contact => contact.id),
       };
       return store;
     }

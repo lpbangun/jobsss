@@ -1,10 +1,16 @@
 ---
-title: "JobSSS — one portable Agent Plugin, one skill, one bundled MCP runtime"
+title: "JobSSS — one bundled runtime, one skill, and two optional companion Agent Plugins"
 ---
 flowchart TB
   subgraph HOST["AGENT HOST (outside the plugin)"]
     Agent["Host agent model<br/>Hermes · Claude Code · Codex"]
     Adapters["Thin client adapters · compat/<br/>pointers only · no duplicated policy"]
+  end
+
+  subgraph COMPANIONS["COMPANION PLUGINS — optional, separate Agent Plugins from the same pack"]
+    Pack["compat/hermes/find-people.pack.yaml<br/>one install · three pinned commits"]
+    PF["people-finder — skills/people-finder<br/>typed-anchor candidate leads · offline · no state"]
+    CB["contact-brief — skills/contact-brief<br/>cited contact brief compiler · offline · no MCP server"]
   end
 
   subgraph PLUGIN["JobSSS PLUGIN — portable, self-contained (Agent Plugins 1.0.0)"]
@@ -39,6 +45,12 @@ flowchart TB
 
   Agent -->|"loads the skill"| Skill
   Adapters -.->|"points at the canonical skill"| Skill
+  Pack -->|"pins and installs"| Launcher
+  Pack -->|"pins and installs"| PF
+  Pack -->|"pins and installs"| CB
+  Agent -->|"MCP tool calls"| PF
+  Agent -->|"terminal: compiler CLI"| CB
+  Agent -->|"host-supplied evidence"| MCP
   Skill -->|"MCP tool calls"| MCP
   Launcher --> MCP
   MCP --> D1 & D2 & D3 & D4
@@ -54,6 +66,10 @@ flowchart TB
   MCP -.->|"non-authoritative handoffs"| Human
   Human -->|"trusted local decision"| Authority
   Authority -->|"records human observation"| S1
+  PF -.->|"leads, never identity or contact"| Agent
+  CB -.->|"contact-brief.v1, never a send"| Agent
 
   classDef blocked fill:#3f1220,stroke:#fb7185,color:#fecdd3;
+  classDef companion fill:#1e293b,stroke:#7dd3fc,color:#e0f2fe,stroke-dasharray:4 3;
   class N1,N2,N3 blocked;
+  class Pack,PF,CB companion;

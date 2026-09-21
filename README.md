@@ -10,13 +10,13 @@
 
 ---
 
-> **JobSSS is a standalone Agent Plugin, not a component of another product.**
-> It ships one skill and one bundled MCP runtime. At runtime it never resolves,
-> imports, or spawns JobOS or any other project — no JobOS installation, no
-> `jobos` on `PATH`, no API key, no account. The network is optional and used
-> only for public job intake. Some proven behavior was ported from MIT-licensed
-> JobOS early on and is attributed in [LICENSE](LICENSE); that attribution is a
-> provenance note, not a dependency.
+> **JobSSS is a standalone Agent Plugin — not a component of another product,
+> and it has no sibling requirement.** It ships one skill and one bundled MCP
+> runtime, and at runtime it resolves, imports, and spawns nothing outside
+> itself: no other installation, no `PATH` entry, no API key, no account. The
+> network is optional and used only for public job intake. Portions of the design
+> derive from an earlier MIT-licensed project and are attributed in
+> [LICENSE](LICENSE); attribution is provenance, not a dependency.
 
 ## What it is
 
@@ -49,15 +49,116 @@ an artifact, verify an interview story, schedule anything, or drive a browser.
 Those actions are either blocked or completed by a human on the trusted local
 surface. JobSSS does not fabricate jobs, scores, proofs, or success.
 
+## Install
+
+Three ways in: hand it to your agent, install the family in one action, or
+install JobSSS alone.
+
+### Point your agent at this repository
+
+Any agent that can read a URL and run commands — Hermes, Claude Code, Codex, or
+another host — can install from one prompt:
+
+> Read `https://raw.githubusercontent.com/lpbangun/jobsss/main/INSTALL.md` and
+> install JobSSS for this host. Pick the surface that matches you, show me every
+> confirmation the host asks for before answering it, and report exactly what
+> installed, including any per-plugin failure. If your host has no verified
+> surface, stop and tell me instead of improvising.
+
+[INSTALL.md](INSTALL.md) is the table the agent follows: surface, one action,
+status, and the rule that the human confirms every install.
+
+### The whole family in one action (Hermes)
+
+JobSSS composes with [people-finder](https://github.com/lpbangun/people-finder)
+and [contact-brief](https://github.com/lpbangun/contact-brief). A generated pack
+installs all three, pinned to a reviewed trio of exact commits:
+
+```bash
+hermes plugins pack install https://raw.githubusercontent.com/lpbangun/jobsss/main/compat/hermes/find-people.pack.yaml
+```
+
+The pack is metadata, not a bundle: three pinned entries, three ordinary installs,
+per-plugin capability consent preserved, and each product stays removable on its
+own.
+
+### As an Agent Plugin (JobSSS alone)
+
+The repository root **is** the canonical plugin: `plugin.json` + `mcp.json` +
+`skills/jobsss/` + `bin/jobsss`, and the installing agent expands
+`${PLUGIN_DATA}` to a writable directory.
+
+### Thin install surface (`agent-plugin/`)
+
+The root also carries reviewer-owned benchmark evidence (`BENCHMARK.md`, `docs/`,
+`evaluation/`, `tests/`), so hosts that scan the tree they install — for example
+Hermes' install-time plugin guard — must be pointed at the generated package
+subdirectory instead of the repository root:
+
+```bash
+node scripts/build-agent-plugin.mjs              # regenerate the package from the root
+node scripts/build-agent-plugin.mjs --check      # fail on any drift
+hermes plugins install lpbangun/jobsss/agent-plugin
+```
+
+`agent-plugin/` is a byte-for-byte mirror of `plugin.json`, `mcp.json`, `bin/`,
+`src/`, and `skills/` — never a second source of truth; `tests/agent-plugin-parity.test.mjs`
+fails on any missing, extra, or changed byte. Install identifier:
+`lpbangun/jobsss/agent-plugin` (equivalently `https://github.com/lpbangun/jobsss.git#agent-plugin`).
+
+```jsonc
+// mcp.json — the only runtime entry point
+{
+  "mcpServers": {
+    "jobsss": {
+      "type": "stdio",
+      "command": "./bin/jobsss",
+      "args": ["mcp", "--data", "${PLUGIN_DATA}"]
+    }
+  }
+}
+```
+
+### From a source checkout (needs Node 22+ on `PATH`)
+
+```bash
+git clone https://github.com/lpbangun/jobsss.git && cd jobsss
+./bin/jobsss --help          # bundled runtime usage
+./bin/jobsss doctor --data /path/to/data
+./bin/jobsss start  --data /path/to/data
+```
+
+### As a prebuilt standalone binary (no Node, no dependencies)
+
+```bash
+./bin/jobsss release --out /abs/out --target current-host
+```
+
+See [Standalone releases](#standalone-releases) for targets, determinism, and
+platform truth labels.
+
+### Thin client adapters
+
+`compat/` holds thin pointer adapters (Hermes, Codex, Claude) that reference the
+canonical skill and runtime and contain **no** duplicated policy or business
+logic. Probe a client in isolated temporary configuration:
+
+```bash
+./bin/jobsss compat-probe --client hermes --config-dir /tmp/cfg --plugin-root .
+```
+
 ## Architecture
 
 <p align="center">
-  <img src="docs/jobsss-architecture.svg" alt="JobSSS architecture: an agent host loads the jobsss skill and calls the bundled 47-tool MCP server over stdio; the plugin's domain layer persists versioned state under PLUGIN_DATA, while a trusted local CLI completes human-only decisions" width="100%" />
+  <img src="docs/jobsss-architecture.svg" alt="JobSSS architecture: an agent host loads the jobsss skill and calls the bundled 47-tool MCP server over stdio; the plugin's domain layer persists versioned state under PLUGIN_DATA; a trusted local CLI completes human-only decisions; and two optional companion plugins (people-finder and contact-brief), installed from the same pack, are drawn as separate components" width="100%" />
 </p>
 
-Diagram source: [`docs/jobsss-architecture.mmd`](docs/jobsss-architecture.mmd).
+Diagram source: [`docs/jobsss-architecture.mmd`](docs/jobsss-architecture.mmd),
+rendered with `npx @mermaid-js/mermaid-cli` (dark theme, `#0f172a` background).
+The two companion plugins are drawn as separate, optional components the host may
+install alongside JobSSS.
 
-Five boundaries carry the whole design:
+Six boundaries carry the whole design:
 
 1. **The host never touches state.** It reads the skill and calls tools; the MCP
    layer validates JSON-RPC envelopes before dispatch, so the agent cannot reach
@@ -71,6 +172,13 @@ Five boundaries carry the whole design:
 5. **Human authority never travels through MCP.** `list_decision_handoffs` and
    `create_decision_handoff` create non-authoritative markers only; a human
    completes the decision on `./bin/jobsss decide`.
+6. **Companions are separate plugins, not internals.** [people-finder](https://github.com/lpbangun/people-finder)
+   and [contact-brief](https://github.com/lpbangun/contact-brief) are optional
+   plugins installed from the same pack. They own candidate discovery and contact
+   evidence; their output reaches JobSSS only as host-supplied input to
+   `record_contact_discovery` / `prepare_applications_batch`. The dependency never
+   runs the other way, neither companion can write JobSSS state, and removing them
+   leaves the core journey intact.
 
 ### What it does, end to end
 
@@ -175,89 +283,6 @@ floor.
 | **Frozen blocked catalog** | A 25-name human-only catalog (`approve_artifact`, `mark_outreach_sent`, `attest_application_submitted`, `submit_application_form`, `assist_application_form`, …) must never appear on `tools/list`. Verified absent. |
 | **Honest transport** | JSON-RPC 2.0 envelopes are validated before notification classification; omitted arguments default to `{}`; explicit `null` rejects with `-32602`; invalid envelopes return `-32600`; business failures stay tool results with `isError: true`. |
 | **Portable contracts** | `contracts/` defines host-neutral packet, outcome, and bulk-input schemas with stable error codes (`fabricated_readiness`, `remote_attestation`, `non_public_host`, `secret_like_field`, …). Validation is pure and offline; it grants no authority. |
-
-## Install
-
-### Install the whole family in one action
-
-JobSSS composes with [people-finder](https://github.com/lpbangun/people-finder)
-and [contact-brief](https://github.com/lpbangun/contact-brief). A generated pack
-installs all three, pinned to a reviewed trio of exact commits:
-
-```bash
-hermes plugins pack install https://raw.githubusercontent.com/lpbangun/jobsss/main/compat/hermes/find-people.pack.yaml
-```
-
-The pack is metadata, not a bundle: three pinned entries, three ordinary installs,
-per-plugin capability consent preserved, and each product stays removable on its
-own. Point your agent at this repository and it follows [INSTALL.md](INSTALL.md) —
-the host table (Hermes verified, Codex pending, others unverified) plus the rule
-that the human confirms every install.
-
-### As an Agent Plugin (JobSSS alone)
-
-The repository root **is** the canonical plugin: `plugin.json` + `mcp.json` +
-`skills/jobsss/` + `bin/jobsss`, and the installing agent expands
-`${PLUGIN_DATA}` to a writable directory.
-
-### Thin install surface (`agent-plugin/`)
-
-The root also carries reviewer-owned benchmark evidence (`BENCHMARK.md`, `docs/`,
-`evaluation/`, `tests/`), so hosts that scan the tree they install — for example
-Hermes' install-time plugin guard — must be pointed at the generated package
-subdirectory instead of the repository root:
-
-```bash
-node scripts/build-agent-plugin.mjs              # regenerate the package from the root
-node scripts/build-agent-plugin.mjs --check      # fail on any drift
-hermes plugins install lpbangun/jobsss/agent-plugin
-```
-
-`agent-plugin/` is a byte-for-byte mirror of `plugin.json`, `mcp.json`, `bin/`,
-`src/`, and `skills/` — never a second source of truth; `tests/agent-plugin-parity.test.mjs`
-fails on any missing, extra, or changed byte. Install identifier:
-`lpbangun/jobsss/agent-plugin` (equivalently `https://github.com/lpbangun/jobsss.git#agent-plugin`).
-
-```jsonc
-// mcp.json — the only runtime entry point
-{
-  "mcpServers": {
-    "jobsss": {
-      "type": "stdio",
-      "command": "./bin/jobsss",
-      "args": ["mcp", "--data", "${PLUGIN_DATA}"]
-    }
-  }
-}
-```
-
-### From a source checkout (needs Node 22+ on `PATH`)
-
-```bash
-git clone https://github.com/lpbangun/jobsss.git && cd jobsss
-./bin/jobsss --help          # bundled runtime usage
-./bin/jobsss doctor --data /path/to/data
-./bin/jobsss start  --data /path/to/data
-```
-
-### As a prebuilt standalone binary (no Node, no dependencies)
-
-```bash
-./bin/jobsss release --out /abs/out --target current-host
-```
-
-See [Standalone releases](#standalone-releases) for targets, determinism, and
-platform truth labels.
-
-### Thin client adapters
-
-`compat/` holds thin pointer adapters (Hermes, Codex, Claude) that reference the
-canonical skill and runtime and contain **no** duplicated policy or business
-logic. Probe a client in isolated temporary configuration:
-
-```bash
-./bin/jobsss compat-probe --client hermes --config-dir /tmp/cfg --plugin-root .
-```
 
 ## The journey
 
@@ -397,8 +422,8 @@ PLUGIN_DATA/
 
 The release bundles the runtime into a single native executable with the pinned
 Node SEA injector (`postject`, exact version/URL/SHA-256 in
-`src/packaging.lock.json`), so **no Node and no JobOS need to exist on `PATH` at
-runtime**. Repeated clean builds for a target are byte-identical.
+`src/packaging.lock.json`), so **no Node and no other runtime need to exist on
+`PATH` at runtime**. Repeated clean builds for a target are byte-identical.
 
 | Target | Status | Meaning |
 | --- | --- | --- |
@@ -566,5 +591,5 @@ completed belongs to the human and is recorded with `actor: trusted_local`.
 
 ## License
 
-[MIT](LICENSE) © 2026 JobSSS contributors. Portions ported from MIT-licensed
-JobOS are attributed in [LICENSE](LICENSE); JobOS is not required at runtime.
+[MIT](LICENSE) © 2026 JobSSS contributors. Portions of the design derive from an
+earlier MIT-licensed project; the attribution lives in [LICENSE](LICENSE).

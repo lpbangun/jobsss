@@ -178,7 +178,23 @@ floor.
 
 ## Install
 
-### As an Agent Plugin (preferred)
+### Install the whole family in one action
+
+JobSSS composes with [people-finder](https://github.com/lpbangun/people-finder)
+and [contact-brief](https://github.com/lpbangun/contact-brief). A generated pack
+installs all three, pinned to a reviewed trio of exact commits:
+
+```bash
+hermes plugins pack install https://raw.githubusercontent.com/lpbangun/jobsss/main/compat/hermes/find-people.pack.yaml
+```
+
+The pack is metadata, not a bundle: three pinned entries, three ordinary installs,
+per-plugin capability consent preserved, and each product stays removable on its
+own. Point your agent at this repository and it follows [INSTALL.md](INSTALL.md) —
+the host table (Hermes verified, Codex pending, others unverified) plus the rule
+that the human confirms every install.
+
+### As an Agent Plugin (JobSSS alone)
 
 The repository root **is** the canonical plugin: `plugin.json` + `mcp.json` +
 `skills/jobsss/` + `bin/jobsss`, and the installing agent expands

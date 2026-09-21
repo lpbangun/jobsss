@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "surfaceVersion": "1.0.0",
+  "stack": {
+    "name": "find-people-stack",
+    "description": "The reviewed job-search trio at pinned commits: JobSSS (local job-search workspace with the bundled MCP runtime), people-finder (typed-anchor candidate-lead discovery) and contact-brief (cited contact brief compiler). Three portable Agent Plugins; offline, credential-free, no shared runtime."
+  },
+  "products": [
+    {
+      "name": "jobsss",
+      "repo": "lpbangun/jobsss",
+      "subdir": "agent-plugin",
+      "ref": "936333902bea28310d40981bc9aeca9761697f82"
+    },
+    {
+      "name": "people-finder",
+      "repo": "lpbangun/people-finder",
+      "ref": "913fcb5dd771aa4cd5565f319b52e3f953685443"
+    },
+    {
+      "name": "contact-brief",
+      "repo": "lpbangun/contact-brief",
+      "ref": "29ea479c26fa20ffbeebffc34fa9ce06a45495b0"
+    }
+  ]
+}

@@ -42,3 +42,16 @@ Adapters reference the canonical assets (`skills/jobsss/SKILL.md`,
 `./bin/jobsss`) and contain no job-search policy, tool implementations, or
 business logic. Human-authority decisions stay on the trusted local surface
 (`./bin/jobsss decide`) and are never exposed through client adapters.
+
+## Install surfaces
+
+`compat/install-pins.json` pins the reviewed product trio — this plugin plus
+people-finder and contact-brief — to exact 40-character commits.
+`compat/hermes/find-people.pack.yaml` is the Hermes install surface, generated
+from those pins by `scripts/build-install-surfaces.mjs`; `--check` fails on
+drift and `--refresh` advances the pins to each repository's default-branch head.
+
+Surfaces are distribution metadata only: they carry no product bytes, grant no
+consent, and are never a runtime dependency. A regenerated surface ships
+together with the pins it came from, so an install always names a combination
+that was actually verified.

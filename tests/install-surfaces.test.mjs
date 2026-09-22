@@ -11,9 +11,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
+  CODEX_SURFACE_REL,
   HERMES_SURFACE_REL,
   PINS_REL,
   readPins,
+  renderCodexMarketplace,
   renderHermesPack,
   surfacesDrift
 } from '../scripts/build-install-surfaces.mjs';
@@ -46,7 +48,7 @@ test('the committed Hermes pack is byte-identical to the pins render', () => {
 });
 
 test('the generated pack is metadata only: quoted commits, no product bytes, no tabs', () => {
-  const text = fs.readFileSync(path.join(REPO_ROOT, HERMES_SURFACE_REL), 'utf8');
+  const text = fs.readFileSync(path.join(REPO_ROOT, HERMES_SURFACE_REL), 'utf8').replace(/\r\n/g, '\n');
   assert.ok(!text.includes('\t'), 'pack must not contain tab characters');
   assert.match(text, /^name: find-people-stack$/m);
   assert.equal((text.match(/^  - repo: /gm) || []).length, 3, 'exactly one entry per product');
@@ -57,4 +59,19 @@ test('the generated pack is metadata only: quoted commits, no product bytes, no 
   }
   assert.ok(!text.includes('bin/'), 'a surface references products, never product bytes');
   assert.equal(renderHermesPack(readPins(REPO_ROOT)), text, 'render is deterministic');
+});
+
+test('the generated Codex marketplace composes one deterministic aggregate adapter', () => {
+  const text = fs.readFileSync(path.join(REPO_ROOT, CODEX_SURFACE_REL), 'utf8').replace(/\r\n/g, '\n');
+  assert.equal(text, renderCodexMarketplace(readPins(REPO_ROOT)));
+  const catalog = JSON.parse(text);
+  assert.equal(catalog.name, 'jobsss-local');
+  assert.deepEqual(catalog.plugins.map(plugin => plugin.name), ['job-search-stack']);
+  assert.equal(catalog.plugins[0].source.path, './codex-pack/job-search-stack');
+  assert.equal(
+    fs.existsSync(path.join(REPO_ROOT, 'compat', 'codex', 'plugins')),
+    false,
+    'compat/codex must remain metadata-only; aggregate product bytes live in codex-pack/'
+  );
+  assert.deepEqual(catalog.provenance.products.map(product => product.name), ['jobsss', 'people-finder', 'contact-brief']);
 });

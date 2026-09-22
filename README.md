@@ -16,7 +16,7 @@
 > itself: no other installation, no `PATH` entry, no API key, no account. The
 > network is optional and used only for public job intake. Portions of the design
 > derive from an earlier MIT-licensed project and are attributed in
-> [LICENSE](LICENSE); attribution is provenance, not a dependency.
+> [NOTICE](NOTICE); attribution is provenance, not a dependency.
 
 ## What it is
 
@@ -51,8 +51,36 @@ surface. JobSSS does not fabricate jobs, scores, proofs, or success.
 
 ## Install
 
-Three ways in: hand it to your agent, install the family in one action, or
-install JobSSS alone.
+Three ways in: install the verified Codex pack, hand the repository to another
+agent host, or install JobSSS alone.
+
+### Codex: install the complete job-search stack
+
+The generated Codex pack contains JobSSS, people-finder, and contact-brief at the
+reviewed commits recorded in `compat/install-pins.json`. Install from a clean
+checkout of the release:
+
+```bash
+git clone --depth 1 --branch v0.1.0 https://github.com/lpbangun/jobsss.git
+cd jobsss
+codex plugin marketplace add .
+codex plugin add job-search-stack@jobsss-local
+```
+
+Then start a **new Codex task** so the installed skills and MCP servers are loaded.
+The pack has been verified on Windows with both explicit skill invocation and
+natural-language activation, including MCP initialize, profile creation, job
+discovery, tailored searchable-PDF resume generation, and contact-brief import.
+
+Prefer a browser download? Use the
+[v0.1.0 source ZIP](https://github.com/lpbangun/jobsss/archive/refs/tags/v0.1.0.zip),
+extract it, open a terminal in the extracted `jobsss-0.1.0` directory, and run
+the same two `codex plugin` commands.
+
+JobSSS itself needs no API key. Live Exa Connect/Fiber contact lookup is optional,
+can incur provider charges, and requires an explicitly authorized `EXA_API_KEY`
+in the host environment. Provider-reported contact data is never upgraded to
+source-supported or mailbox-verified evidence, and the pack never sends outreach.
 
 ### Point your agent at this repository
 
@@ -119,7 +147,7 @@ fails on any missing, extra, or changed byte. Install identifier:
 }
 ```
 
-### From a source checkout (needs Node 22+ on `PATH`)
+### From a source checkout (JobSSS alone; needs Node 22+ on `PATH`)
 
 ```bash
 git clone https://github.com/lpbangun/jobsss.git && cd jobsss
@@ -449,7 +477,7 @@ JOBSSS_NATIVE_CACHE="$(mktemp -d)" ./bin/jobsss evidence --out "$(pwd)/evidence/
 | --- | --- | --- |
 | Hermes | native stdio MCP | **verified** (isolated temporary `HERMES_HOME` launch discovered the tools) |
 | Claude Code | native stdio MCP | **verified** (isolated `CLAUDE_CONFIG_DIR` launch reported the server `Connected`) |
-| Codex | thin adapter (`compat/codex/config.toml.template`) | unverified (registration accepted; live tool exchange unproven) |
+| Codex | generated aggregate plugin (`codex-pack/job-search-stack`) | **verified** on Windows (fresh install, explicit and natural activation, MCP initialize, and state-changing workflow) |
 | Pi | native skills | unverified |
 | Oh My Pi (`omp`) | — | unverified |
 
@@ -557,7 +585,7 @@ reproducible per commit.
   version      = {0.1.0},
   license      = {MIT},
   url          = {https://github.com/lpbangun/jobsss},
-  note         = {Agent Plugins 1.0.0; 47 local MCP tools; frozen pass bar B1-B70; commit 546913c}
+  note         = {Agent Plugins 1.0.0; 47 local MCP tools; frozen pass bar B1-B70; release v0.1.0}
 }
 ```
 
@@ -565,7 +593,7 @@ Plain text:
 
 > JobSSS contributors. *JobSSS: a standalone Agent Plugin for local,
 > evidence-grounded job-search workflows.* v0.1.0, MIT, 2026.
-> Agent Plugins 1.0.0. Commit `546913c`.
+> Agent Plugins 1.0.0. Release `v0.1.0`.
 
 Reproducing a claim: quote the commit, the tool name, the arguments, and the
 persisted readback (tool output or a file under `PLUGIN_DATA`). Anything a human
@@ -581,8 +609,8 @@ completed belongs to the human and is recorded with `actor: trusted_local`.
   `darwin-arm64`, and `win-x64` are structurally validated but unverified until
   executed on matching hosts. Windows additionally needs re-signing on a Windows
   host.
-- Hermes and Claude Code are verified clients; Codex, Pi, and `omp` remain
-  unverified.
+- Hermes, Claude Code, and the generated Codex aggregate pack are verified on
+  their recorded hosts; Pi and `omp` remain unverified.
 - Searchable single-column PDF text is an ATS-readability proxy, not a
   proprietary ATS score or a guarantee.
 - Public URL and ATS intake depend on third-party page/API shapes and can break
@@ -592,4 +620,4 @@ completed belongs to the human and is recorded with `actor: trusted_local`.
 ## License
 
 [MIT](LICENSE) © 2026 JobSSS contributors. Portions of the design derive from an
-earlier MIT-licensed project; the attribution lives in [LICENSE](LICENSE).
+earlier MIT-licensed project; the attribution lives in [NOTICE](NOTICE).

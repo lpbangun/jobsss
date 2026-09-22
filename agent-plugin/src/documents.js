@@ -503,10 +503,14 @@ export function renderPdf(content, options = {}) {
         y -= 4;
         place(block.text, 9.4, true, { color: navy ? color : '0 0 0', leading: 1.1 });
         pages.at(-1).push({
-          text: '', size: 0.1, bold: false, y, x: margin, leading: 6,
+          text: '', size: 0.1, bold: false, y: y + 3, x: margin, leading: 0,
           color: navy ? color : '0.2 0.2 0.2', rule: editorial ? 0.5 : 0.6,
         });
-        y -= 6;
+        // Keep the rule visually attached to the heading while leaving enough
+        // baseline clearance for the next employer/school/skill line. The old
+        // six-point gap put the rule through capital letters in the fallback
+        // renderer used on clean Windows hosts without TeX.
+        y -= 8;
         continue;
       }
       if (block.type === 'h3') {

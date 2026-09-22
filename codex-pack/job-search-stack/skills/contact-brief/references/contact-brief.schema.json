@@ -1,0 +1,735 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:contact-brief:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "contact-brief.v1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "company": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "name",
+        "company"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "unresolved",
+            "matched",
+            "ambiguous",
+            "stale_employer"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "unknown",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https?://"
+              },
+              "fetched_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "published_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "quote": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "company",
+                  "profile",
+                  "post",
+                  "exa",
+                  "user"
+                ]
+              }
+            },
+            "required": [
+              "url",
+              "fetched_at",
+              "published_at",
+              "quote",
+              "kind"
+            ]
+          }
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "status",
+        "confidence",
+        "evidence",
+        "conflicts"
+      ]
+    },
+    "email": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "email"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attribution": {
+          "enum": [
+            "unknown",
+            "provider_reported",
+            "source_supported",
+            "user_supplied"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https?://"
+              },
+              "fetched_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "published_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "quote": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "company",
+                  "profile",
+                  "post",
+                  "exa",
+                  "user"
+                ]
+              }
+            },
+            "required": [
+              "url",
+              "fetched_at",
+              "published_at",
+              "quote",
+              "kind"
+            ]
+          }
+        },
+        "lookup": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "enum": [
+                "none",
+                "codex_exa_plugin",
+                "exa_agent_fiber"
+              ]
+            },
+            "status": {
+              "enum": [
+                "not_attempted",
+                "provider_reported",
+                "not_found",
+                "uncertain",
+                "not_lookupable",
+                "identity_mismatch",
+                "provider_error",
+                "rate_limited",
+                "cancelled"
+              ]
+            },
+            "provider_run_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "retrieved_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "attribution": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source_urls": {
+              "type": "array",
+              "maxItems": 5,
+              "items": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https?://"
+              }
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cost": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "detail": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "provider",
+            "status",
+            "provider_run_id",
+            "retrieved_at",
+            "cost_usd",
+            "attribution",
+            "source_urls",
+            "usage",
+            "cost",
+            "detail"
+          ]
+        },
+        "mailbox": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "enum": [
+                "not_checked",
+                "unknown",
+                "risky",
+                "smtp_accepted",
+                "rejected",
+                "invalid"
+              ]
+            },
+            "method": {
+              "enum": [
+                "none",
+                "aftership_dns",
+                "aftership_smtp"
+              ]
+            },
+            "checked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "detail": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "status",
+            "method",
+            "checked_at",
+            "detail"
+          ]
+        }
+      },
+      "required": [
+        "address",
+        "attribution",
+        "evidence",
+        "mailbox"
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "linkedin": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "enum": [
+                "complete",
+                "partial",
+                "blocked",
+                "not_attempted",
+                "no_results",
+                "inactive"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "person_search",
+                      "profile_open",
+                      "activity_search",
+                      "activity_inspect"
+                    ]
+                  },
+                  "query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https?://"
+                  },
+                  "fetched_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "outcome": {
+                    "enum": [
+                      "ok",
+                      "no_results",
+                      "blocked",
+                      "error"
+                    ]
+                  },
+                  "evidence_file": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "kind",
+                  "query",
+                  "url",
+                  "fetched_at",
+                  "outcome",
+                  "evidence_file"
+                ]
+              }
+            },
+            "profile_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uri",
+                  "pattern": "^https?://"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "identity_matched": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "status",
+            "reason",
+            "actions",
+            "profile_url",
+            "identity_matched"
+          ]
+        },
+        "x": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "enum": [
+                "complete",
+                "partial",
+                "blocked",
+                "not_attempted",
+                "no_results",
+                "inactive"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "person_search",
+                      "profile_open",
+                      "activity_search",
+                      "activity_inspect"
+                    ]
+                  },
+                  "query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https?://"
+                  },
+                  "fetched_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "outcome": {
+                    "enum": [
+                      "ok",
+                      "no_results",
+                      "blocked",
+                      "error"
+                    ]
+                  },
+                  "evidence_file": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "kind",
+                  "query",
+                  "url",
+                  "fetched_at",
+                  "outcome",
+                  "evidence_file"
+                ]
+              }
+            },
+            "profile_url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uri",
+                  "pattern": "^https?://"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "identity_matched": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "status",
+            "reason",
+            "actions",
+            "profile_url",
+            "identity_matched"
+          ]
+        }
+      },
+      "required": [
+        "linkedin",
+        "x"
+      ]
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https?://"
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "company",
+              "profile",
+              "post",
+              "exa",
+              "user"
+            ]
+          },
+          "platform": {
+            "enum": [
+              "linkedin",
+              "x",
+              "web"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "relevance": {
+            "type": "string",
+            "minLength": 1
+          },
+          "authored": {
+            "const": true
+          }
+        },
+        "required": [
+          "url",
+          "fetched_at",
+          "published_at",
+          "quote",
+          "kind",
+          "platform",
+          "summary",
+          "relevance",
+          "authored"
+        ]
+      },
+      "maxItems": 3
+    },
+    "candidate_facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "source"
+        ]
+      }
+    },
+    "draft": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1
+            },
+            "candidate_fact_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "signal_urls": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https?://"
+              }
+            },
+            "status": {
+              "const": "draft_only"
+            }
+          },
+          "required": [
+            "body",
+            "candidate_fact_ids",
+            "signal_urls",
+            "status"
+          ]
+        }
+      ]
+    },
+    "acceptance": {
+      "description": "Computed recorded-evidence completeness only; never attests live browser, provider or verifier execution. Python validation also checks semantic consistency.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "passed",
+        "blockers"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "generated_at",
+    "subject",
+    "identity",
+    "email",
+    "coverage",
+    "signals",
+    "candidate_facts",
+    "draft",
+    "acceptance"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "name": "Fixture Person (FICTIONAL DEMO)",
+  "company": "Example Org (FICTIONAL DEMO)",
+  "identity": {
+    "status": "matched",
+    "confidence": "medium",
+    "evidence": [
+      {
+        "url": "https://example.org/fictional-team",
+        "fetched_at": "2026-09-08T12:00:00Z",
+        "published_at": null,
+        "quote": "FICTIONAL DEMO: Fixture Person works at Example Org. Not fetched.",
+        "kind": "company"
+      }
+    ],
+    "conflicts": []
+  },
+  "signals": [
+    {
+      "url": "https://example.org/fictional-post",
+      "fetched_at": "2026-09-08T12:00:00Z",
+      "published_at": null,
+      "quote": "FICTIONAL DEMO: Fixture Person works at Example Org. Not fetched.",
+      "kind": "post",
+      "platform": "web",
+      "summary": "FICTIONAL DEMO: discussed mentoring tools; this is not a real post.",
+      "relevance": "Illustrates evidence-backed drafting only.",
+      "authored": true
+    }
+  ],
+  "candidate_facts": [
+    {
+      "id": "fixture-f1",
+      "text": "FICTIONAL DEMO: I build learning tools.",
+      "source": "fictional example supplied with package"
+    }
+  ]
+}

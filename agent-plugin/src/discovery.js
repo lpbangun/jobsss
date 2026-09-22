@@ -408,6 +408,12 @@ function headingIdentity(lines) {
     }
   }
   const parts = withoutId.split(/\s+[—–-]\s+/).map(part => part.trim()).filter(Boolean);
+  // Test and replay fixtures often carry a provenance label before the real
+  // company/title pair. Keep that label out of identity fields so dedupe and
+  // scoring operate on the logical job rather than "MOCK JOB".
+  if (parts.length >= 3 && /^(?:mock|fixture|replay)\s+job$/i.test(parts[0])) {
+    return { title: parts.slice(2).join(' — '), company: parts[1], location: '' };
+  }
   if (parts.length >= 2) return { title: parts[0], company: parts.slice(1).join(' — '), location: '' };
   const at = withoutId.match(/^(.+?)\s+at\s+(.+)$/i);
   if (at) return { title: at[1].trim(), company: at[2].trim(), location: '' };

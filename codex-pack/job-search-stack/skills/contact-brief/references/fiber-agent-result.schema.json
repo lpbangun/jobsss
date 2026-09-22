@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:contact-brief:fiber-agent-result:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "route": {
+      "const": "exa_agent_fiber"
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retrieved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "provider_reported",
+        "not_found",
+        "uncertain",
+        "not_lookupable",
+        "identity_mismatch",
+        "provider_error",
+        "rate_limited",
+        "cancelled"
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "company": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "name",
+        "company"
+      ]
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cost_usd": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "attribution": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source_urls": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "format": "uri",
+        "pattern": "^https?://"
+      }
+    },
+    "usage": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cost": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "email": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "address": {
+              "type": "string",
+              "format": "email"
+            }
+          },
+          "required": [
+            "address"
+          ]
+        }
+      ]
+    }
+  },
+  "required": [
+    "route",
+    "tool",
+    "retrieved_at",
+    "status",
+    "subject",
+    "run_id",
+    "cost_usd",
+    "attribution",
+    "source_urls",
+    "usage",
+    "cost",
+    "email"
+  ]
+}

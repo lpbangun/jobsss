@@ -418,9 +418,11 @@ export function resumeBlocks(doc, selected, options = {}) {
   if (doc.skills.length) {
     blocks.push({ type: 'h2', text: 'SKILLS' });
     for (const line of doc.skills) {
-      for (const skill of String(line).split(';').map(part => part.trim()).filter(Boolean)) {
-        blocks.push({ type: 'body', text: skill });
-      }
+      // Preserve source categories as compact, wrapped lines. Rendering every
+      // semicolon-delimited skill as its own paragraph created an unreadable
+      // vertical list and excessive blank space in otherwise one-page resumes.
+      const text = String(line).trim();
+      if (text) blocks.push({ type: 'body', text });
     }
   }
   return blocks;

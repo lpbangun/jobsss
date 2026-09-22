@@ -11,7 +11,7 @@ version: "1.0.0"
 plugins:
   - repo: lpbangun/jobsss
     subdir: agent-plugin
-    ref: "936333902bea28310d40981bc9aeca9761697f82"
+    ref: "cd32fa7e0f42bcc0927566e8fd4e4954afad1332"
   - repo: lpbangun/people-finder
     ref: "913fcb5dd771aa4cd5565f319b52e3f953685443"
   - repo: lpbangun/contact-brief

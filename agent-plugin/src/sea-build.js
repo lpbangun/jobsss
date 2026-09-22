@@ -236,7 +236,10 @@ function parseSide(side) {
 export function transformModule(source, spec, srcDir) {
   const out = [];
   const exported = [];
-  const lines = String(source).split('\n');
+  // Git commonly checks files out as CRLF on Windows. Normalize before the
+  // statement scanner so a trailing carriage return cannot hide a semicolon
+  // and accidentally merge adjacent import statements.
+  const lines = String(source).replace(/\r\n?/g, '\n').split('\n');
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];

@@ -41,7 +41,12 @@ function copyFile(sourceRoot, rel, destinationRoot, destinationRel = rel) {
   const source = path.join(sourceRoot, rel);
   const destination = path.join(destinationRoot, destinationRel);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.copyFileSync(source, destination);
+  const bytes = fs.readFileSync(source);
+  // Git may materialize source text as CRLF on Windows while release checkouts
+  // use LF. The pack inventory hashes distribution bytes, so normalize text at
+  // the adapter boundary and keep binary inputs byte-for-byte.
+  if (bytes.includes(0)) fs.writeFileSync(destination, bytes);
+  else fs.writeFileSync(destination, bytes.toString('utf8').replace(/\r\n?/g, '\n'));
 }
 
 function copyTree(sourceRoot, rel, destinationRoot, destinationRel = rel) {

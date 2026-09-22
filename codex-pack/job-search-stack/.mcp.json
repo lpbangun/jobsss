@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "jobsss": {
+      "command": "node",
+      "args": [
+        "./products/jobsss/bin/jobsss",
+        "mcp"
+      ],
+      "cwd": ".",
+      "env_vars": [
+        "PLUGIN_DATA",
+        "PATH",
+        "USERPROFILE",
+        "LOCALAPPDATA"
+      ],
+      "startup_timeout_sec": 30
+    },
+    "people-finder": {
+      "command": "node",
+      "args": [
+        "./scripts/python-launcher.mjs",
+        "./products/people-finder/bin/people-finder",
+        "mcp"
+      ],
+      "cwd": ".",
+      "env_vars": [
+        "PATH",
+        "USERPROFILE",
+        "LOCALAPPDATA"
+      ],
+      "startup_timeout_sec": 30
+    }
+  }
+}

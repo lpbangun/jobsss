@@ -427,6 +427,13 @@ test('discovery.js keeps hyphenated title prefixes such as 24-7 intact', () => {
   assert.equal(emdash.company, 'Lattice Orchard Software');
 });
 
+test('discovery.js keeps fixture provenance labels out of job identity', () => {
+  const parsed = parseJobText('# MOCK JOB — Fixture Learning Co — People & Learning Operations Associate\nLocation: Boston, MA or remote US');
+  assert.equal(parsed.title, 'People & Learning Operations Associate');
+  assert.equal(parsed.company, 'Fixture Learning Co');
+  assert.equal(parsed.location, 'Boston, MA or remote US');
+});
+
 test('domain.js excludeRoles replaces, never accumulates, dealbreakers', t => {
   const data = workspace(t);
   const { profileId } = domain.createProfile(data, { name: 'Casey profile', resumeText: resume, preferences: { excludeRoles: ['staff'] } });

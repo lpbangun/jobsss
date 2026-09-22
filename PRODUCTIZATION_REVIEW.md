@@ -21,7 +21,7 @@ The authoritative JobSSS product version is **0.1.0** from `plugin.json`. The re
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `05453fe142ae6671dea8f78b9d5da247481a285c96ae5c89f4afa5086d9c7780`
+- SHA-256: `e10f723d6d61a46d8a53255fbd0adb4bf0be8f2c7c054a26d3e2382b387f090f`
 - Exact reproduction command:
 
 ```bash
@@ -33,6 +33,8 @@ Current native artifact refresh (2026-09-12, B67 consistency): the pinned eviden
 Current native artifact refresh (2026-09-20, host-composition slice): the pinned evidence command was re-run with a caller-selected external `JOBSSS_NATIVE_CACHE` after the bounded host-composition and deterministic workspace-projection runtime additions (`src/composition.js`, `src/projection.js`, `src/checklist.js`, their registration in the standalone bundler module list in `src/sea-build.js`, the added MCP tools in `src/mcp.js`, and the store/domain wiring in `src/store.js`/`src/domain.js`). Those runtime source changes moved the SEA payload (payload length `559238` → `628266` bytes) and the recorded native output hashes and layout offsets, so the previously committed bytes (`95784bb9450e741375b70b9a4570ecfe4a14d7e638a93905f4fc993b3b69f0ad`) were stale; B67 rejected them instead of silently accepting a stale artifact. Official inputs, injector and validator pins are unchanged. This remains local build/test structural validation only — not publication, matching-host runtime proof, or a new reviewer verdict.
 
 Current native artifact refresh (2026-09-20, install-surface slice): the pinned evidence command was re-run with a caller-selected external `JOBSSS_NATIVE_CACHE` after the Hermes install-surface runtime changes (portable account-database home lookup through `os.userInfo` in `src/compat-probe.js` replacing direct system account-file parsing, tolerance for a checkout test tree absent next to the runtime — the thin install package ships none, and the frozen-fixture content-hash allowlist already covers that case — plus semantics-preserving message and identifier rephrasings in `src/release.js`, `src/sea-build.js`, `src/p3-contracts.js`, and `src/evidence.js`). Those runtime source changes moved the SEA payload (payload length `628266` → `645596` bytes) and the recorded native output hashes and layout offsets, so the previously committed bytes (`c21afefe6c6432cd5a3eac3e055c892007f9aa4ee3d889ff9c33806b4091bb31`) were stale; B67 rejected them instead of silently accepting a stale artifact. Official inputs, injector and validator pins are unchanged. This remains local build/test structural validation only — not publication, matching-host runtime proof, or a new reviewer verdict.
+
+Current native artifact refresh (2026-09-21, Codex portability slice): the pinned evidence command was run in two fresh processes with separate empty external caches after the job-heading parser, native resume layout, Windows evidence-launcher, and CRLF SEA-transform fixes. Both outputs were byte-identical at SHA-256 `e10f723d6d61a46d8a53255fbd0adb4bf0be8f2c7c054a26d3e2382b387f090f`. Official inputs, injector, and independent validator pins are unchanged. This is local structural evidence only; cross-built targets remain unverified at runtime.
 
 The artifact and `src/packaging.lock.json` are the exact entries for official Node v22.22.3 Darwin x64, Darwin arm64, and Windows x64 URLs, archive hashes, executable-input hashes, and architectures. The artifact also contains all four complete cases, payload lengths/hashes, fuse state, output hashes, Mach-O LC_SYMTAB/dysymtab/linkedit/code-signature and offset/range evidence, and PE alignment/security/overlay/section/`SizeOfImage` evidence.
 
@@ -54,7 +56,7 @@ The frozen release checks build the current-host standalone, then exercise gener
 
 ## Adapter behavior
 
-Compatibility adapters remain thin references to canonical assets. Hermes and Claude retain historical MCP-connectivity-only verified labels; Pi, OMP, and Codex remain unverified. Connectivity does not establish canonical skill loading, a state-changing agent-host journey, or native Agent Plugins package loading. Current version availability observations are recorded separately in `compat/matrix.json` and do not upgrade verification. No client integration was added.
+Compatibility adapters remain thin references to canonical assets. Hermes and Claude retain historical MCP-connectivity-only verified labels; Pi and OMP remain unverified. The generated root-level Codex aggregate pack is verified separately on Windows through a fresh marketplace install, explicit and natural skill activation, MCP initialize, and a state-changing profile-to-contact workflow. The legacy `compat/codex/config.toml.template` remains only a thin metadata adapter and is not the verified aggregate. Current version availability observations are recorded separately in `compat/matrix.json` and do not upgrade unrelated clients.
 
 ## Human authority
 

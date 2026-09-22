@@ -7,7 +7,16 @@ function clean(value) {
 }
 
 function supportedAchievement(value) {
-  return clean(value);
+  return clean(value)
+    .replace(/\s*\[[A-Z][A-Z0-9_-]*(?:[\s,–—-]+[A-Z0-9_-]+)*\]/g, '')
+    .replace(/\s*\(fictional[^)]*\)/gi, '')
+    .replace(/\s+(?:Do not claim|Do not describe|No GPA|No other language|No unlisted|No employment after)[\s\S]*$/i, '')
+    .replace(/\s*This (?:is|was) [^.]*, not (?:proof|a claim) [^.]*\.?/gi, '')
+    .replace(/\s*Observed before\/after association, not proof of sole causation\.?/gi, '')
+    .replace(/;\s*(?:measured by|comparison used)[^.]*\.?/gi, '.')
+    .replace(/\s*Missing:[^.\n]*\.?/gi, '')
+    .replace(/[.]{2,}$/, '.')
+    .trim();
 }
 
 const DATED_ROLE_LINE = /^(?:19|20)\d{2}(?:-\d{2})?\s*(?:through|to|until|[–—-])\s*(?:(?:19|20)\d{2}(?:-\d{2})?|present)\s*[:|]|^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}\s*(?:through|to|[–—-])\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|present)\s*[:|]/i;
@@ -19,7 +28,7 @@ function headingKind(line) {
   if (/^selected projects\b/i.test(t)) return 'projects';
   if (/^education\b/i.test(t)) return 'education';
   if (/^(?:core\s+)?skills\b/i.test(t)) return 'skills';
-  if (/^(preferences|boundaries|audit)\b/i.test(t)) return 'internal';
+  if (/^(preferences|boundaries|audit|additional notes|proof verification|internal)\b/i.test(t)) return 'internal';
   return null;
 }
 
@@ -223,16 +232,16 @@ export function parseResumeSource(text) {
         continue;
       }
       if (current) {
-        if (!current.title) current.title = clean(raw);
-        else current.bullets.push(clean(raw));
+        if (!current.title) current.title = supportedAchievement(raw);
+        else current.bullets.push(supportedAchievement(raw));
       } else {
-        current = pushRole(doc.education, clean(raw));
+        current = pushRole(doc.education, supportedAchievement(raw));
       }
       continue;
     }
 
     if (section === 'skills') {
-      const text = clean(raw);
+      const text = supportedAchievement(raw);
       if (text) doc.skills.push(text);
     }
   }
@@ -418,9 +427,11 @@ export function resumeBlocks(doc, selected, options = {}) {
   if (doc.skills.length) {
     blocks.push({ type: 'h2', text: 'SKILLS' });
     for (const line of doc.skills) {
-      for (const skill of String(line).split(';').map(part => part.trim()).filter(Boolean)) {
-        blocks.push({ type: 'body', text: skill });
-      }
+      // Preserve source categories as compact, wrapped lines. Rendering every
+      // semicolon-delimited skill as its own paragraph created an unreadable
+      // vertical list and excessive blank space in otherwise one-page resumes.
+      const text = String(line).trim();
+      if (text) blocks.push({ type: 'body', text });
     }
   }
   return blocks;

@@ -1,0 +1,298 @@
+// Bundled JobSSS MCP server — stdio JSON-RPC.
+// Framing/lifecycle concepts are attributed to JobOS src/mcp.js and are
+// reimplemented here for the standalone PLUGIN_DATA runtime.
+import * as domain from './domain.js';
+import * as composition from './composition.js';
+import { ensureDataDir, redactSecrets } from './store.js';
+import { listDecisionHandoffs, createDecisionHandoff } from './authority.js';
+import { PRODUCT_VERSION } from './version.js';
+
+const schema = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: true });
+const string = { type: 'string' };
+const profile = { profileId: string };
+const jobProfile = { jobId: string, profileId: string, expectedRevision: { type: 'integer' } };
+const tool = (name, description, inputSchema = schema()) => ({ name, description, inputSchema });
+
+const TOOLS = [
+  tool('doctor', 'Diagnose the bundled runtime and isolated PLUGIN_DATA; JobOS is not required.'),
+  tool('start', 'Initialize or migrate versioned durable state under PLUGIN_DATA.', schema({ expectedRevision: { type: 'integer' } })),
+  tool('create_profile', 'Create a profile from inline or safely staged resume content and extract proof candidates.', schema({ name: string, resumeText: string, text: string, content: string, resumePath: string, path: string, filePath: string, preferences: { type: 'object' }, expectedRevision: { type: 'integer' } }, ['name'])),
+  tool('list_profiles', 'Read one profile-owned profile without raw resume text.', schema(profile, ['profileId'])),
+  tool('list_resumes', 'List structured resume revisions and verification state for a profile.', schema(profile, ['profileId'])),
+  tool('get_resume', 'Read the full current resume text and identity for a profile; read-only restart readback.', schema(profile, ['profileId'])),
+  tool('get_score', 'Read the stored score for an owned job; read-only restart readback of fit/eligibility/constraints.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('update_profile', 'Update local profile preferences.', schema({ ...profile, preferences: { type: 'object' }, name: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('add_proof_point', 'Add a structured proof candidate requiring human verification.', schema({ ...profile, summary: string, skills: { type: 'array' }, metrics: { type: 'array' }, expectedRevision: { type: 'integer' } }, ['profileId', 'summary'])),
+  tool('import_job', 'Import job text inline or from an allowed staged file; deduplicates content.', schema({ ...profile, text: string, content: string, path: string, filePath: string, greenhouseUrl: string, greenhouseDetailUrl: string, greenhouseDetailFixture: string, greenhouseDetail: { type: 'object' }, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('import_job_url', 'Fetch and parse a public http/https job URL for local review; rejects file and private URLs.', schema({ ...profile, url: string, greenhouseDetailFixture: string, greenhouseDetail: { type: 'object' }, expectedRevision: { type: 'integer' } }, ['profileId', 'url'])),
+  tool('list_jobs', 'List profile-owned imported and discovered jobs.', schema(profile, ['profileId'])),
+  tool('create_saved_search', 'Create a profile-owned public-ATS saved search using a board token or staged offline fixture.', schema({ ...profile, name: string, adapter: string, config: { type: 'object' }, minFit: { type: 'number' }, expectedRevision: { type: 'integer' } }, ['profileId', 'name', 'adapter'])),
+  tool('list_saved_searches', 'List profile-owned saved searches.', schema(profile, ['profileId'])),
+  tool('search_jobs', 'Run one saved search and retain discoveries database-only.', schema({ ...profile, search: string, searchId: string, name: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('daily_discovery', 'Run all profile public-ATS or staged searches; discoveries remain database-only until saved or pursued.', schema({ ...profile, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('score_job', 'Compute JobOS-compatible seven-dimension deterministic offline fit.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('save_job', 'Save a job locally and create next-action state; performs no external action.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('skip_job', 'Skip a job locally.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('archive_job', 'Archive a job locally.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('pursue_job', 'Record local pursuit and readiness tasks; never performs an external action.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('applications_plan', 'Read local pipeline readiness and next actions.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('update_application_status', 'Update local-only lifecycle state; authoritative external states are blocked.', schema({ ...jobProfile, applicationId: string, status: string }, ['jobId', 'profileId', 'status'])),
+  tool('list_tasks', 'List persistent profile-owned tasks and next actions.', schema(profile, ['profileId'])),
+  tool('update_task', 'Update a local task as open or completed.', schema({ ...profile, taskId: string, status: string, expectedRevision: { type: 'integer' } }, ['profileId', 'taskId', 'status'])),
+  tool('tailor_resume', 'Create an applicant resume with separate review metadata. format pdf exports native searchable PDF bytes under PLUGIN_DATA and returns document.path. style navy|editorial|scan selects layout.', schema({ ...jobProfile, format: string, style: string }, ['jobId', 'profileId'])),
+  tool('draft_cover_letter', 'Create a short supported cover letter with separate review metadata. format pdf exports native PDF bytes under PLUGIN_DATA.', schema({ ...jobProfile, format: string }, ['jobId', 'profileId'])),
+  tool('save_answer', 'Generate or store a reusable answer from exact selected proof summaries; never auto-fills or sends.', schema({ ...profile, question: string, answer: string, category: string, sensitivity: string, reuseScope: string, proofPointIds: { type: 'array' }, expectedRevision: { type: 'integer' } }, ['profileId', 'question', 'proofPointIds'])),
+  tool('list_answers', 'List profile-owned reusable answer drafts.', schema(profile, ['profileId'])),
+  tool('match_answers', 'Match stored answer drafts to questions for human review.', schema({ ...profile, questions: { type: 'array' }, employer: string, jobId: string }, ['profileId'])),
+  tool('review_queue', 'List profile-owned draft artifacts and review items.', schema({ ...profile, jobId: string }, ['profileId'])),
+  tool('import_contact', 'Import an inline or PLUGIN_DATA-staged profile-owned contact record; arbitrary paths are rejected. Accepts a plain contact card/text or the documented contact-brief.v1 JSON (subject name/company/role plus the attribution-labelled provider-reported address), which is parsed natively so the identity and address need not be restated inline. The record stays humanApproved:false with the mailbox not_checked; a repeat import or an address-less re-import reconciles onto the existing logical contact instead of duplicating it, and an address-bearing re-import also reconciles the unprotected address-less machine duplicate an older release left beside it, keeping that record id and source metadata in the surviving record history.', schema({ ...profile, name: string, email: string, company: string, role: string, relationship: string, notes: string, source: string, text: string, content: string, brief: { type: 'object' }, path: string, filePath: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('list_contacts', 'List profile-owned contacts.', schema(profile, ['profileId'])),
+  tool('record_research', 'Record local people or company research notes.', schema({ ...jobProfile, subjectName: string, subjectCompany: string, company: string, source: string, notes: string, findings: { type: 'array' }, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('list_research', 'List profile-owned people/company research notes.', schema(profile, ['profileId'])),
+  tool('map_reachable_network', 'Map local profile-owned contact paths to a job; never contacts anyone.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('plan_outreach', 'Persist a local outreach plan; never transmits.', schema({ ...jobProfile, contactId: string, goal: string, expectedRevision: { type: 'integer' } }, ['jobId', 'profileId'])),
+  tool('draft_outreach', 'Persist a local initial or follow-up outreach draft; never transmits.', schema({ ...jobProfile, contactId: string, goal: string, kind: string, followUp: { type: 'boolean' }, subject: string, body: string, expectedRevision: { type: 'integer' } }, ['jobId', 'profileId'])),
+  tool('list_outreach', 'List local outreach plans and drafts.', schema(profile, ['profileId'])),
+  tool('draft_interview_story', 'Persist a STAR story draft needing human verification.', schema({ ...profile, title: string, situation: string, task: string, action: string, result: string, reflection: string, proofPointIds: { type: 'array' }, expectedRevision: { type: 'integer' } }, ['profileId', 'situation', 'task', 'action', 'result'])),
+  tool('list_interview_stories', 'List profile-owned interview story drafts.', schema(profile, ['profileId'])),
+  tool('interview_prep', 'Persist interview questions, story coverage, gaps, and a human debrief handoff.', schema({ ...jobProfile, applicationId: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('get_interview_prep', 'Read persisted interview preparation.', schema({ ...profile, jobId: string }, ['profileId'])),
+  tool('interview_debrief_handoff', 'Return the trusted human-only debrief handoff without attesting an outcome.', schema(profile, ['profileId'])),
+  tool('preview_sync', 'Return a secret-safe local sync/export preview; transmits nothing.', schema(profile, ['profileId'])),
+  tool('list_decision_handoffs', 'List pending non-authoritative decision handoffs for a profile. Completion requires the trusted local CLI ./bin/jobsss decide; MCP never completes or forges human decisions.', schema(profile, ['profileId'])),
+  tool('create_decision_handoff', 'Create a non-authoritative local handoff marker for human review. Grants no authority, performs no action, and never completes a human decision.', schema({ ...profile, kind: string, note: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('prepare_applications_batch', 'Prepare up to five owned jobs for one profile in one bounded local request: score, pursue, tailor materials, record host-supplied people evidence, and persist the tracker/next actions. Provider-neutral composition of the same operations the individual tools expose; performs no people search, no sending, no submission, and no application. Per-item failures are isolated, a contact miss is non-fatal with a structured reason, and re-running the same request adds no duplicate logical job or contact.', schema({ ...profile, jobIds: { type: 'array' }, limit: { type: 'integer' }, format: string, coverLetter: { type: 'boolean' }, contacts: { type: 'array' }, class: { type: 'string', enum: ['live', 'replay', 'fixture'] }, provider: string, runId: string, capturedAt: string, outreachGoal: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('record_contact_discovery', 'Record one bounded contact-discovery outcome for a profile/job: attributed contact evidence (provider-reported address, never a verified mailbox) or an honest structured miss with a reason code. Never searches, sends, marks human approval, or invents an address pattern; a miss is non-fatal.', schema({ ...profile, jobId: string, subjectName: string, subjectCompany: string, role: string, email: string, status: { type: 'string', enum: ['contact_brief', 'miss'] }, missReasonCode: string, missReasonDetail: string, class: { type: 'string', enum: ['live', 'replay', 'fixture'] }, provider: string, runId: string, capturedAt: string, evidence: { type: 'array' }, notes: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
+  tool('list_preparation_batches', 'Read back recorded local preparation batches and their per-item statuses from PLUGIN_DATA.', schema(profile, ['profileId'])),
+  tool('list_contact_discoveries', 'Read back recorded local contact evidence and misses for a profile (optionally one job).', schema({ ...profile, jobId: string }, ['profileId'])),
+];
+
+const HANDLERS = Object.freeze({
+  doctor: domain.doctor, start: domain.start, create_profile: domain.createProfile,
+  list_profiles: domain.listProfiles, list_resumes: domain.listResumes,
+  get_resume: domain.getResume, get_score: domain.getScore,
+  update_profile: domain.updateProfile, add_proof_point: domain.addProofPoint,
+  import_job: domain.importJob, import_job_url: domain.importJobUrl, list_jobs: domain.listJobs,
+  create_saved_search: domain.createSavedSearch, list_saved_searches: domain.listSavedSearches,
+  search_jobs: domain.searchJobs, daily_discovery: domain.dailyDiscovery, score_job: domain.scoreJob,
+  save_job: domain.saveJob, skip_job: domain.skipJob, archive_job: domain.archiveJob,
+  pursue_job: domain.pursueJob, applications_plan: domain.applicationsPlan,
+  update_application_status: domain.updateApplicationStatus, list_tasks: domain.listTasks,
+  update_task: domain.updateTask, tailor_resume: domain.tailorResume, draft_cover_letter: domain.draftCoverLetter,
+  save_answer: domain.saveAnswer, list_answers: domain.answersList, match_answers: domain.answersMatch,
+  review_queue: domain.reviewQueue, import_contact: domain.importContact, list_contacts: domain.listContacts,
+  record_research: domain.recordResearch, list_research: domain.listResearch,
+  map_reachable_network: domain.mapReachableNetwork, plan_outreach: domain.planOutreach,
+  draft_outreach: domain.draftOutreach, list_outreach: domain.listOutreach,
+  draft_interview_story: domain.draftInterviewStory, list_interview_stories: domain.listInterviewStories,
+  interview_prep: domain.interviewPrep, get_interview_prep: domain.getInterviewPrep,
+  interview_debrief_handoff: domain.interviewDebriefHandoff, preview_sync: domain.previewSync,
+  list_decision_handoffs: listDecisionHandoffs,
+  create_decision_handoff: createDecisionHandoff,
+  prepare_applications_batch: composition.prepareApplicationsBatch,
+  record_contact_discovery: composition.recordContactDiscovery,
+  list_preparation_batches: composition.listPreparationBatches,
+  list_contact_discoveries: composition.listContactDiscoveries,
+});
+
+function result(value) { return { content: [{ type: 'text', text: redactSecrets(JSON.stringify(value, null, 2)) }] }; }
+function parseDataDir(argv) {
+  const idx = argv.indexOf('--data');
+  if (idx !== -1 && argv[idx + 1]) return argv[idx + 1];
+  const eq = argv.find(arg => arg.startsWith('--data='));
+  return eq ? eq.slice('--data='.length) : process.env.PLUGIN_DATA || null;
+}
+function isAdvertisedTool(name) {
+  return typeof name === 'string' && Object.prototype.hasOwnProperty.call(HANDLERS, name);
+}
+function toolSchemaFor(name) {
+  const found = TOOLS.find(entry => entry.name === name);
+  return found ? found.inputSchema : null;
+}
+function checkValueType(schema, value, path) {
+  if (!schema || typeof schema !== 'object') return null;
+  // Only an absent (undefined) optional value skips validation: an explicit
+  // null must satisfy the declared type like any other value.
+  if (value === undefined) return null;
+  const type = schema.type;
+  if (!type) return null;
+  if (type === 'string' && typeof value !== 'string') return `${path} must be a string`;
+  if (type === 'integer' && !Number.isInteger(value)) return `${path} must be an integer`;
+  if (type === 'number' && (typeof value !== 'number' || !Number.isFinite(value))) return `${path} must be a number`;
+  if (type === 'boolean' && typeof value !== 'boolean') return `${path} must be a boolean`;
+  if (type === 'array' && !Array.isArray(value)) return `${path} must be an array`;
+  if (type === 'object' && (typeof value !== 'object' || value === null || Array.isArray(value))) return `${path} must be an object`;
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) return `${path} must be one of ${schema.enum.join(', ')}`;
+  if (typeof schema.minimum === 'number' && typeof value === 'number' && value < schema.minimum) return `${path} must be >= ${schema.minimum}`;
+  if (typeof schema.maximum === 'number' && typeof value === 'number' && value > schema.maximum) return `${path} must be <= ${schema.maximum}`;
+  if (schema.type === 'array' && schema.items && Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const nested = checkValueType(schema.items, value[i], `${path}[${i}]`);
+      if (nested) return nested;
+    }
+  }
+  if (schema.type === 'object' && schema.properties && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    for (const [key, sub] of Object.entries(schema.properties)) {
+      if (value[key] !== undefined) {
+        const nested = checkValueType(sub, value[key], `${path}.${key}`);
+        if (nested) return nested;
+      }
+    }
+    if (Array.isArray(schema.required)) {
+      for (const key of schema.required) {
+        if (value[key] === undefined || value[key] === null) return `${path}.${key} is required`;
+      }
+    }
+  }
+  return null;
+}
+function validateToolInput(name, args) {
+  const schema = toolSchemaFor(name);
+  if (!schema) return;
+  // Omission alone means no inputs; explicit null is not an object.
+  if (args !== undefined && (args === null || typeof args !== 'object' || Array.isArray(args))) {
+    throw Object.assign(new Error(`Invalid params: arguments for ${name} must be an object`), { code: 'invalid_params' });
+  }
+  const input = args === undefined ? {} : args;
+  for (const key of (schema.required || [])) {
+    // Required-field presence uses the declared schema; empty strings for
+    // entity names remain domain errors, but missing keys fail here.
+    if (input[key] === undefined || input[key] === null) {
+      throw Object.assign(new Error(`Invalid params: ${key} is required for ${name}`), { code: 'invalid_params' });
+    }
+  }
+  for (const [key, sub] of Object.entries(schema.properties || {})) {
+    if (input[key] !== undefined) {
+      const problem = checkValueType(sub, input[key], key);
+      if (problem) throw Object.assign(new Error(`Invalid params: ${problem} for ${name}`), { code: 'invalid_params' });
+    }
+  }
+}
+async function callTool(dataDir, name, args = {}) {
+  // Own advertised tool membership only: inherited names (constructor,
+  // toString, hasOwnProperty, ...) are never dispatched.
+  if (!isAdvertisedTool(name)) throw Object.assign(new Error('Requested tool is blocked or not available to MCP.'), { code: 'mcp_tool_not_available' });
+  // Central input-schema enforcement before any domain dispatch, so invalid
+  // arguments never mutate canonical state.
+  validateToolInput(name, args);
+  return result(await HANDLERS[name](dataDir, args));
+}
+function toolErrorResult(message, code) {
+  const text = redactSecrets(String(message));
+  // Encode as JSON so both modern isError readers and legacy frozen readers
+  // (which JSON-parse tool text and look for `.error`) observe the failure.
+  const payload = code ? { ok: false, error: { code: String(code), message: text } } : { ok: false, error: { message: text } };
+  return { content: [{ type: 'text', text: JSON.stringify(payload) }], isError: true };
+}
+function send(message, framing = 'header') {
+  const json = JSON.stringify(message);
+  process.stdout.write(framing === 'jsonl' ? `${json}\n` : `Content-Length: ${Buffer.byteLength(json, 'utf8')}\r\n\r\n${json}`);
+}
+
+export function startMcp({ dataDir, input = process.stdin, sendResponse = send, handleRequest = null, maxRequestBytes = 1024 * 1024, maxHeaderBytes = 8 * 1024 } = {}) {
+  if (!dataDir) throw new Error('Missing --data <dir> and PLUGIN_DATA');
+  dataDir = ensureDataDir(dataDir);
+  let buffer = Buffer.alloc(0), active = null, ended = false, closing = false, settled = false, resolveCompleted;
+  const completed = new Promise(resolve => { resolveCompleted = resolve; });
+  const detach = () => { input.off('data', onData); input.off('end', onEnd); input.off('error', onError); };
+  const finish = () => { if (settled || active) return; settled = true; detach(); resolveCompleted(); };
+  const beginClose = ({ destroy = true } = {}) => { if (!closing) { closing = true; buffer = Buffer.alloc(0); detach(); input.pause?.(); if (destroy && input !== process.stdin && typeof input.destroy === 'function') input.destroy(); } finish(); };
+  const parseError = (message, framing = 'header') => { sendResponse({ jsonrpc: '2.0', id: null, error: { code: -32700, message } }, framing); beginClose(); };
+  const nextFrame = () => {
+    if (!buffer.length) return null;
+    const prefix = buffer.toString('utf8', 0, Math.min(buffer.length, 15));
+    if ('Content-Length:'.startsWith(prefix) || prefix.startsWith('Content-Length:')) {
+      const headerEnd = buffer.indexOf('\r\n\r\n');
+      if (headerEnd < 0) { if (buffer.length > maxHeaderBytes) throw Object.assign(new Error('MCP header exceeds limit'), { framing: 'header' }); return null; }
+      if (headerEnd > maxHeaderBytes) throw Object.assign(new Error('MCP header exceeds limit'), { framing: 'header' });
+      const match = buffer.toString('utf8', 0, headerEnd).match(/^Content-Length:\s*(\d+)\s*$/im);
+      const length = Number(match?.[1]);
+      if (!Number.isSafeInteger(length)) throw Object.assign(new Error('Missing Content-Length'), { framing: 'header' });
+      if (length > maxRequestBytes) throw Object.assign(new Error('MCP request exceeds limit'), { framing: 'header' });
+      const bodyStart = headerEnd + 4;
+      if (buffer.length - bodyStart < length) return null;
+      return { line: buffer.toString('utf8', bodyStart, bodyStart + length), framing: 'header', consumed: bodyStart + length };
+    }
+    const newline = buffer.indexOf('\n');
+    if (newline < 0) { if (buffer.length > maxRequestBytes) throw Object.assign(new Error('MCP request exceeds limit'), { framing: 'jsonl' }); return null; }
+    if (newline > maxRequestBytes) throw Object.assign(new Error('MCP request exceeds limit'), { framing: 'jsonl' });
+    return { line: buffer.toString('utf8', 0, newline).trim(), framing: 'jsonl', consumed: newline + 1 };
+  };
+  const pump = () => {
+    if (active || closing) return;
+    let frame;
+    try { frame = nextFrame(); } catch (cause) { parseError(cause.message, cause.framing); return; }
+    if (!frame) { if (ended) { if (buffer.length) parseError('Incomplete MCP request'); else finish(); } else input.resume?.(); return; }
+    buffer = buffer.subarray(frame.consumed);
+    if (!frame.line) { pump(); return; }
+    input.pause?.();
+    active = Promise.resolve((handleRequest || handleLine)(dataDir, frame.line, msg => sendResponse(msg, frame.framing)))
+      .catch(() => {}).finally(() => { active = null; if (closing) finish(); else pump(); });
+  };
+  const onData = chunk => { if (closing) return; const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)); if (buffer.length + bytes.length > maxRequestBytes + maxHeaderBytes) { parseError('MCP input buffer exceeds limit'); return; } buffer = buffer.length ? Buffer.concat([buffer, bytes]) : Buffer.from(bytes); pump(); };
+  const onEnd = () => { ended = true; pump(); };
+  const onError = () => beginClose({ destroy: false });
+  input.on('data', onData); input.once('end', onEnd); input.once('error', onError);
+  return { completed, close() { beginClose(); } };
+}
+
+async function handleLine(dataDir, line, respond) {
+  let msg;
+  try { msg = JSON.parse(line); } catch (cause) { respond({ jsonrpc: '2.0', id: null, error: { code: -32700, message: cause.message } }); return; }
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const hasId = object(msg) && Object.prototype.hasOwnProperty.call(msg, 'id');
+  const validId = hasId && (msg.id === null || typeof msg.id === 'string' || (typeof msg.id === 'number' && Number.isFinite(msg.id)));
+  if (!object(msg) || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string' ||
+      (hasId && !validId) || (Object.prototype.hasOwnProperty.call(msg, 'params') &&
+        !(object(msg.params) || Array.isArray(msg.params)))) {
+    respond({ jsonrpc: '2.0', id: validId ? msg.id : null, error: { code: -32600, message: 'Invalid Request' } });
+    return;
+  }
+  // Only a valid envelope without id is a notification. Notifications remain
+  // silent and never dispatch mutations, regardless of their method name.
+  if (!hasId) return;
+  try {
+    const methodSchemas = {
+      initialize: schema({ protocolVersion: string, capabilities: schema(), clientInfo: schema({ name: string, version: string }) }),
+      ping: schema(),
+      'tools/list': schema({ cursor: string }),
+      'tools/call': schema({ name: string }, ['name']),
+    };
+    if (Object.prototype.hasOwnProperty.call(methodSchemas, msg.method)) {
+      const problem = checkValueType(methodSchemas[msg.method], msg.params === undefined ? {} : msg.params, 'params');
+      if (problem) throw Object.assign(new Error(`Invalid params: ${problem}`), { code: 'invalid_params' });
+    }
+    if (msg.method === 'initialize') { respond({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: '2024-11-05', serverInfo: { name: 'jobsss-bundled', version: PRODUCT_VERSION }, capabilities: { tools: {} } } }); return; }
+    if (msg.method === 'ping') { respond({ jsonrpc: '2.0', id: msg.id, result: {} }); return; }
+    if (msg.method === 'tools/list') { respond({ jsonrpc: '2.0', id: msg.id, result: { tools: TOOLS } }); return; }
+    if (msg.method === 'tools/call') {
+      const { name, arguments: args } = msg.params;
+      try {
+        respond({ jsonrpc: '2.0', id: msg.id, result: await callTool(dataDir, name, args) });
+      } catch (cause) {
+        // Genuine protocol errors (unknown tools, invalid params/schemas)
+        // remain protocol errors; domain/business execution failures return
+        // a normal model-visible tool result with isError:true.
+        if (cause?.code === 'mcp_tool_not_available' || cause?.code === 'invalid_params') {
+          throw cause;
+        }
+        let text = cause?.code ? `${cause.code}: ${cause.message}` : String(cause?.message || cause);
+        if (cause?.code === 'external_status_forbidden') text = 'external_status_forbidden: blocked human-only status is not available to MCP';
+        respond({ jsonrpc: '2.0', id: msg.id, result: toolErrorResult(text, cause?.code || 'domain_error') });
+      }
+      return;
+    }
+    respond({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Method not found' } });
+  } catch (cause) {
+    let message = cause?.code ? `${cause.code}: ${cause.message}` : cause.message;
+    if (cause?.code === 'external_status_forbidden') message = 'external_status_forbidden: blocked human-only status is not available to MCP';
+    respond({ jsonrpc: '2.0', id: msg.id ?? null, error: { code: cause?.code === 'invalid_params' || cause?.code === 'mcp_tool_not_available' ? -32602 : -32000, message } });
+  }
+}
+
+export function runFromArgv(argv = process.argv.slice(2)) {
+  const dataDir = parseDataDir(argv);
+  if (!dataDir) { console.error('jobsss mcp requires --data <dir> (or PLUGIN_DATA)'); process.exit(2); }
+  startMcp({ dataDir });
+}
+if (import.meta.url === `file://${process.argv[1]}`) runFromArgv();

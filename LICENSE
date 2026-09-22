@@ -20,23 +20,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-Attribution Notice (JobOS MIT):
-
-This bundled runtime ports and adapts proven behavior from the MIT-licensed
-JobOS project, specifically:
-
-  - src/mcp.js: MCP initialize / tools/list / tools/call framing and
-    capability policy concepts.
-  - src/profiles.js: profile creation and resume proof-point handling.
-  - src/jobs.js: job ingestion, dedupeKey, and source history handling.
-  - src/scoring.js: deterministic fit scoring contract (overall/scoreStatus).
-  - src/workflows.js / src/tracking.js: pursuit and application pipeline
-    state concepts.
-  - src/db.js / src/workspace.js: local persistence and workspace
-    projection concepts.
-
-JobOS is licensed MIT (Copyright (c) 2026 JobOS contributors) and remains
-read-only and unmodified. Ported logic is acknowledged here; JobOS is not
-required at runtime and is never spawned or imported.

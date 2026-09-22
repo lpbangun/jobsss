@@ -19,7 +19,7 @@ The release pipeline still uses the sole native implementation in `src/packaging
 Complete evidence is recorded once:
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `05453fe142ae6671dea8f78b9d5da247481a285c96ae5c89f4afa5086d9c7780`
+- SHA-256: `e10f723d6d61a46d8a53255fbd0adb4bf0be8f2c7c054a26d3e2382b387f090f`
 - Exact reproduction command:
 
 ```bash
@@ -31,6 +31,8 @@ Current native artifact refresh (2026-09-12, B67 consistency): the pinned eviden
 Current native artifact refresh (2026-09-20, host-composition slice): the pinned evidence command was re-run with a caller-selected external `JOBSSS_NATIVE_CACHE` after the bounded host-composition and deterministic workspace-projection runtime additions (`src/composition.js`, `src/projection.js`, `src/checklist.js`, their registration in the standalone bundler module list in `src/sea-build.js`, the added MCP tools in `src/mcp.js`, and the store/domain wiring in `src/store.js`/`src/domain.js`). Those runtime source changes moved the SEA payload (payload length `559238` → `628266` bytes) and the recorded native output hashes and layout offsets, so the previously committed bytes (`95784bb9450e741375b70b9a4570ecfe4a14d7e638a93905f4fc993b3b69f0ad`) were stale; B67 rejected them instead of silently accepting a stale artifact. Official inputs, injector and validator pins are unchanged. This remains local build/test structural validation only — not publication, matching-host runtime proof, or a new reviewer verdict.
 
 Current native artifact refresh (2026-09-20, install-surface slice): the pinned evidence command was re-run with a caller-selected external `JOBSSS_NATIVE_CACHE` after the Hermes install-surface runtime changes (portable account-database home lookup through `os.userInfo` in `src/compat-probe.js` replacing direct system account-file parsing, tolerance for a checkout test tree absent next to the runtime — the thin install package ships none, and the frozen-fixture content-hash allowlist already covers that case — plus semantics-preserving message and identifier rephrasings in `src/release.js`, `src/sea-build.js`, `src/p3-contracts.js`, and `src/evidence.js`). Those runtime source changes moved the SEA payload (payload length `628266` → `645596` bytes) and the recorded native output hashes and layout offsets, so the previously committed bytes (`c21afefe6c6432cd5a3eac3e055c892007f9aa4ee3d889ff9c33806b4091bb31`) were stale; B67 rejected them instead of silently accepting a stale artifact. Official inputs, injector and validator pins are unchanged. This remains local build/test structural validation only — not publication, matching-host runtime proof, or a new reviewer verdict.
+
+Current native artifact refresh (2026-09-21, Codex portability slice): the pinned evidence command was run in two fresh processes with separate empty external caches after the job-heading parser, native resume layout, Windows evidence-launcher, and CRLF SEA-transform fixes. Both outputs were byte-identical at SHA-256 `e10f723d6d61a46d8a53255fbd0adb4bf0be8f2c7c054a26d3e2382b387f090f`. Official inputs, injector, and independent validator pins are unchanged. This is local structural evidence only; cross-built targets remain unverified at runtime.
 
 The command uses a caller-selected external empty cache, downloads only locked inputs, verifies checksums before validation, avoids user configuration/data and prior generated files, and emits deterministic path- and timestamp-free JSON. Frozen B67 requires two fresh processes with empty caches to produce byte-identical output matching the repository artifact.
 
@@ -65,7 +67,7 @@ The current-host standalone release is built and exercised with Node and JobOS a
 |---|---|
 | Pi | unverified |
 | OMP | unverified |
-| Codex | unverified |
+| Codex aggregate pack | verified on Windows (fresh marketplace install, skill activation, MCP handshake and state-changing workflow) |
 | Hermes | verified |
 | Claude | verified |
 
@@ -99,4 +101,4 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 
 ## Deferred/unverified capabilities
 
-Darwin x64, Darwin arm64, Windows x64, and Linux arm64 remain unverified as matching-host runtime targets. Structural validation does not upgrade those labels. Windows requires matching-host re-signing after unsigned staging; macOS requires matching-host signing/execution. Pi, OMP, and Codex remain unverified client integrations. Downloaded inputs, validator environments, caches, and release binaries are not committed.
+Darwin x64, Darwin arm64, Windows x64, and Linux arm64 remain unverified as matching-host standalone-binary targets. Structural validation does not upgrade those labels. Windows standalone binaries require matching-host re-signing after unsigned staging; macOS requires matching-host signing/execution. The generated Codex aggregate pack is separately verified as a source/plugin installation on Windows; Pi and OMP remain unverified client integrations. Downloaded inputs, validator environments, caches, and release binaries are not committed.

@@ -1,0 +1,4 @@
+codex-pack/** text eol=lf
+.agents/**/*.json text eol=lf
+compat/hermes/*.yaml text eol=lf
+compat/install-pins.json text eol=lf

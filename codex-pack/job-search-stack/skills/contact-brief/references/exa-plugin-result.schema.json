@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:contact-brief:exa-plugin-result:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "route": {
+      "const": "codex_exa_plugin"
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retrieved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "no_result",
+        "unavailable"
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "company": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "name",
+        "company"
+      ]
+    },
+    "email": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "address": {
+              "type": "string",
+              "format": "email"
+            },
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": {
+                "$ref": "#/$defs/source"
+              }
+            }
+          },
+          "required": [
+            "address",
+            "sources"
+          ]
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "fetched_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "company",
+            "profile",
+            "post",
+            "exa",
+            "user"
+          ]
+        }
+      },
+      "required": [
+        "url",
+        "fetched_at",
+        "published_at",
+        "quote",
+        "kind"
+      ]
+    }
+  },
+  "required": [
+    "route",
+    "retrieved_at",
+    "status",
+    "subject",
+    "email"
+  ]
+}

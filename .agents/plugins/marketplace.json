@@ -1,0 +1,42 @@
+{
+  "name": "jobsss-local",
+  "interface": {
+    "displayName": "JobSSS Local"
+  },
+  "plugins": [
+    {
+      "name": "job-search-stack",
+      "source": {
+        "source": "local",
+        "path": "./codex-pack/job-search-stack"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ],
+  "provenance": {
+    "schemaVersion": 1,
+    "surfaceVersion": "1.0.0",
+    "products": [
+      {
+        "name": "jobsss",
+        "repo": "lpbangun/jobsss",
+        "subdir": "agent-plugin",
+        "ref": "0f3c452a0211b8b0ae8e41b935c647d187f475ad"
+      },
+      {
+        "name": "people-finder",
+        "repo": "lpbangun/people-finder",
+        "ref": "913fcb5dd771aa4cd5565f319b52e3f953685443"
+      },
+      {
+        "name": "contact-brief",
+        "repo": "lpbangun/contact-brief",
+        "ref": "29ea479c26fa20ffbeebffc34fa9ce06a45495b0"
+      }
+    ]
+  }
+}

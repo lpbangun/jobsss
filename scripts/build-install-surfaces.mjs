@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PINS_REL = 'compat/install-pins.json';
 export const HERMES_SURFACE_REL = 'compat/hermes/find-people.pack.yaml';
+export const CODEX_SURFACE_REL = '.agents/plugins/marketplace.json';
 
 /** Installers accept only exact 40-character commits; tags and branches are rejected. */
 const REF_RE = /^[0-9a-f]{40}$/;
@@ -96,9 +97,34 @@ export function renderHermesPack(pins) {
   return `${lines.join('\n')}\n`;
 }
 
+/** Render the Codex marketplace that exposes the deterministic aggregate pack. */
+export function renderCodexMarketplace(pins) {
+  const entry = {
+    name: 'job-search-stack',
+    source: { source: 'local', path: './codex-pack/job-search-stack' },
+    policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+    category: 'Productivity'
+  };
+  return `${JSON.stringify({
+    name: 'jobsss-local',
+    interface: { displayName: 'JobSSS Local' },
+    plugins: [entry],
+    provenance: {
+      schemaVersion: pins.schemaVersion,
+      surfaceVersion: pins.surfaceVersion,
+      products: pins.products.map(({ name, repo, subdir, ref }) => ({
+        name, repo, ...(subdir ? { subdir } : {}), ref
+      }))
+    }
+  }, null, 2)}\n`;
+}
+
 /** Map of surface path -> rendered text. Add later hosts here as their surfaces land. */
 export function renderSurfaces(pins) {
-  return new Map([[HERMES_SURFACE_REL, renderHermesPack(pins)]]);
+  return new Map([
+    [HERMES_SURFACE_REL, renderHermesPack(pins)],
+    [CODEX_SURFACE_REL, renderCodexMarketplace(pins)]
+  ]);
 }
 
 /** Compare every rendered surface against the committed one. */
@@ -108,7 +134,9 @@ export function surfacesDrift(root = REPO_ROOT) {
   const changed = [];
   for (const [rel, text] of expected) {
     const abs = path.join(root, rel);
-    const current = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
+    // Git may check text files out as CRLF on Windows. Surface parity is about
+    // content, not the host checkout's line-ending policy.
+    const current = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8').replace(/\r\n/g, '\n') : null;
     if (current !== text) changed.push(rel);
   }
   return { ok: changed.length === 0, changed, expected };

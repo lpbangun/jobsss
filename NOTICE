@@ -1,0 +1,18 @@
+JobSSS attribution notice
+
+Portions of this bundled runtime port and adapt proven behavior from the
+MIT-licensed JobOS project (Copyright (c) 2026 JobOS contributors), specifically:
+
+- src/mcp.js: MCP initialize / tools/list / tools/call framing and capability
+  policy concepts.
+- src/profiles.js: profile creation and resume proof-point handling.
+- src/jobs.js: job ingestion, dedupeKey, and source history handling.
+- src/scoring.js: deterministic fit scoring contract (overall/scoreStatus).
+- src/workflows.js / src/tracking.js: pursuit and application pipeline state
+  concepts.
+- src/db.js / src/workspace.js: local persistence and workspace projection
+  concepts.
+
+JobOS is licensed under the MIT License. It remains read-only and unmodified;
+it is not required at runtime and is never spawned or imported. The license for
+JobSSS is in LICENSE.

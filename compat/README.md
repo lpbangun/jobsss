@@ -47,11 +47,21 @@ business logic. Human-authority decisions stay on the trusted local surface
 
 `compat/install-pins.json` pins the reviewed product trio — this plugin plus
 people-finder and contact-brief — to exact 40-character commits.
-`compat/hermes/find-people.pack.yaml` is the Hermes install surface, generated
-from those pins by `scripts/build-install-surfaces.mjs`; `--check` fails on
+`compat/hermes/find-people.pack.yaml` and the root Codex marketplace
+`.agents/plugins/marketplace.json` are generated from those pins by
+`scripts/build-install-surfaces.mjs`; `--check` fails on
 drift and `--refresh` advances the pins to each repository's default-branch head.
 
-Surfaces are distribution metadata only: they carry no product bytes, grant no
-consent, and are never a runtime dependency. A regenerated surface ships
-together with the pins it came from, so an install always names a combination
-that was actually verified.
+Every `compat/` surface is distribution metadata only. The thin root-level
+Codex marketplace points to the generated root-level
+`codex-pack/job-search-stack`, which mirrors the pinned runtime and skill bytes
+because Windows cannot directly launch the portable extensionless shebang entry
+points. Its adapters contain no business logic and `provenance.json` hashes
+every generated file. Regenerate with exact pinned companion checkouts, then
+verify both layers:
+
+```sh
+node scripts/build-codex-pack.mjs --people-finder <path> --contact-brief <path>
+node scripts/build-codex-pack.mjs --check
+node scripts/build-install-surfaces.mjs --check
+```

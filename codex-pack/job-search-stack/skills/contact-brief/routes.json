@@ -1,0 +1,318 @@
+{
+  "$schema": "contact-brief-routes/v1",
+  "plugin": "contact-brief",
+  "description": "Machine-readable provider-route metadata for the contact-brief Agent Plugin. Every route is email-only enrichment of one already identity-resolved person, or mailbox verification of one approved address. Human-readable rules live in SKILL.md, references/providers.md and README.md; this file is the metadata those rules are checked against.",
+  "stageOrder": [
+    "research",
+    "identity_resolution",
+    "email_discovery",
+    "mailbox_check"
+  ],
+  "stageRules": {
+    "researchAndIdentityPrecedeDiscovery": true,
+    "discoveryIsEmailOnly": true,
+    "mailboxCheckFollowsDiscovery": true,
+    "noGenericSearchFallback": true,
+    "noSubstitutePersonOnMiss": true
+  },
+  "paidDiscoveryRequiresApproval": true,
+  "batchBridge": {
+    "ownedBy": "host",
+    "packageRole": "imports one normalized result per person; never discovers replacement people",
+    "requirements": [
+      "fixed user-approved identity list frozen before paid enrichment",
+      "stable person correlation and one result per person",
+      "per-item journal and bounded concurrency",
+      "aggregate spend ceiling and per-item attempt visibility",
+      "no automatic write into Contact Brief or Jobsss state"
+    ]
+  },
+  "capabilitiesNever": [
+    "browser_automation",
+    "social_research",
+    "message_sending",
+    "application_submission",
+    "exa_job_or_people_discovery",
+    "address_guessing",
+    "smtp_or_mailbox_check_via_exa",
+    "credential_management"
+  ],
+  "evidenceVisibility": {
+    "sourceUrl": "email.evidence[].url",
+    "sourceUrlMayBeEmpty": "email.lookup.source_urls",
+    "mailbox": "email.mailbox.status",
+    "mailboxMethod": "email.mailbox.method",
+    "mailboxCheckedAt": "email.mailbox.checked_at",
+    "channel": "email.lookup.provider",
+    "confidence": "email.attribution",
+    "identityConfidence": "identity.confidence",
+    "provenance": "email.lookup.attribution",
+    "runId": "email.lookup.provider_run_id",
+    "freshness": "email.lookup.retrieved_at",
+    "evidenceFreshness": "email.evidence[].fetched_at",
+    "missReason": "email.lookup.status",
+    "missDetail": "email.lookup.detail",
+    "spendUsd": "email.lookup.cost_usd",
+    "spendBreakdown": "email.lookup.cost",
+    "usage": "email.lookup.usage"
+  },
+  "redaction": {
+    "rawProviderEnvelopeRetainedPrivately": true,
+    "uncertainCandidateExposedInPublicBrief": false,
+    "publicAddressRequiresStatus": "provider_reported",
+    "neverPrinted": [
+      "api keys",
+      "authorization headers",
+      "session cookies"
+    ]
+  },
+  "routes": {
+    "codex_exa_plugin": {
+      "id": "codex_exa_plugin",
+      "label": "Codex Exa plugin handoff",
+      "kind": "email_discovery",
+      "owner": "host",
+      "briefLookupProvider": "codex_exa_plugin",
+      "purpose": "one email-only lookup for an already identity-resolved person through a callable host Exa tool",
+      "inputs": [
+        "subject.name (exact)",
+        "subject.company (exact)",
+        "at most one attributable professional address"
+      ],
+      "limits": {
+        "subjectsPerRun": 1,
+        "addressesPerResult": 1,
+        "automaticRetries": 0,
+        "bulk": false,
+        "effort": null
+      },
+      "approval": {
+        "required": false,
+        "kind": "host_tool_availability",
+        "note": "no key is managed by this package; the host must show a callable Exa tool and the agent must not substitute a paid route silently"
+      },
+      "spend": {
+        "mode": "provider_reported_or_unknown",
+        "providerEnforcedCap": false,
+        "reservedAllowanceUsd": null
+      },
+      "resultSchema": "references/exa-plugin-result.schema.json",
+      "importer": "python3 scripts/contact_brief.py import-exa request.json --result private/exa-plugin-result.json --out private/request-with-email.json",
+      "statuses": {
+        "success": [
+          "completed"
+        ],
+        "miss": [
+          "no_result",
+          "unavailable"
+        ]
+      },
+      "capabilities": {
+        "packageNetwork": false,
+        "hostToolNetwork": true,
+        "browser": false,
+        "social": false,
+        "messaging": false,
+        "sending": false,
+        "mailboxCheck": false,
+        "genericSearch": false,
+        "peopleDiscovery": false
+      },
+      "evidence": {
+        "sourceUrls": "required for a non-null address",
+        "mailbox": "not_checked"
+      }
+    },
+    "exa_agent_fiber": {
+      "id": "exa_agent_fiber",
+      "label": "Exa Agent with the Fiber data source",
+      "kind": "email_discovery",
+      "owner": "host",
+      "briefLookupProvider": "exa_agent_fiber",
+      "purpose": "one email-only Exa Agent run with dataSources [{\"provider\": \"fiber\"}] for an already identity-resolved person",
+      "inputs": [
+        "subject.name (exact)",
+        "subject.company (exact)",
+        "at most one attributable professional address",
+        "run metadata: run_id, retrieved_at, usage, cost, attribution"
+      ],
+      "limits": {
+        "subjectsPerRun": 1,
+        "addressesPerResult": 1,
+        "automaticRetries": 0,
+        "bulk": false,
+        "effort": "low_only",
+        "budgetParameter": "never omitted when the provider route accepts one"
+      },
+      "approval": {
+        "required": true,
+        "kind": "explicit_host_authorization",
+        "note": "the host owns the credential, the run request and the spend ceiling; this package never calls Fiber and never reads a provider key"
+      },
+      "spend": {
+        "mode": "provider_reported",
+        "providerEnforcedCap": false,
+        "reservedAllowanceUsd": null,
+        "note": "record the returned cost/usage objects and the scalar total; do not treat local estimates as provider-enforced caps"
+      },
+      "resultSchema": "references/fiber-agent-result.schema.json",
+      "importer": "python3 scripts/contact_brief.py import-fiber request.json --result private/fiber-agent-result.json --out private/request-with-email.json",
+      "statuses": {
+        "success": [
+          "provider_reported"
+        ],
+        "miss": [
+          "not_found",
+          "uncertain",
+          "not_lookupable",
+          "identity_mismatch",
+          "provider_error",
+          "rate_limited",
+          "cancelled"
+        ]
+      },
+      "capabilities": {
+        "packageNetwork": false,
+        "hostToolNetwork": true,
+        "browser": false,
+        "social": false,
+        "messaging": false,
+        "sending": false,
+        "mailboxCheck": false,
+        "genericSearch": false,
+        "peopleDiscovery": false
+      },
+      "evidence": {
+        "sourceUrls": "may legitimately be empty for provider_reported; an empty list never makes the address source_supported",
+        "mailbox": "not_checked",
+        "uncertainCandidate": "private provider envelope only"
+      }
+    },
+    "direct_exa_agent_api": {
+      "id": "direct_exa_agent_api",
+      "label": "Direct Exa Agent API fallback (bundled helper)",
+      "kind": "email_discovery",
+      "owner": "package",
+      "briefLookupProvider": "exa_agent_fiber",
+      "purpose": "legacy single-person fallback used only when no callable host Exa tool exists, after explicit authorization",
+      "request": "POST /agent/runs whose body carries query, one input data row for the approved person, dataSources [{\"provider\": \"fiber\"}], effort low and the email-only outputSchema; then bounded GET /agent/runs/{id} polling. The body is journaled verbatim and reused as the resume fingerprint.",
+      "inputs": [
+        "approved.name (exact)",
+        "approved.company (exact)",
+        "approved.max_total_usd",
+        "subject.name (exact)",
+        "subject.company (exact)"
+      ],
+      "limits": {
+        "subjectsPerRun": 1,
+        "addressesPerResult": 1,
+        "automaticRetries": 0,
+        "bulk": false,
+        "effort": "low",
+        "polls": "bounded"
+      },
+      "approval": {
+        "required": true,
+        "kind": "explicit_authorization_artifact",
+        "artifact": "private authorization JSON with approved=true, exact name, exact company and max_total_usd",
+        "note": "reserved allowance is a local dispatch gate, not a provider-enforced hard cap"
+      },
+      "spend": {
+        "mode": "locally_reserved_then_provider_reported",
+        "providerEnforcedCap": false,
+        "reservedAllowanceUsd": 0.05,
+        "journal": "required persistent journal prevents blind duplicate dispatch"
+      },
+      "resultSchema": "references/fiber-agent-result.schema.json",
+      "normalization": "the host normalizes the direct run into the fiber envelope before importing, so briefLookupProvider is exa_agent_fiber",
+      "runner": "python3 scripts/live_test.py exa --authorization private/authorization.json --journal private/exa-run.json --execute",
+      "importer": "python3 scripts/contact_brief.py import-fiber request.json --result private/fiber-agent-result.json --out private/request-with-email.json",
+      "statuses": {
+        "success": [
+          "provider_reported"
+        ],
+        "miss": [
+          "not_found",
+          "uncertain",
+          "not_lookupable",
+          "identity_mismatch",
+          "provider_error",
+          "rate_limited",
+          "cancelled"
+        ]
+      },
+      "capabilities": {
+        "packageNetwork": true,
+        "hostToolNetwork": false,
+        "browser": false,
+        "social": false,
+        "messaging": false,
+        "sending": false,
+        "mailboxCheck": false,
+        "genericSearch": false,
+        "peopleDiscovery": false
+      },
+      "evidence": {
+        "sourceUrls": "preserved from the provider response",
+        "mailbox": "not_checked"
+      }
+    },
+    "aftership_mailbox_check": {
+      "id": "aftership_mailbox_check",
+      "label": "AfterShip mailbox verification (optional adapter)",
+      "kind": "mailbox_check",
+      "owner": "package",
+      "briefLookupProvider": null,
+      "purpose": "separately authorized syntax/DNS/SMTP check of one already discovered address; never a discovery route and never identity proof",
+      "inputs": [
+        "address (exact, approved)",
+        "authorization JSON fields for the requested check depth"
+      ],
+      "limits": {
+        "subjectsPerRun": 1,
+        "addressesPerResult": 1,
+        "automaticRetries": 0,
+        "bulk": false,
+        "smtp": "requires separate authorization and the --smtp flag"
+      },
+      "approval": {
+        "required": true,
+        "kind": "exact_address_authorization",
+        "note": "without an authorized run the mailbox stays not_checked"
+      },
+      "spend": {
+        "mode": "none",
+        "providerEnforcedCap": false,
+        "reservedAllowanceUsd": null
+      },
+      "resultSchema": "references/contact-brief.schema.json#/properties/email/properties/mailbox",
+      "importer": "python3 scripts/contact_brief.py verify-email private/email-authorization.json --execute --out private/mailbox-result.json",
+      "statuses": {
+        "success": [
+          "smtp_accepted",
+          "risky",
+          "rejected"
+        ],
+        "miss": [
+          "unknown",
+          "not_checked"
+        ]
+      },
+      "capabilities": {
+        "packageNetwork": true,
+        "hostToolNetwork": false,
+        "browser": false,
+        "social": false,
+        "messaging": false,
+        "sending": false,
+        "mailboxCheck": true,
+        "genericSearch": false,
+        "peopleDiscovery": false
+      },
+      "evidence": {
+        "sourceUrls": "not applicable; a mailbox result is not an attribution source",
+        "mailbox": "status, method and checked_at are recorded; DNS is never relabelled as SMTP"
+      }
+    }
+  }
+}

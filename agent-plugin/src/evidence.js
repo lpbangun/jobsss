@@ -156,7 +156,15 @@ function inspect(kind, targetPath, pythonPath, validatorScript) {
 
 function releaseBlackBox(root, target, executablePath, outRoot) {
   const launcher = path.join(root, 'bin', 'jobsss');
-  const child = spawnSync(launcher, ['release', '--out', outRoot, '--target', target, '--node-binary', executablePath], {
+  // Windows does not execute extensionless shebang launchers directly.
+  // Keep the black-box CLI boundary while routing that script through the
+  // current Node executable on win32, matching the package parity probes.
+  const command = process.platform === 'win32' ? process.execPath : launcher;
+  const args = [
+    ...(process.platform === 'win32' ? [launcher] : []),
+    'release', '--out', outRoot, '--target', target, '--node-binary', executablePath,
+  ];
+  const child = spawnSync(command, args, {
     cwd: root,
     encoding: 'utf8',
     env: process.env,
@@ -333,7 +341,13 @@ export function evidenceCommand(argv, { repoRoot } = {}) {
   const unsupportedPath = path.join(work, 'unsupported-win-x64.exe');
   fs.writeFileSync(unsupportedPath, Buffer.concat([inputs['win-x64'].bytes, Buffer.from('unsupported-overlay')]));
   const rejectedOut = path.join(work, 'rejected-release');
-  const rejected = spawnSync(path.join(root, 'bin', 'jobsss'), ['release', '--out', rejectedOut, '--target', 'win-x64', '--node-binary', unsupportedPath], {
+  const rejectedLauncher = path.join(root, 'bin', 'jobsss');
+  const rejectedCommand = process.platform === 'win32' ? process.execPath : rejectedLauncher;
+  const rejectedArgs = [
+    ...(process.platform === 'win32' ? [rejectedLauncher] : []),
+    'release', '--out', rejectedOut, '--target', 'win-x64', '--node-binary', unsupportedPath,
+  ];
+  const rejected = spawnSync(rejectedCommand, rejectedArgs, {
     cwd: root, encoding: 'utf8', env: process.env, timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
   });
   const rejectedDiagnostic = String(rejected.stderr || rejected.stdout || '');

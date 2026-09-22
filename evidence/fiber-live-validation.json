@@ -1,0 +1,58 @@
+{
+  "schema_version": "jobsss-fiber-live-evidence/v1",
+  "recorded_at": "2026-09-22T01:37:55.7756067Z",
+  "provenance": {
+    "live_provider": true,
+    "fixture": false,
+    "provider": "exa_connect_fiber",
+    "email_redacted": true
+  },
+  "run": {
+    "id": "agent_run_61ec3fec45434a9c8eb855183b3b9d05",
+    "status": "completed",
+    "stop_reason": "schema_satisfied",
+    "completed_at": "2026-09-22T01:07:27.649Z",
+    "cost_dollars": {
+      "total": 0.045,
+      "agentCompute": 0.01,
+      "search": 0.015,
+      "emails": 0.02,
+      "phoneNumbers": 0
+    },
+    "usage": {
+      "agentComputeUnits": 0.1,
+      "searches": 3,
+      "emails": 1,
+      "phoneNumbers": 0
+    }
+  },
+  "result": {
+    "status": "provider_reported",
+    "email_present": true,
+    "email_sha256": "a1d4868ac4617869d57721707c1f5f3d84231d63cd6d32ec21745f2b00be9694",
+    "attribution": "provider_reported",
+    "source_urls": [
+      "https://www.linkedin.com/in/kathryncs"
+    ],
+    "mailbox_status": "not_checked",
+    "source_supported": false
+  },
+  "validation": {
+    "fiber_envelope_schema": "passed",
+    "contact_brief_schema": "contact-brief.v1",
+    "contact_brief_validation": "passed",
+    "provider_boundary": "passed",
+    "recorded_evidence_acceptance": false,
+    "acceptance_blockers": [
+      "Identity unresolved, conflicting, ambiguous, or stale employer",
+      "linkedin: native person search, matched profile and authored activity not complete",
+      "x: native person search, matched profile and authored activity not complete"
+    ]
+  },
+  "private_artifact_hashes": {
+    "journal_sha256": "b8d49e7fa42366838e5fae290668252fec8e95925b6f9bc60a4db76877861af2",
+    "raw_response_sha256": "28d9e97217b5c499e8ff1ec8a710951ab8b13225e5a6ca706d18242bce794e1f",
+    "normalized_fiber_result_sha256": "0770150ad6ed905194e2574b6d9d8ca53ff876b918ccd384ca6567b0435628d6",
+    "contact_brief_sha256": "474c4efd1cf19947ab011c76218e1d00bf5e3d69c9b5c9ef3146baad452def5f"
+  }
+}

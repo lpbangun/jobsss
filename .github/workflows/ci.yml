@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify generated plugin surfaces
+        run: |
+          node scripts/build-agent-plugin.mjs --check
+          node scripts/build-install-surfaces.mjs --check
+          node scripts/build-codex-pack.mjs --check
+      - name: Run deterministic acceptance bar
+        run: >-
+          node --test --test-concurrency=1
+          tests/jobsss-gate0.test.mjs
+          tests/jobsss-mcp-compat.test.mjs
+          tests/jobsss-journey.test.mjs
+          tests/jobsss-persistence.test.mjs
+          tests/jobsss-discovery.test.mjs
+          tests/jobsss-workflows.test.mjs
+          tests/jobsss-integrity.test.mjs
+          tests/jobsss-release.test.mjs
+          tests/jobsss-authority.test.mjs
+          tests/jobsss-cross-platform.test.mjs
+      - name: Run adapter checks that do not require installed client binaries
+        run: >-
+          node --test
+          --test-name-pattern="B33|B35|B41"
+          tests/jobsss-adapters.test.mjs
+      - name: Run packaging regressions
+        run: >-
+          node --test
+          tests/install-surfaces.test.mjs
+          tests/resume-native-layout.test.mjs
+          tests/sea-build-windows.test.mjs
+
+  windows-packaging-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+      - name: Verify generated plugin surfaces
+        shell: pwsh
+        run: |
+          node scripts/build-agent-plugin.mjs --check
+          node scripts/build-install-surfaces.mjs --check
+          node scripts/build-codex-pack.mjs --check
+      - name: Run Windows-safe packaging regressions
+        shell: pwsh
+        run: >-
+          node --test
+          tests/install-surfaces.test.mjs
+          tests/resume-native-layout.test.mjs
+          tests/sea-build-windows.test.mjs

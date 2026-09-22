@@ -6,7 +6,7 @@
       "name": "jobsss",
       "repo": "lpbangun/jobsss",
       "subdir": "agent-plugin",
-      "ref": "cd32fa7e0f42bcc0927566e8fd4e4954afad1332"
+      "ref": "6228d0c676781d935fcc5e528365fda0f3ea4c69"
     },
     {
       "name": "people-finder",
@@ -23,10 +23,10 @@
     "purpose": "Codex Windows launch compatibility and three-product composition",
     "businessLogic": false,
     "pythonResolution": "PATH first; Codex bundled dependency fallback on Windows",
-    "cachebuster": "e41de50245c1"
+    "cachebuster": "af2ed7d4b6fc"
   },
   "files": {
-    ".codex-plugin/plugin.json": "f55bb2b06340349305d1400346048e27c7cf1d08fc075001eb7bfef44c27f1b8",
+    ".codex-plugin/plugin.json": "0be14c90357bfd1295ab5906b999b0f04f2d83a4a1e5db41c3f6326b6e0b6e12",
     ".mcp.json": "e6e527f94cf4a7afd9eff17c6c87d716ad8eaf15bccfafacd2c71c2b395fc3e5",
     "products/jobsss/bin/jobsss": "6b4523c0b9da97bc8189e1c12ff290accad658364845c1d8bca24efb33aa6992",
     "products/jobsss/plugin.json": "1147b5758467401e608abede222289abeeaff30de1dd8d8e5f3ea023fb80e3b8",

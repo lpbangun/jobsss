@@ -6,7 +6,7 @@
       "name": "jobsss",
       "repo": "lpbangun/jobsss",
       "subdir": "agent-plugin",
-      "ref": "6228d0c676781d935fcc5e528365fda0f3ea4c69"
+      "ref": "b44b6a015b53c029c7a6363651eaeff2a8ebdc6b"
     },
     {
       "name": "people-finder",
@@ -23,10 +23,10 @@
     "purpose": "Codex Windows launch compatibility and three-product composition",
     "businessLogic": false,
     "pythonResolution": "PATH first; Codex bundled dependency fallback on Windows",
-    "cachebuster": "af2ed7d4b6fc"
+    "cachebuster": "3d64701b5afe"
   },
   "files": {
-    ".codex-plugin/plugin.json": "0be14c90357bfd1295ab5906b999b0f04f2d83a4a1e5db41c3f6326b6e0b6e12",
+    ".codex-plugin/plugin.json": "ad302cdff6c58a2fad256ebbab96a0ab1d6e42a82f4fd0eadaa810ed4b65ba98",
     ".mcp.json": "e6e527f94cf4a7afd9eff17c6c87d716ad8eaf15bccfafacd2c71c2b395fc3e5",
     "products/jobsss/bin/jobsss": "6b4523c0b9da97bc8189e1c12ff290accad658364845c1d8bca24efb33aa6992",
     "products/jobsss/plugin.json": "1147b5758467401e608abede222289abeeaff30de1dd8d8e5f3ea023fb80e3b8",
@@ -48,7 +48,7 @@
     "products/jobsss/src/relationships.js": "ef1c875a93ae4be2313da05816b6a7216f0e1c56d3d140f7fe8db811f91c7d03",
     "products/jobsss/src/release.js": "1998e9e74d1fb8437334dabc118b82a4a66edf0fb019f9b8aefd8cb7bf3d9edd",
     "products/jobsss/src/resume-compiler.js": "f295e4472d6bfad0b710995f9b2bbea07ab6a6cae1648fd0618a39dd00fb97e2",
-    "products/jobsss/src/resume-document.js": "1f32f945bdcea484e3d6a399d96d76cc67fb501fd3aba1dd8b06f78867e5b4b6",
+    "products/jobsss/src/resume-document.js": "8ba612f122cbe82fd489985f4d479ca1a90f41ecde6db3e30dba3b8cf7cf5934",
     "products/jobsss/src/resume-ir-latex.js": "05a20bd86c1e78346c3ae074db62d07739da99a96e8694315ce8b38a3ea7a7d0",
     "products/jobsss/src/resume-latex.js": "7a306d579864e0a72ce76b872d8bdd59a6bc298b0e79ed6c69a7520c36cfef55",
     "products/jobsss/src/scoring.js": "88e53f1bdac95ab656d853715535cd14fb1b5f57dc18f765dc6d7d86dfa87d99",

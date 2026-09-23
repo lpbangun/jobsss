@@ -32,8 +32,8 @@ export const PACKAGE_DIRNAME = 'agent-plugin';
 
 /** Whole canonical directories mirrored into the package. */
 export const MIRROR_DIRS = Object.freeze(['bin', 'src', 'skills']);
-/** Canonical root manifests mirrored into the package. */
-export const MIRROR_FILES = Object.freeze(['plugin.json', 'mcp.json']);
+/** Canonical root metadata and manifests mirrored into the package. */
+export const MIRROR_FILES = Object.freeze(['package.json', 'plugin.json', 'mcp.json']);
 
 function listFiles(absDir, prefix) {
   const found = [];

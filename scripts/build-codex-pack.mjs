@@ -101,7 +101,9 @@ function distributionBytes(file) {
 function assertMirror(sourceRoot, sourceRel, destinationRel) {
   const source = path.join(sourceRoot, sourceRel);
   const destination = path.join(OUT, destinationRel);
-  const sourceFiles = fs.statSync(source).isDirectory() ? listFiles(source) : [''];
+  const sourceFiles = fs.statSync(source).isDirectory()
+    ? listFiles(source).filter(rel => !rel.split('/').includes('__pycache__') && !rel.endsWith('/.DS_Store') && !/\.py[co]$/i.test(rel))
+    : [''];
   const destinationFiles = fs.statSync(destination).isDirectory() ? listFiles(destination) : [''];
   if (JSON.stringify(sourceFiles) !== JSON.stringify(destinationFiles)) {
     throw new Error(`Codex pack source file set drifts from ${sourceRel}`);

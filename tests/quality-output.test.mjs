@@ -434,18 +434,26 @@ test('discovery.js keeps fixture provenance labels out of job identity', () => {
   assert.equal(parsed.location, 'Boston, MA or remote US');
 });
 
-test('domain.js excludeRoles replaces, never accumulates, dealbreakers', t => {
+test('domain.js preserves literal dealbreakers and keeps excludeRoles structured', t => {
   const data = workspace(t);
-  const { profileId } = domain.createProfile(data, { name: 'Casey profile', resumeText: resume, preferences: { excludeRoles: ['staff'] } });
+  const exactDealbreaker = 'No staff, principal roles';
+  const sourceRoles = ['staff', 'principal'];
+  const sourceDealbreakers = [exactDealbreaker, 'Need remote work'];
+  const { profileId } = domain.createProfile(data, {
+    name: 'Casey profile', resumeText: resume,
+    preferences: { excludeRoles: sourceRoles, dealbreakers: sourceDealbreakers }
+  });
   const prefs = () => domain.listProfiles(data, { profileId }).profiles[0].preferences;
-  assert.ok(prefs().dealbreakers.some(item => /No staff roles/.test(item)));
+  assert.deepEqual(prefs().excludeRoles, sourceRoles);
+  assert.deepEqual(prefs().dealbreakers, sourceDealbreakers);
   domain.updateProfile(data, { profileId, preferences: { excludeRoles: ['principal'] } });
-  assert.ok(prefs().dealbreakers.some(item => /No principal roles/.test(item)));
-  assert.ok(!prefs().dealbreakers.some(item => /No staff roles/.test(item)));
+  assert.deepEqual(prefs().excludeRoles, ['principal']);
+  assert.deepEqual(prefs().dealbreakers, sourceDealbreakers);
   domain.updateProfile(data, { profileId, preferences: { excludeRoles: [] } });
-  assert.equal(prefs().dealbreakers.length, 0);
-  domain.updateProfile(data, { profileId, preferences: { communicationStyle: 'formal' } });
-  assert.equal(prefs().dealbreakers.length, 0);
+  assert.deepEqual(prefs().excludeRoles, []);
+  assert.deepEqual(prefs().dealbreakers, sourceDealbreakers);
+  assert.deepEqual(sourceRoles, ['staff', 'principal'], 'profile intake must not mutate caller arrays');
+  assert.deepEqual(sourceDealbreakers, [exactDealbreaker, 'Need remote work']);
 });
 
 test('canonical handlers resolve flattened travel/hours natively and keep paired native resumes distinct', async t => {

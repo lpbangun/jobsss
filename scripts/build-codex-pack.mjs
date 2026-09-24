@@ -44,6 +44,13 @@ function ensureSelfProductPin(pins) {
   // commit. The pinned product bytes must still equal the source being packed.
   if (!fs.existsSync(path.join(ROOT, '.git'))) return; // source ZIP has no Git metadata
   const self = pins.products.find(product => product.name === 'jobsss');
+  try {
+    execFileSync('git', ['-C', ROOT, 'cat-file', '-e', `${self.ref}^{commit}`], { stdio: 'ignore' });
+  } catch {
+    const shallow = execFileSync('git', ['-C', ROOT, 'rev-parse', '--is-shallow-repository'], { encoding: 'utf8' }).trim();
+    if (shallow === 'true') return; // shallow tagged installs lack prior product commits; source parity is still checked below
+    throw new Error(`JobSSS product pin ${self.ref} is absent from a full checkout`);
+  }
   const changed = execFileSync('git', [
     '-C', ROOT, '-c', 'core.filemode=false', 'diff', '--name-only', '--ignore-space-at-eol', self.ref, '--',
     'bin', 'src', 'skills/jobsss', 'plugin.json', 'mcp.json', 'package.json'

@@ -202,8 +202,9 @@ test('generic pipe-dated variant and excludeRoles intake keep roles and staff ex
     }),
   ], { timeoutMs: 40_000 });
   const created = pick(first.frames, 3);
-  assert.ok(created.profile?.preferences?.dealbreakers?.some(item => /staff|principal/i.test(item)),
-    `excludeRoles must become a retained dealbreaker, got ${JSON.stringify(created.profile?.preferences)}`);
+  assert.deepEqual(created.profile?.preferences?.excludeRoles, ['staff', 'principal']);
+  assert.deepEqual(created.profile?.preferences?.dealbreakers, [],
+    'structured excluded roles must not be synthesized into caller-authored dealbreakers: ' + JSON.stringify(created.profile?.preferences));
   assert.equal(created.profile?.preferences?.salary?.min, 120000);
   assert.match(String(created.profile?.preferences?.workModel || ''), /remote/i);
   const j06 = jobIdOf(pick(first.frames, 4));

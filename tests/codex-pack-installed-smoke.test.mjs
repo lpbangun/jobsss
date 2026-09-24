@@ -7,7 +7,9 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PACK = path.join(ROOT, 'codex-pack', 'job-search-stack');
+const PACK = process.env.JOBSSS_PACK_ROOT
+  ? path.resolve(process.env.JOBSSS_PACK_ROOT)
+  : path.join(ROOT, 'codex-pack', 'job-search-stack');
 const MCP = JSON.parse(readFileSync(path.join(PACK, '.mcp.json'), 'utf8')).mcpServers;
 const request = (id, method, params = {}) => ({ jsonrpc: '2.0', id, method, params });
 const call = (id, name, args = {}) => request(id, 'tools/call', { name, arguments: args });

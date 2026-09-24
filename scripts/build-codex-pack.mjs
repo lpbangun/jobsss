@@ -35,6 +35,20 @@ function gitHead(root) {
 function ensurePinned(root, product) {
   const head = gitHead(root);
   if (head !== product.ref) throw new Error(`${product.name} checkout ${head} does not match pin ${product.ref}`);
+  const dirty = execFileSync('git', ['-C', root, 'status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim();
+  if (dirty) throw new Error(`${product.name} checkout has uncommitted changes; cannot claim pinned source`);
+}
+
+function ensureSelfProductPin(pins) {
+  // A release commit contains generated adapters and can follow its product
+  // commit. The pinned product bytes must still equal the source being packed.
+  if (!fs.existsSync(path.join(ROOT, '.git'))) return; // source ZIP has no Git metadata
+  const self = pins.products.find(product => product.name === 'jobsss');
+  const changed = execFileSync('git', [
+    '-C', ROOT, '-c', 'core.filemode=false', 'diff', '--name-only', '--ignore-space-at-eol', self.ref, '--',
+    'bin', 'src', 'skills/jobsss', 'plugin.json', 'mcp.json', 'package.json'
+  ], { encoding: 'utf8' }).trim();
+  if (changed) throw new Error(`JobSSS product differs from its install pin:\n${changed}`);
 }
 
 function copyFile(sourceRoot, rel, destinationRoot, destinationRel = rel) {
@@ -79,6 +93,28 @@ function inventory(root) {
   return Object.fromEntries(listFiles(root).filter(rel => rel !== PROVENANCE).map(rel => [rel, hashFile(path.join(root, rel))]));
 }
 
+function distributionBytes(file) {
+  const bytes = fs.readFileSync(file);
+  return bytes.includes(0) ? bytes : Buffer.from(bytes.toString('utf8').replace(/\r\n?/g, '\n'));
+}
+
+function assertMirror(sourceRoot, sourceRel, destinationRel) {
+  const source = path.join(sourceRoot, sourceRel);
+  const destination = path.join(OUT, destinationRel);
+  const sourceFiles = fs.statSync(source).isDirectory() ? listFiles(source) : [''];
+  const destinationFiles = fs.statSync(destination).isDirectory() ? listFiles(destination) : [''];
+  if (JSON.stringify(sourceFiles) !== JSON.stringify(destinationFiles)) {
+    throw new Error(`Codex pack source file set drifts from ${sourceRel}`);
+  }
+  for (const rel of sourceFiles) {
+    const original = distributionBytes(path.join(source, rel));
+    const packed = fs.readFileSync(path.join(destination, rel));
+    if (!original.equals(packed)) {
+      throw new Error(`Codex pack source bytes drift: ${sourceRel}${rel ? `/${rel}` : ''}`);
+    }
+  }
+}
+
 function pythonLauncher() {
   return `#!/usr/bin/env node\nimport fs from 'node:fs';\nimport os from 'node:os';\nimport path from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst [script, ...args] = process.argv.slice(2);\nif (!script) { console.error('python-launcher: script path required'); process.exit(2); }\nconst candidates = process.platform === 'win32'\n  ? [\n      process.env.PYTHON,\n      path.join(os.homedir(), '.cache', 'codex-runtimes', 'codex-primary-runtime', 'dependencies', 'python', 'python.exe'),\n      'python.exe',\n      'python3.exe'\n    ]\n  : [process.env.PYTHON, 'python3', 'python'];\nfor (const candidate of candidates.filter(Boolean)) {\n  if (path.isAbsolute(candidate) && !fs.existsSync(candidate)) continue;\n  const result = spawnSync(candidate, [script, ...args], { stdio: 'inherit', cwd: process.cwd(), env: process.env });\n  if (!result.error) process.exit(result.status ?? 1);\n  if (result.error.code !== 'ENOENT') { console.error(result.error.message); process.exit(1); }\n}\nconsole.error('python-launcher: no compatible Python runtime found');\nprocess.exit(127);\n`;
 }
@@ -91,6 +127,7 @@ function writeJson(rel, value) {
 
 function build() {
   const pins = readPins(ROOT);
+  ensureSelfProductPin(pins);
   const products = Object.fromEntries(pins.products.map(product => [product.name, product]));
   const peopleRoot = path.resolve(arg('--people-finder') || process.env.PEOPLE_FINDER_SOURCE || '');
   const contactRoot = path.resolve(arg('--contact-brief') || process.env.CONTACT_BRIEF_SOURCE || '');
@@ -124,7 +161,6 @@ function build() {
 
   fs.mkdirSync(path.join(OUT, 'scripts'), { recursive: true });
   fs.writeFileSync(path.join(OUT, 'scripts', 'python-launcher.mjs'), pythonLauncher());
-  fs.appendFileSync(path.join(OUT, contactSkill, 'SKILL.md'), `\n## Codex pack launcher\n\nFollow the prerequisite above and install \`requirements.txt\` in a run-owned virtual environment. Invoke \`scripts/contact_brief.py\` with that environment's Python. If a compatible interpreter already has the requirements installed but is not on PATH, \`PYTHON=/absolute/path/to/python node ../../scripts/python-launcher.mjs ./scripts/contact_brief.py ...\` is an optional launch adapter; the pinned compiler remains canonical.\n`);
 
   // Codex keys its cache by plugin version. Include every mirrored byte so a
   // canonical runtime hot-fix cannot be hidden behind a stale cache entry.
@@ -185,6 +221,7 @@ function build() {
     adapter: {
       purpose: 'Codex Windows launch compatibility and three-product composition',
       businessLogic: false,
+      sourceSha256: ADAPTER_SOURCE_HASH,
       pythonResolution: 'PATH first; Codex bundled dependency fallback on Windows',
       cachebuster
     },
@@ -198,9 +235,47 @@ function check() {
   if (!fs.existsSync(provenancePath)) throw new Error(`missing ${path.relative(ROOT, provenancePath)}`);
   const provenance = JSON.parse(fs.readFileSync(provenancePath, 'utf8'));
   const pins = readPins(ROOT);
+  ensureSelfProductPin(pins);
   if (JSON.stringify(provenance.products) !== JSON.stringify(pins.products)) throw new Error('Codex pack provenance does not match install pins');
+  if (provenance.adapter?.sourceSha256 !== ADAPTER_SOURCE_HASH) throw new Error('Codex pack adapter source drift');
   const actual = inventory(OUT);
   if (JSON.stringify(actual) !== JSON.stringify(provenance.files)) throw new Error('Codex pack file inventory drift');
+  // An inventory can agree with itself while canonical source has changed.
+  // Always compare the current JobSSS product; compare siblings when their
+  // checked-out sources are supplied to this release gate.
+  for (const [source, packed] of [
+    ['bin', 'products/jobsss/bin'],
+    ['src', 'products/jobsss/src'],
+    ['plugin.json', 'products/jobsss/plugin.json'],
+    ['skills/jobsss', 'skills/jobsss']
+  ]) assertMirror(ROOT, source, packed);
+  const peopleRoot = arg('--people-finder') || process.env.PEOPLE_FINDER_SOURCE;
+  const contactRoot = arg('--contact-brief') || process.env.CONTACT_BRIEF_SOURCE;
+  if (Boolean(peopleRoot) !== Boolean(contactRoot)) {
+    throw new Error('provide both people-finder and contact-brief sources for the full source check');
+  }
+  if (peopleRoot && contactRoot) {
+    const products = Object.fromEntries(pins.products.map(product => [product.name, product]));
+    ensurePinned(path.resolve(peopleRoot), products['people-finder']);
+    ensurePinned(path.resolve(contactRoot), products['contact-brief']);
+    for (const [source, packed] of [
+      ['bin', 'products/people-finder/bin'],
+      ['src', 'products/people-finder/src'],
+      ['skills/people-finder', 'skills/people-finder']
+    ]) assertMirror(path.resolve(peopleRoot), source, packed);
+    for (const [source, packed] of [
+      ['skills/contact-brief/SKILL.md', 'skills/contact-brief/SKILL.md'],
+      ['scripts', 'skills/contact-brief/scripts'],
+      ['references', 'skills/contact-brief/references'],
+      ['examples', 'skills/contact-brief/examples'],
+      ['README.md', 'skills/contact-brief/README.md'],
+      ['requirements.txt', 'skills/contact-brief/requirements.txt'],
+      ['routes.json', 'skills/contact-brief/routes.json'],
+      ['LICENSE', 'skills/contact-brief/LICENSE']
+    ]) {
+      assertMirror(path.resolve(contactRoot), source, packed);
+    }
+  }
   return { files: Object.keys(actual).length, out: OUT };
 }
 

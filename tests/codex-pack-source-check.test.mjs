@@ -20,6 +20,11 @@ test('Codex pack check detects canonical source drift even when its inventory ag
     const before = spawnSync(process.execPath, command, { cwd: scratch, encoding: 'utf8' });
     assert.equal(before.status, 0, before.stderr);
 
+    const adapter = path.join(scratch, 'scripts', 'build-codex-pack.mjs');
+    writeFileSync(adapter, readFileSync(adapter, 'utf8').replace(/\r?\n/g, '\r\n'));
+    const crlf = spawnSync(process.execPath, command, { cwd: scratch, encoding: 'utf8' });
+    assert.equal(crlf.status, 0, crlf.stderr);
+
     const source = path.join(scratch, 'src', 'cli.js');
     writeFileSync(source, readFileSync(source, 'utf8') + '\n// changed after pack generation\n');
     const after = spawnSync(process.execPath, command, { cwd: scratch, encoding: 'utf8' });

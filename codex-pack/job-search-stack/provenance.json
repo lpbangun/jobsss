@@ -22,12 +22,12 @@
   "adapter": {
     "purpose": "Codex Windows launch compatibility and three-product composition",
     "businessLogic": false,
-    "sourceSha256": "f44aed0fdfdbc2703e598a205cd62e6803e9969970be43845b0083aa997be13b",
+    "sourceSha256": "100adf4f40d604b9aa32ae7ed75cf81dd229e1e722fc790697005a1e60433bb7",
     "pythonResolution": "PATH first; Codex bundled dependency fallback on Windows",
-    "cachebuster": "5da3ae9c96a4"
+    "cachebuster": "ecab9b3822cf"
   },
   "files": {
-    ".codex-plugin/plugin.json": "2ade0322f8ecccfb6128622c7934752943136fd9fac48c877c5aeae861bc7a56",
+    ".codex-plugin/plugin.json": "013f69d7ad4a73fd34cebdd9bc31eecfcce56047fe5053f660b1166e60955742",
     ".mcp.json": "e6e527f94cf4a7afd9eff17c6c87d716ad8eaf15bccfafacd2c71c2b395fc3e5",
     "products/jobsss/bin/jobsss": "73a0e355cd5e5179a426a97b963b471bad15ed97b8390237be05e2ef9c2fd540",
     "products/jobsss/plugin.json": "94536170c07551c9be03d973d904de3d6d8f78a80605213dfcd1893dd0fc542f",

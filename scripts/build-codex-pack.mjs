@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // deterministic root-level package.
 const OUT = path.join(ROOT, 'codex-pack', 'job-search-stack');
 const PROVENANCE = 'provenance.json';
-const ADAPTER_SOURCE_HASH = crypto.createHash('sha256').update(fs.readFileSync(fileURLToPath(import.meta.url))).digest('hex');
+const ADAPTER_SOURCE_HASH = crypto.createHash('sha256').update(distributionBytes(fileURLToPath(import.meta.url))).digest('hex');
 
 function arg(name) {
   const index = process.argv.indexOf(name);

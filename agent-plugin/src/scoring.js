@@ -289,9 +289,9 @@ function deterministicProposal({ profile, job }) {
     });
     dimensions.locationWorkModel = { ...dimensions.locationWorkModel, status: 'contradicted', score: Math.min(dimensions.locationWorkModel.score ?? 10, 10) };
   }
-  const hardFailure = (key, dimension, reason, candidateEvidence, postingEvidence) => {
-    constraints.push({ id: `constraint-${job?.id}-${key}`, kind: 'dealbreaker', dimension, status: 'confirmed',
-      preferenceRef: key === 'base-floor' && candidateMinimum > 0 ? preferenceRef('salary') : resumeRef,
+  const hardFailure = (key, dimension, reason, candidateEvidence, postingEvidence, candidateRef = null) => {
+    constraints.push({ id: 'constraint-' + job?.id + '-' + key, kind: 'dealbreaker', dimension, status: 'confirmed',
+      preferenceRef: candidateRef || (key === 'base-floor' && candidateMinimum > 0 ? preferenceRef('salary') : resumeRef),
       jobEvidenceRefs: [fieldRef(job, 'description')], candidateEvidence, postingEvidence, reason });
     dimensions[dimension] = { ...dimensions[dimension], status: 'contradicted', score: 0, reason };
   };
@@ -370,12 +370,18 @@ function deterministicProposal({ profile, job }) {
   const levelSlice = jobText.match(/Level\s*:([\s\S]*?)(?=(?:Base salary|Salary|Compensation|Work|Required|Preferred|Hiring process|Location|Company|Source)\s*:|$)/i)?.[0];
   const levelLine = levelSlice || jobText.split(/\r?\n/).find(line => /^Level:/i.test(line)) || String(job.title || '');
   const excludedLevelMatch = resume.match(/(?:not seeking|do not want|exclude(?:d|s)?|no)\s+(?:staff|principal|management|lead accountability)[^\.\n]*/i);
-  const excludedLevel = excludedLevelMatch?.[0]
-    || [...(Array.isArray(prefs.dealbreakers) ? prefs.dealbreakers : [])].map(String)
-      .find(item => /(?:not seeking|do not want|exclude|no)\s+(?:staff|principal|management|lead accountability)/i.test(item))
-    || null;
+  const excludedRoleDealbreaker = [...(Array.isArray(prefs.dealbreakers) ? prefs.dealbreakers : [])].map(String)
+    .find(item => /(?:not seeking|do not want|exclude|no)\s+(?:staff|principal|management|lead accountability)/i.test(item));
+  const excludedRoles = Array.isArray(prefs.excludeRoles) ? prefs.excludeRoles.map(String).filter(Boolean) : [];
+  const postingRoleTokens = new Set(tokenize(levelLine));
+  const matchingExcludedRole = excludedRoles.find(role => tokenize(role).some(token => token.length > 2 && postingRoleTokens.has(token)));
+  const excludedLevel = excludedLevelMatch?.[0] || excludedRoleDealbreaker
+    || (matchingExcludedRole ? 'Excluded roles: ' + excludedRoles.join(', ') : null);
+  const excludedLevelRef = excludedLevelMatch ? resumeRef
+    : excludedRoleDealbreaker ? preferenceRef('dealbreakers')
+      : matchingExcludedRole ? preferenceRef('excludeRoles') : null;
   if (excludedLevel && /\b(?:staff|principal|director|head of)\b/i.test(levelLine) && !/no (?:direct reports or )?staff|not (?:a )?staff/i.test(levelLine)) {
-    hardFailure('seniority', 'seniority', 'The mandatory posting level conflicts with the candidate’s explicitly excluded seniority scope.', excludedLevel, levelLine);
+    hardFailure('seniority', 'seniority', 'The mandatory posting level conflicts with the candidate’s explicitly excluded seniority scope.', excludedLevel, levelLine, excludedLevelRef);
   }
   const wordsToYears = value => ({ one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12 }[String(value).toLowerCase()] ?? Number(value));
   const yearsPattern = '(\\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve)';

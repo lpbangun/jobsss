@@ -98,11 +98,14 @@ function mutate(dataDir, args, operation) {
   return value && typeof value === 'object' ? { ...value, revision: committed.revision } : value;
 }
 
-function requireProfile(store, profileId) {
+function requireProfile(store, profileId, { includeArchived = false } = {}) {
   const value = String(profileId || '').trim();
   if (!value) throw error('missing_profile', 'profileId is required');
   const profile = store.profiles?.[value];
-  if (!profile) throw error('unknown_profile', `Unknown profile: ${value}`);
+  if (!profile) throw error('unknown_profile', 'Unknown profile: ' + value);
+  if (profile.archivedAt && !includeArchived) {
+    throw error('archived_profile', 'Profile ' + value + ' is archived; restore it before using it');
+  }
   return profile;
 }
 
@@ -162,6 +165,9 @@ const BULLET_PREFIX = /^(?:[-*\u2022\u00b7]\s+|[A-Za-z]{1,4}\d{1,3}[:.)]\s+)/;
 const DATED_ROLE_LINE = /^(?:\d{4}[-/]\d{1,2}|\w+\s+\d{4})\s*(?:-|\u2013|\u2014|to|through)\s*(?:\d{4}[-/]\d{1,2}|\w+\s+\d{4}|\d{4}|present|current)/i;
 // Context prose that sits under an experience heading but is not a claim.
 const PROOF_NOISE = /^(?:fixed-term|no subsequent|\W*available\b|\W*all human|\W*references|\W*notes?:|\W*disclaimer)|\bnot human-attested\b|\bpending human\b|\bhuman-only\b/i;
+// Explicit restrictions and claim-handling instructions are profile context,
+// never achievement evidence, even when formatted as a resume bullet.
+const PROOF_CONSTRAINT = /\b(?:do not|don't|never)\s+(?:claim|say|state|infer|present|assert|use)\b|\bavoid\s+(?:claiming|saying|stating|presenting)\b|\bnot seeking\b|\bnot interested in\b|\bmissing:\s*no\b|\bexposure only\b|\bno experience (?:with|in)\b|\bi (?:do not|don't|cannot|can't|will not|won't)\s+(?:claim|have|use)\b/i;
 const ROLE_NOUN = /\b(?:engineer|analyst|developer|programmer|manager|designer|scientist|architect|consultant|specialist|administrator|coordinator|director|supervisor|technician|strategist|planner|producer|editor|recruiter|marketer|writer|researcher|accountant|teacher|professor|officer|attorney|paralegal|translator|librarian|intern)\b/i;
 const ROLE_TITLE = /(?:[A-Za-z][A-Za-z/&.+-]*\s+){0,2}(?:engineer|analyst|developer|programmer|manager|designer|scientist|architect|consultant|specialist|administrator|coordinator|director|supervisor|technician|strategist|planner|producer|editor|recruiter|marketer|writer|researcher|accountant|teacher|professor|officer|attorney|paralegal|translator|librarian)s?\b/gi;
 const ROLE_LEVEL = /^(?:junior|senior|staff|principal|lead|mid-level|entry-level|associate|intern|apprentice|trainee|chief|head of|vp of|vice president of)\s+/i;
@@ -316,6 +322,36 @@ function metricsFromText(text) {
 // prose inside an experience block qualifies when it opens with a past-tense
 // verb, so unlabeled resumes keep their achievements without swallowing
 // preference or boundary prose.
+const PROOF_THEME_STOPWORDS = new Set((
+  'a an and are as at by for from in into it its of on or that the their them then through to was were with while after before each every'
+  + ' built created developed implemented introduced delivered launched designed led managed owned automated improved reduced increased'
+  + ' cut lowered decreased wrote partnered coordinated facilitated'
+).split(/\s+/));
+
+function proofThemeTokens(summary) {
+  const normalized = String(summary || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  return new Set(tokenize(normalized).filter(token => token.length > 2 && !PROOF_THEME_STOPWORDS.has(token))
+    .map(token => token.length > 5 && token.endsWith('ing') ? token.slice(0, -3)
+      : token.length > 4 && token.endsWith('ed') ? token.slice(0, -2)
+        : token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token));
+}
+
+function nearDuplicateProof(left, right) {
+  const leftMetrics = metricsFromText(left).map(value => value.toLowerCase()).sort();
+  const rightMetrics = metricsFromText(right).map(value => value.toLowerCase()).sort();
+  // Preserve distinct quantified claims even when they share a theme.
+  if (leftMetrics.length && rightMetrics.length && JSON.stringify(leftMetrics) !== JSON.stringify(rightMetrics)) return false;
+  const a = proofThemeTokens(left);
+  const b = proofThemeTokens(right);
+  if (!a.size || !b.size) return false;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  const union = new Set([...a, ...b]).size;
+  const jaccard = shared / union;
+  const containment = shared / Math.min(a.size, b.size);
+  return jaccard >= 0.78 || (containment >= 0.9 && Math.max(a.size, b.size) / Math.min(a.size, b.size) <= 1.35);
+}
+
 function proofCandidatesFromResume(resumeText) {
   const candidates = [];
   let section = null;
@@ -332,31 +368,21 @@ function proofCandidatesFromResume(resumeText) {
     const bullet = BULLET_PREFIX.test(line);
     const body = line.replace(BULLET_PREFIX, '').replace(/\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!body || body.length < 20) continue;
-    if (PROOF_NOISE.test(body) || isRoleHeaderLine(body)) continue;
+    if (PROOF_NOISE.test(body) || PROOF_CONSTRAINT.test(body) || isRoleHeaderLine(body)) continue;
     const inAchievements = section === 'experience' || section === 'achievements';
     if (!inAchievements && !bullet && !ACTION_VERB.test(body)) continue;
     if (inAchievements && !bullet && !ACTION_VERB.test(body) && !PAST_TENSE_OPENER.test(body)) continue;
-    candidates.push(body);
+    if (!candidates.some(candidate => nearDuplicateProof(candidate, body))) candidates.push(body);
   }
-  return [...new Set(candidates)].slice(0, 40);
+  return candidates.slice(0, 40);
 }
 
 function defaultPreferences(input = {}, resumeText = '') {
   const supplied = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
   const excludeRoles = Array.isArray(supplied.excludeRoles) ? supplied.excludeRoles.map(String) : [];
-  // Replace, never accumulate: the dealbreaker synthesized from a previous
-  // excludeRoles value is dropped before the current one is appended. The
-  // synthesized marker round-trips through update_profile merges so a
-  // retracted role list stops hard-excluding those levels.
-  const priorExclusion = String(supplied.excludeRolesDealbreaker || '');
-  const dealbreakers = (Array.isArray(supplied.dealbreakers) ? supplied.dealbreakers.map(String) : [])
-    .filter(item => item !== priorExclusion);
-  let excludeRolesDealbreaker = null;
-  if (excludeRoles.length) {
-    const exclusion = `No ${excludeRoles.join(', ')} roles`;
-    if (!dealbreakers.some(item => item === exclusion)) dealbreakers.push(exclusion);
-    excludeRolesDealbreaker = exclusion;
-  }
+  // Keep caller-authored dealbreakers at the text level. excludeRoles is an
+  // independent structured preference and is not rewritten into that list.
+  const dealbreakers = Array.isArray(supplied.dealbreakers) ? supplied.dealbreakers.map(String) : [];
   const salary = supplied.salary && typeof supplied.salary === 'object'
     ? { min: supplied.salary.min ?? null, max: supplied.salary.max ?? null, currency: supplied.salary.currency || 'USD' }
     : { min: null, max: null, currency: String(supplied.salaryCurrency || 'USD') };
@@ -366,7 +392,7 @@ function defaultPreferences(input = {}, resumeText = '') {
   if (salary.max == null && supplied.desiredBaseSalaryMax != null && Number.isFinite(Number(supplied.desiredBaseSalaryMax))) {
     salary.max = Number(supplied.desiredBaseSalaryMax);
   }
-  const locations = Array.isArray(supplied.locations) ? supplied.locations : [];
+  const locations = Array.isArray(supplied.locations) ? [...supplied.locations] : [];
   if (!locations.length && supplied.location) locations.push(String(supplied.location));
   // Derived defaults are never fabricated: with no resume statement the arrays
   // stay empty and explicit caller values always win.
@@ -380,7 +406,6 @@ function defaultPreferences(input = {}, resumeText = '') {
     salary,
     dealbreakers,
     excludeRoles,
-    excludeRolesDealbreaker,
     skills: derivedSkills,
     missionKeywords: Array.isArray(supplied.missionKeywords) ? supplied.missionKeywords : [],
     values: Array.isArray(supplied.values) ? supplied.values : [],
@@ -400,17 +425,45 @@ function extractProofPoints(profileId, resumeText) {
     }));
 }
 
-function resumeDocument(profileId, text) {
+function resumeDocument(profileId, text, identityOverride = {}) {
   const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-  const email = String(text).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || '';
+  const detectedName = lines.find(line => /^Name:/i.test(line))?.replace(/^Name:\s*/i, '') || lines[0]?.replace(/^#\s*/, '') || '';
+  const detectedEmail = String(text).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || '';
+  const identity = {
+    name: String(identityOverride?.name ?? detectedName).trim(),
+    email: String(identityOverride?.email ?? detectedEmail).trim(),
+    verificationStatus: 'needs_verification',
+  };
   return {
     schemaVersion: 1,
     profileId,
-    identity: { name: lines.find(line => /^Name:/i.test(line))?.replace(/^Name:\s*/i, '') || lines[0]?.replace(/^#\s*/, '') || '', email, verificationStatus: 'needs_verification' },
+    identity,
     sourceHash: hashText(text),
     verificationStatus: 'needs_verification',
     importedAt: now(),
   };
+}
+
+function profileResumeEmail(profile, store) {
+  const current = store.resumes?.[profile.currentResumeId]?.document?.identity;
+  return String(profile.resumeIdentity?.email || profile.resume?.identity?.email || current?.email || '').trim().toLowerCase();
+}
+
+function resumeEmail(text, override = {}) {
+  const detected = String(text || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || '';
+  return String(override?.email ?? detected).trim().toLowerCase();
+}
+
+function normalizeResumeIdentityOverride(input, prior = {}) {
+  const value = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const next = { ...prior };
+  for (const key of ['name', 'email']) {
+    if (!Object.hasOwn(value, key)) continue;
+    const text = String(value[key] ?? '').trim();
+    if (text) next[key] = text;
+    else delete next[key];
+  }
+  return Object.keys(next).length ? next : undefined;
 }
 
 function persistResumeRevision(store, profile, text, sourceName) {
@@ -439,7 +492,7 @@ function persistResumeRevision(store, profile, text, sourceName) {
   const revision = Object.values(store.resumes).filter(item => item.profileId === profile.id).length + 1;
   const resumeId = id('resume', `${profile.id}:${sourceHash}`);
   const record = { id: resumeId, profileId: profile.id, revision, sourceName, sourceHash,
-    document: resumeDocument(profile.id, text), verificationStatus: 'needs_verification', createdAt: now() };
+    document: resumeDocument(profile.id, text, profile.resumeIdentity), verificationStatus: 'needs_verification', createdAt: now() };
   store.resumes[resumeId] = record;
   profile.resumeRevisionIds = [...(profile.resumeRevisionIds || []), resumeId];
   profile.currentResumeId = resumeId;
@@ -547,29 +600,58 @@ export function start(dataDir, args = {}) {
 }
 
 export function createProfile(dataDir, args = {}) {
+  const requestedProfileId = String(args.profileId || '').trim();
   const name = String(args.name || args.profileName || '').trim();
-  if (!name) throw error('missing_name', 'create_profile requires name');
+  if (!name && !requestedProfileId) throw error('missing_name', 'create_profile requires name unless profileId explicitly targets an existing profile');
   const input = readIntakeText(dataDir, args, 'resume', ['resumeText', 'text', 'content']);
   return mutate(dataDir, args, store => {
-    const profileId = resolveCollisionSafeProfileId(store, name);
-    const existing = store.profiles[profileId];
-    if (existing) {
-      // Same exact identity retry: never silently adopt another profile's
-      // record (resolveCollisionSafeProfileId guarantees name equality here).
-      if (existing.name !== name) {
-        throw error('profile_conflict', `Profile name "${name}" collides with a distinct existing profile; retry with a distinct name`);
+    let profileId = requestedProfileId;
+    let existing = null;
+    let matchedBy = null;
+    if (requestedProfileId) {
+      existing = requireProfile(store, requestedProfileId);
+      profileId = existing.id;
+      matchedBy = 'profileId';
+    } else {
+      const exactName = Object.values(store.profiles).filter(profile =>
+        profile.name === name || (Array.isArray(profile.nameAliases) && profile.nameAliases.includes(name)));
+      if (exactName.length > 1) throw error('ambiguous_profile', 'Name "' + name + '" matches multiple profile histories; retry with an explicit profileId');
+      const email = resumeEmail(input.text, args.resumeIdentity);
+      const exactEmail = email
+        ? Object.values(store.profiles).filter(profile => profileResumeEmail(profile, store) === email)
+        : [];
+      if (exactName.length && exactEmail.some(profile => profile.id !== exactName[0].id)) {
+        throw error('profile_conflict', 'Name "' + name + '" and resume email identify different profiles; retry with the intended profileId');
       }
+      if (exactName.length) {
+        existing = exactName[0];
+        profileId = existing.id;
+        matchedBy = existing.name === name ? 'name' : 'nameAlias';
+      } else {
+        profileId = resolveCollisionSafeProfileId(store, name);
+        existing = store.profiles[profileId] || null;
+        matchedBy = existing ? 'name' : null;
+      }
+    }
+    const incomingEmail = resumeEmail(input.text, args.resumeIdentity);
+    const identityCollisionProfileIds = incomingEmail
+      ? Object.values(store.profiles).filter(profile => profileResumeEmail(profile, store) === incomingEmail && profile.id !== profileId).map(profile => profile.id)
+      : [];
+    const profileName = name || existing?.name || '';
+    if (existing) {
+      requireProfile(store, profileId);
       if (input.text) {
+        existing.resumeIdentity = normalizeResumeIdentityOverride(args.resumeIdentity, existing.resumeIdentity);
         existing.resumeText = input.text;
         existing.resumeSource = input.sourceName;
-        existing.resume = resumeDocument(profileId, input.text);
+        existing.resume = resumeDocument(profileId, input.text, existing.resumeIdentity);
         persistResumeRevision(store, existing, input.text, input.sourceName);
+        const currentResume = existing.currentResumeId && store.resumes?.[existing.currentResumeId];
+        if (currentResume?.document) currentResume.document.identity = { ...existing.resume.identity };
         const proofs = extractProofPoints(profileId, input.text);
-        // Unchanged re-import must retain trusted proof verification,
-        // decision ledger/history, and audit history: existing proof records
-        // (with verifiedAt/status/actor) are never overwritten, and changed
-        // content never inherits an unrelated human approval (new ids start
-        // unverified). Manual proofs are preserved across resume changes.
+        // Unchanged re-import keeps verified proof records, decisions, and
+        // audit history. Changed resume claims start unverified; manual proofs
+        // remain attached to the profile.
         const manualIds = (existing.proofPointIds || []).filter(pid => {
           const prior = store.proofPoints[pid];
           return prior && prior.source !== 'resume_import';
@@ -586,13 +668,16 @@ export function createProfile(dataDir, args = {}) {
       const { resumeText: _private, ...safeProfile } = existing;
       return { profileId, id: profileId, profile: safeProfile, proofPoints,
         activeProofPointIds: proofPoints.map(proof => proof.id),
-        historicalProofPointIds: historicalProofIdsFor(store, existing), created: false };
+        historicalProofPointIds: historicalProofIdsFor(store, existing), created: false, matchedBy,
+        identityCollisionProfileIds };
     }
+    const resumeIdentity = normalizeResumeIdentityOverride(args.resumeIdentity);
     const proofPoints = extractProofPoints(profileId, input.text);
     const profile = {
-      id: profileId, name, preferences: defaultPreferences(args.preferences, input.text),
+      id: profileId, name: profileName, preferences: defaultPreferences(args.preferences, input.text),
       resumeSource: input.sourceName, resumeText: input.text,
-      resume: input.text ? resumeDocument(profileId, input.text) : null,
+      ...(resumeIdentity ? { resumeIdentity } : {}),
+      resume: input.text ? resumeDocument(profileId, input.text, resumeIdentity) : null,
       proofPointIds: proofPoints.map(proof => proof.id), createdAt: now(), updatedAt: now(),
     };
     store.profiles[profileId] = profile;
@@ -604,15 +689,16 @@ export function createProfile(dataDir, args = {}) {
     const { resumeText: _private, ...safeProfile } = profile;
     return { profileId, id: profileId, profile: safeProfile, proofPoints: active,
       activeProofPointIds: active.map(proof => proof.id),
-      historicalProofPointIds: historicalProofIdsFor(store, profile), created: true };
+      historicalProofPointIds: historicalProofIdsFor(store, profile), created: true,
+      identityCollisionProfileIds };
   });
 }
 
 export function listProfiles(dataDir, args = {}) {
   const store = loadStore(dataDir);
-  const profile = requireProfile(store, args.profileId);
+  const profile = requireProfile(store, args.profileId, { includeArchived: args.includeArchived === true });
   const { resumeText: _private, ...safeProfile } = profile;
-  return { ok: true, profileId: profile.id, profiles: [safeProfile], items: [safeProfile], count: 1 };
+  return { ok: true, profileId: profile.id, profiles: [safeProfile], items: [safeProfile], count: 1, archived: Boolean(profile.archivedAt) };
 }
 
 export function listResumes(dataDir, args = {}) {
@@ -659,13 +745,73 @@ export function updateProfile(dataDir, args = {}) {
     if (args.preferences && typeof args.preferences === 'object') profile.preferences = defaultPreferences({ ...profile.preferences, ...args.preferences }, profile.resumeText);
     if (args.name) {
       const name = String(args.name).trim();
-      if (Object.values(store.profiles).some(other => other.id !== profile.id && other.name === name)) {
-        throw error('profile_conflict', `Profile name "${name}" already exists; rename cannot merge identities`);
+      if (Object.values(store.profiles).some(other => other.id !== profile.id
+        && (other.name === name || (Array.isArray(other.nameAliases) && other.nameAliases.includes(name))))) {
+        throw error('profile_conflict', 'Profile name "' + name + '" already exists in another profile history; rename cannot merge identities');
       }
-      profile.name = name;
+      if (name !== profile.name) {
+        const priorName = profile.name;
+        profile.nameAliases = [...new Set([...(profile.nameAliases || []), priorName])];
+        profile.name = name;
+        store.audit = Array.isArray(store.audit) ? store.audit : [];
+        store.audit.push({ event: 'profile_renamed', profileId: profile.id, priorName, name, createdAt: now() });
+      }
+    }
+    if (args.resumeIdentity && typeof args.resumeIdentity === 'object') {
+      const before = { ...(profile.resume?.identity || {}) };
+      profile.resumeIdentity = normalizeResumeIdentityOverride(args.resumeIdentity, profile.resumeIdentity);
+      if (profile.resumeText) {
+        profile.resume = resumeDocument(profile.id, profile.resumeText, profile.resumeIdentity);
+        const current = profile.currentResumeId && store.resumes?.[profile.currentResumeId];
+        if (current?.document) current.document.identity = { ...profile.resume.identity };
+      }
+      const after = { ...(profile.resume?.identity || {}) };
+      if (JSON.stringify(before) !== JSON.stringify(after)) {
+        store.audit = Array.isArray(store.audit) ? store.audit : [];
+        store.audit.push({ event: 'resume_identity_corrected', profileId: profile.id,
+          fieldsChanged: ['name', 'email'].filter(key => before[key] !== after[key]), createdAt: now() });
+      }
     }
     profile.updatedAt = now();
     return { ok: true, profileId: profile.id, profile: { ...profile, resumeText: undefined } };
+  });
+}
+
+function requireExpectedProfileRevision(args) {
+  if (!Number.isSafeInteger(args?.expectedRevision) || args.expectedRevision < 1) {
+    throw error('expected_revision_required', 'Profile archive and restore require the current integer expectedRevision');
+  }
+}
+
+export function archiveProfile(dataDir, args = {}) {
+  requireExpectedProfileRevision(args);
+  return mutate(dataDir, args, store => {
+    const profile = requireProfile(store, args.profileId);
+    const at = now();
+    profile.archivedAt = at;
+    profile.archiveReason = String(args.reason || '').trim().slice(0, 500) || null;
+    profile.updatedAt = at;
+    store.audit = Array.isArray(store.audit) ? store.audit : [];
+    store.audit.push({ event: 'profile_archived', profileId: profile.id,
+      reason: profile.archiveReason, expectedRevision: args.expectedRevision, createdAt: at });
+    return { ok: true, profileId: profile.id, archived: true, archivedAt: at, reason: profile.archiveReason };
+  });
+}
+
+export function restoreProfile(dataDir, args = {}) {
+  requireExpectedProfileRevision(args);
+  return mutate(dataDir, args, store => {
+    const profile = requireProfile(store, args.profileId, { includeArchived: true });
+    if (!profile.archivedAt) throw error('profile_not_archived', 'Profile ' + profile.id + ' is not archived');
+    const at = now();
+    const priorArchivedAt = profile.archivedAt;
+    delete profile.archivedAt;
+    delete profile.archiveReason;
+    profile.updatedAt = at;
+    store.audit = Array.isArray(store.audit) ? store.audit : [];
+    store.audit.push({ event: 'profile_restored', profileId: profile.id,
+      priorArchivedAt, expectedRevision: args.expectedRevision, createdAt: at });
+    return { ok: true, profileId: profile.id, archived: false, restoredAt: at };
   });
 }
 

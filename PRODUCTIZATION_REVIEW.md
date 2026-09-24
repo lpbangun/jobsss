@@ -14,19 +14,21 @@ Current native artifact refresh (2026-09-07, separately authorized closure round
 
 The frozen thirteen-file acceptance command preserves B1–B64 and adds B65–B70. Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`. Agent Plugin layout, the canonical skill and MCP tool surface, generic stdio transport, `${PLUGIN_DATA}` isolation, scoring, discovery, workflows, persistence, audit behavior, adapters, and the human authority boundary remain unchanged.
 
-The authoritative JobSSS product version is **0.1.0** from `plugin.json`. The real CLI help/version surface, doctor response, MCP initialize `serverInfo.version`, MCP doctor result, and generated `release-manifest.json` agree through `src/version.js`; the same module is included in the SEA bundle.
+The authoritative JobSSS product version is **0.1.1** from `plugin.json`. The real CLI help/version surface, doctor response, MCP initialize `serverInfo.version`, MCP doctor result, and generated `release-manifest.json` agree through `src/version.js`; the same module is included in the SEA bundle.
 
 ## Cross-platform build definitions and canonical independent native evidence
 
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `e10f723d6d61a46d8a53255fbd0adb4bf0be8f2c7c054a26d3e2382b387f090f`
+- SHA-256: `6d24f991ff11a418b99ff9c057a11ea648b6759e5ca22c14400b00bec1f6e466`
 - Exact reproduction command:
 
 ```bash
 JOBSSS_NATIVE_CACHE="$(mktemp -d)" ./bin/jobsss evidence --out "$(pwd)/evidence/native-validation.json"
 ```
+
+Current native artifact refresh (2026-09-24, profile recovery release candidate): two fresh processes with separate empty external caches emitted identical JSON at SHA-256 `6d24f991ff11a418b99ff9c057a11ea648b6759e5ca22c14400b00bec1f6e466` after the profile import/recovery runtime fixes and version 0.1.1 bump. Official input, injector, and validator pins are unchanged. This is local structural evidence; cross-built targets still need matching-host execution.
 
 Current native artifact refresh (2026-09-12, B67 consistency): the pinned evidence command was re-run on two fresh processes with separate empty caller-selected caches, and both regenerations were byte-identical to each other and to the committed artifact cited above. The previously committed bytes (`827416cdb222737f915576ff2e610e544d3765c832867adb6fd112dc7ec7ee78`) predated the RC-2–RC-6, Greenhouse-promotion and P1b–P3 integration merges, whose runtime source changes moved the SEA payload and the recorded native layout offsets. Official input, injector and validator pins are unchanged, and no product behavior, policy, or frozen check was changed by this refresh.
 

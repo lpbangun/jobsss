@@ -88,7 +88,8 @@ function requireProfileRecord(store, profileId) {
   const value = field(profileId);
   if (!value) throw typedError('missing_profile', 'prepare/record requires profileId');
   const profile = (store.profiles || {})[value];
-  if (!profile) throw typedError('unknown_profile', `Unknown profile: ${value}`);
+  if (!profile) throw typedError('unknown_profile', 'Unknown profile: ' + value);
+  if (profile.archivedAt) throw typedError('archived_profile', 'Profile ' + value + ' is archived; restore it before using it');
   return profile;
 }
 

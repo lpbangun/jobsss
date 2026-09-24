@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "jobsss",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Standalone Agent Plugin with bundled ./bin/jobsss runtime for local job-search workflows (doctor, profile, job ingest, scoring, pursuit, pipeline, review) persisting under PLUGIN_DATA without requiring JobOS or API keys.",
   "license": "MIT",
   "keywords": [

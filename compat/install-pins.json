@@ -10,17 +10,17 @@
       "name": "jobsss",
       "repo": "lpbangun/jobsss",
       "subdir": "agent-plugin",
-      "ref": "0f3c452a0211b8b0ae8e41b935c647d187f475ad"
+      "ref": "121940cc6aea393792b322a4573ef00284f2b741"
     },
     {
       "name": "people-finder",
       "repo": "lpbangun/people-finder",
-      "ref": "913fcb5dd771aa4cd5565f319b52e3f953685443"
+      "ref": "8bc9d5cb998e4c0854af104d89958cca5a9a4ca1"
     },
     {
       "name": "contact-brief",
       "repo": "lpbangun/contact-brief",
-      "ref": "29ea479c26fa20ffbeebffc34fa9ce06a45495b0"
+      "ref": "91d7ee1ca13a7fbcde3689d72c29e050930c5e47"
     }
   ]
 }

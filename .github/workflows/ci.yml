@@ -49,6 +49,7 @@ jobs:
           tests/install-surfaces.test.mjs
           tests/resume-native-layout.test.mjs
           tests/sea-build-windows.test.mjs
+          tests/portable-package.test.mjs
 
   windows-packaging-smoke:
     runs-on: windows-latest
@@ -71,3 +72,4 @@ jobs:
           tests/install-surfaces.test.mjs
           tests/resume-native-layout.test.mjs
           tests/sea-build-windows.test.mjs
+          tests/portable-package.test.mjs

@@ -129,8 +129,9 @@ node scripts/build-agent-plugin.mjs --check      # fail on any drift
 hermes plugins install lpbangun/jobsss/agent-plugin
 ```
 
-`agent-plugin/` is a byte-for-byte mirror of `plugin.json`, `mcp.json`, `bin/`,
-`src/`, and `skills/` — never a second source of truth; `tests/agent-plugin-parity.test.mjs`
+`agent-plugin/` is a byte-for-byte mirror of `package.json`, `plugin.json`,
+`mcp.json`, `bin/`, `src/`, and `skills/` — never a second source of truth;
+`tests/agent-plugin-parity.test.mjs`
 fails on any missing, extra, or changed byte. Install identifier:
 `lpbangun/jobsss/agent-plugin` (equivalently `https://github.com/lpbangun/jobsss.git#agent-plugin`).
 

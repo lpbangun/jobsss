@@ -65,7 +65,7 @@ function copyFile(sourceRoot, rel, destinationRoot, destinationRel = rel) {
 
 function copyTree(sourceRoot, rel, destinationRoot, destinationRel = rel) {
   const source = path.join(sourceRoot, rel);
-  for (const entry of fs.readdirSync(source, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const entry of fs.readdirSync(source, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
     if (entry.name === '__pycache__' || entry.name === '.DS_Store' || /\.py[co]$/i.test(entry.name)) continue;
     const childRel = path.join(rel, entry.name);
     const childDestination = path.join(destinationRel, entry.name);
@@ -77,7 +77,7 @@ function copyTree(sourceRoot, rel, destinationRoot, destinationRel = rel) {
 
 function listFiles(root, rel = '') {
   const result = [];
-  for (const entry of fs.readdirSync(path.join(root, rel), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const entry of fs.readdirSync(path.join(root, rel), { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
     const child = path.join(rel, entry.name);
     if (entry.isDirectory()) result.push(...listFiles(root, child));
     else if (entry.isFile()) result.push(child.split(path.sep).join('/'));
@@ -118,7 +118,7 @@ function assertMirror(sourceRoot, sourceRel, destinationRel) {
 }
 
 function pythonLauncher() {
-  return `#!/usr/bin/env node\nimport fs from 'node:fs';\nimport os from 'node:os';\nimport path from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst [script, ...args] = process.argv.slice(2);\nif (!script) { console.error('python-launcher: script path required'); process.exit(2); }\nconst candidates = process.platform === 'win32'\n  ? [\n      process.env.PYTHON,\n      path.join(os.homedir(), '.cache', 'codex-runtimes', 'codex-primary-runtime', 'dependencies', 'python', 'python.exe'),\n      'python.exe',\n      'python3.exe'\n    ]\n  : [process.env.PYTHON, 'python3', 'python'];\nfor (const candidate of candidates.filter(Boolean)) {\n  if (path.isAbsolute(candidate) && !fs.existsSync(candidate)) continue;\n  const result = spawnSync(candidate, [script, ...args], { stdio: 'inherit', cwd: process.cwd(), env: process.env });\n  if (!result.error) process.exit(result.status ?? 1);\n  if (result.error.code !== 'ENOENT') { console.error(result.error.message); process.exit(1); }\n}\nconsole.error('python-launcher: no compatible Python runtime found');\nprocess.exit(127);\n`;
+  return `#!/usr/bin/env node\nimport fs from 'node:fs';\nimport os from 'node:os';\nimport path from 'node:path';\nimport { spawnSync } from 'node:child_process';\n\nconst [script, ...args] = process.argv.slice(2);\nif (!script) { console.error('python-launcher: script path required'); process.exit(2); }\nconst candidates = process.platform === 'win32'\n  ? [\n      process.env.PYTHON,\n      path.join(os.homedir(), '.cache', 'codex-runtimes', 'codex-primary-runtime', 'dependencies', 'python', 'python.exe'),\n      'python.exe',\n      'python3.exe'\n    ]\n  : [process.env.PYTHON, 'python3', 'python'];\nfor (const candidate of candidates.filter(Boolean)) {\n  if (path.isAbsolute(candidate) && !fs.existsSync(candidate)) continue;\n  const result = spawnSync(candidate, [script, ...args], { stdio: 'inherit', cwd: process.cwd(), env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });\n  if (!result.error) process.exit(result.status ?? 1);\n  if (result.error.code !== 'ENOENT') { console.error(result.error.message); process.exit(1); }\n}\nconsole.error('python-launcher: no compatible Python runtime found');\nprocess.exit(127);\n`;
 }
 
 function writeJson(rel, value) {
@@ -241,7 +241,11 @@ function check() {
   if (JSON.stringify(provenance.products) !== JSON.stringify(pins.products)) throw new Error('Codex pack provenance does not match install pins');
   if (provenance.adapter?.sourceSha256 !== ADAPTER_SOURCE_HASH) throw new Error('Codex pack adapter source drift');
   const actual = inventory(OUT);
-  if (JSON.stringify(actual) !== JSON.stringify(provenance.files)) throw new Error('Codex pack file inventory drift');
+  if (JSON.stringify(actual) !== JSON.stringify(provenance.files)) {
+    const differing = [...new Set([...Object.keys(actual), ...Object.keys(provenance.files)])]
+      .filter(rel => actual[rel] !== provenance.files[rel]);
+    throw new Error(`Codex pack file inventory drift: ${differing.join(', ') || 'entry order'}`);
+  }
   // An inventory can agree with itself while canonical source has changed.
   // Always compare the current JobSSS product; compare siblings when their
   // checked-out sources are supplied to this release gate.

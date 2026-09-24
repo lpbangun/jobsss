@@ -24,14 +24,14 @@ For Codex, use the tagged release so the local marketplace and generated package
 remain together:
 
 ```bash
-git clone --depth 1 --branch v0.1.0 https://github.com/lpbangun/jobsss.git
+git clone --depth 1 --branch v0.1.1 https://github.com/lpbangun/jobsss.git
 cd jobsss
 codex plugin marketplace add .
 codex plugin add job-search-stack@jobsss-local
 ```
 
 Start a new Codex task after installation. A ZIP from
-`https://github.com/lpbangun/jobsss/archive/refs/tags/v0.1.0.zip` works too after
+`https://github.com/lpbangun/jobsss/archive/refs/tags/v0.1.1.zip` works too after
 extraction; run the two `codex plugin` commands from the extracted repository root.
 
 Installing only JobSSS is also fine:

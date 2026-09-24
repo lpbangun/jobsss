@@ -60,10 +60,10 @@ test('shipped Codex pack launches both MCP servers and compiles/imports a no-ema
     const build = spawnSync(python, [
       'scripts/contact_brief.py', 'build', 'examples/offline-request.json',
       '--out', output, '--now', '2026-09-08T12:00:00Z'
-    ], { cwd: skill, encoding: 'utf8', timeout: 20_000 });
+    ], { cwd: skill, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' }, encoding: 'utf8', timeout: 20_000 });
     assert.equal(build.status, 0, build.stderr || build.error?.message);
     const validate = spawnSync(python, ['scripts/contact_brief.py', 'validate', output + '.json'], {
-      cwd: skill, encoding: 'utf8', timeout: 20_000
+      cwd: skill, env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' }, encoding: 'utf8', timeout: 20_000
     });
     assert.equal(validate.status, 0, validate.stderr || validate.error?.message);
 

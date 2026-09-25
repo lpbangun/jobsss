@@ -22,7 +22,7 @@
 
 ## What it is
 
-JobSSS is a job-search **workspace for agents**: the host agent gets 53 local MCP
+JobSSS is a job-search **workspace for agents**: the host agent gets 57 local MCP
 tools for the whole search loop, and every result lands as durable, inspectable
 state under one host-provided data directory (`PLUGIN_DATA`).
 
@@ -37,9 +37,9 @@ Concretely, JobSSS will:
   evidence, reasons, and fail-closed eligibility — no model call, no provider.
 - **Run the local pipeline**: pursue, readiness plans, tasks, save/skip/archive,
   review queue.
-- **Write applicant materials** — tailored resume, cover letter, reusable answers
-  — grounded in owned proof, including **native searchable PDF bytes** written
-  under `PLUGIN_DATA` with no browser or converter.
+- **Write applicant materials** — source-linked tailored resumes, cover letters,
+  and reusable answers under `PLUGIN_DATA`. Resume PDFs use a declared local
+  Chrome/Edge print adapter; other material PDFs retain the native renderer.
 - **Map your network locally**, plan outreach, and draft outreach as **UNSENT**.
 - **Prepare interviews**: STAR story drafts, question coverage, gaps, and a
   non-attesting debrief handoff.
@@ -218,7 +218,7 @@ flowchart LR
   P["Profile + resume<br/>proof candidates"] --> I["Job intake<br/>text · file · URL · ATS board"]
   I --> S["Fit score<br/>7 weighted dimensions<br/>+ eligibility"]
   S --> U["Pursue<br/>pipeline · tasks"]
-  U --> M["Materials<br/>resume · cover letter · answers<br/>(native PDF)"]
+  U --> M["Materials<br/>resume · cover letter · answers<br/>(local browser resume PDF; native other PDF)"]
   M --> N["Network<br/>research · map · outreach drafts<br/>(unsent)"]
   N --> V["Interview prep<br/>stories · coverage · gaps"]
   V --> R["Review queue<br/>+ decision handoffs"]
@@ -231,7 +231,7 @@ flowchart LR
 
 | Feature | What you get |
 | --- | --- |
-| **Zero-dependency runtime** | Node 22+ standard library only. No npm install, no bundler, no browser, no system converter, no font installation. |
+| **Zero npm runtime dependencies** | Node 22+ standard library only. Core offline operations need no browser or system converter. Resume PDF export has a declared local Chrome/Edge prerequisite; other PDF output uses the native renderer. |
 | **Offline by default** | The entire core journey (doctor → start → profile → intake → score → pursue → pipeline → review) runs with no network, no API key, and no provider. Network is used only for optional public intake. |
 | **One data root** | All durable state lives under `PLUGIN_DATA`. Nothing is written into the plugin directory, and no user state leaks into the repository. |
 | **Restart-safe** | Versioned store with lossless migration from the legacy `store.json`, plus read-only restart readbacks (`get_resume`, `get_score`, `get_interview_prep`). |
@@ -286,11 +286,12 @@ floor.
 
 | Feature | What you get |
 | --- | --- |
-| **Tailored resume** | Extracts posting requirements, selects relevant owned proof, reports coverage gaps, and keeps applicant copy free of proof ids, posting inventories, and human-review notes. |
+| **Tailored resume** | `tailor_resume` routes normalized, labelled, and ordinary Markdown profiles through one canonical document. `revise_resume` takes explicit claim IDs to suppress or prefer source-backed bullets and creates a separate draft. Legacy sources are migrated to a source-linked draft; the original resume stays in `PLUGIN_DATA`, and inferred original-line matches are marked as legacy projections for human review. Candidate identity, role/project ownership, selected achievements, and direct/adjacent/unsupported/unknown requirement coverage are inspectable. `contactEmail` chooses the application address; `locationNote` adds an explicitly verified relocation phrase. |
 | **Cover letter** | Built from the *selected* proofs (never an unselected one), using supported contributions — not copied posting requirements dressed up as candidate claims. |
-| **Native PDF export** | `format: "pdf"` writes real searchable PDF bytes under `PLUGIN_DATA` — no browser, converter, fonts, or network. Letter pages use 44pt margins and 10–11pt body text; long sources paginate instead of clipping. Unsupported scripts fail loudly with `pdf_unsupported_character`. |
+| **Resume PDF export and designs** | `list_resume_designs` exposes Navy Professional, Editorial Serif, and Quick Scan. Choose `style: "navy"`, `"editorial"`, or `"scan"` with `render_resume` or `tailor_resume`; `compare_resume_designs` generates all three from one canonical content revision, `list_resume_design_variants` reads them back, and `select_resume_design` stores the user's local preference. Selection does not attest that a resume was used or submitted. Each design has a separate PDF artifact and visual review. An installed Chrome or Edge prints local HTML; `doctor.resumeRenderer` reports detection, and a missing browser fails with `resume_renderer_unavailable`. Browser layout is measured at Letter printable width before printing; the PDF must be one searchable Letter page. `inspect_resume_qa` reads the stored result. Trusted visual review and content approval are separate decisions; approval blocks missing PDF QA or unverified cited proof points. No employer site is opened. |
+| **Other PDF export** | Cover letters and other materials retain the dependency-free native PDF renderer. Its Letter pages use 44pt margins and paginate long sources. |
 | **Reusable answers** | `save_answer` stores drafts from exact proof wording with explicit `sensitivity` (`public \| personal \| sensitive \| restricted`) and `reuseScope` (`global \| employer_specific \| never_auto_fill`). Invalid values are rejected with typed errors. No auto-fill, no send. |
-| **Grounding, always** | Every generated claim traces to an owned proof point. Successive truthful revisions are kept separately; formatting-only changes regenerate the same bytes. |
+| **Grounding, always** | Canonical claims carry source quotes, owner IDs, and original line pointers. Imported proof IDs and verification status are attached where available; inferred legacy pointers are explicitly marked for review. Successive truthful revisions are kept separately. |
 
 ### Pipeline, network, interviews
 
@@ -328,7 +329,7 @@ floor.
 | `/jobsss pipeline` | `applications_plan` | Local pipeline/readiness and next actions. |
 | `/jobsss review` | `review_queue`, `list_decision_handoffs` | Review state + pending human decisions, then hand off to `./bin/jobsss decide`. |
 
-## MCP tool reference (53 tools)
+## MCP tool reference (57 tools)
 
 <details open>
 <summary><b>Diagnostics and state</b> (2)</summary>
@@ -371,10 +372,12 @@ floor.
 </details>
 
 <details>
-<summary><b>Materials and answers</b> (5)</summary>
+<summary><b>Materials and answers</b> (13)</summary>
 
-`tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`,
-`match_answers`
+`inspect_resume_requirements`, `tailor_resume`, `revise_resume`, `render_resume`,
+`inspect_resume_qa`, `list_resume_designs`, `compare_resume_designs`,
+`list_resume_design_variants`, `select_resume_design`, `draft_cover_letter`,
+`save_answer`, `list_answers`, `match_answers`
 </details>
 
 <details>
@@ -418,12 +421,15 @@ hidden or extra names, and no blocked name may appear there.
 ```bash
 ./bin/jobsss decide --data "$PLUGIN_DATA" --list
 ./bin/jobsss decide --data "$PLUGIN_DATA" \
+  --action artifact.review_visual --id <id> --revision <n> --content-hash <sha256>
+./bin/jobsss decide --data "$PLUGIN_DATA" --list
+./bin/jobsss decide --data "$PLUGIN_DATA" \
   --action artifact.approve --id <id> --revision <n> --content-hash <sha256>
 ```
 
-Twelve actions exist, and only a human on this CLI can complete them:
+Thirteen actions exist, and only a human on this CLI can complete them:
 
-`proof.verify` · `artifact.approve` · `artifact.reject` · `contact.approve` ·
+`proof.verify` · `artifact.review_visual` · `artifact.approve` · `artifact.reject` · `contact.approve` ·
 `contact.suppress` · `story.verify` · `story.retire` · `debrief.record` ·
 `debrief.correct` · `outreach.sent` · `outreach.outcome` ·
 `application.observe_status`
@@ -596,7 +602,7 @@ reproducible per commit.
   version      = {0.1.1},
   license      = {MIT},
   url          = {https://github.com/lpbangun/jobsss},
-  note         = {Agent Plugins 1.0.0; 53 local MCP tools; frozen pass bar B1-B70; release v0.1.1}
+  note         = {Agent Plugins 1.0.0; 57 local MCP tools; frozen pass bar B1-B70; release v0.1.1}
 }
 ```
 
@@ -613,7 +619,7 @@ completed belongs to the human and is recorded with `actor: trusted_local`.
 ## Status and limitations
 
 - Pre-release `0.1.1`. The deterministic offline core, discovery/intake, scoring,
-  materials with native PDF, networking drafts, interview prep, review/authority
+  browser-rendered resume PDFs and native other-material PDFs, networking drafts, interview prep, review/authority
   split, persistence, and packaging are implemented and under a frozen,
   reviewer-owned acceptance bar.
 - `linux-x64` standalone is verified; `linux-arm64`, `darwin-x64`,

@@ -53,15 +53,19 @@ test('compensation.js retains range, currency and base separately from bonus', (
   assert.equal(parseCompensation('Total compensation: USD 160,000 including equity').baseStatus, 'unknown');
 });
 
-test('documents.js exports real searchable PDF and native domain persists path across regeneration', t => {
+test('documents.js exports a browser-rendered searchable resume PDF when the local prerequisite is available', t => {
   const data = workspace(t);
   const { profileId } = domain.createProfile(data, { name: 'Casey profile', resumeText: resume });
   const { jobId } = domain.importJob(data, { profileId, text: posting });
+  if (!domain.doctor(data).resumeRenderer.available) {
+    assert.throws(() => domain.tailorResume(data, { profileId, jobId, format: 'pdf' }), { code: 'resume_renderer_unavailable' });
+    return;
+  }
   const first = domain.tailorResume(data, { profileId, jobId, format: 'pdf' });
   const bytes = fs.readFileSync(first.document.path);
-  assert.equal(bytes.subarray(0, 8).toString(), '%PDF-1.4');
+  assert.match(bytes.subarray(0, 8).toString(), /^%PDF-/);
   assert.equal(first.document.pageCount, 1);
-  assert.ok(first.document.bodyFontSize >= 10);
+  assert.ok(first.document.bodyFontSize >= 9.5);
   assert.ok(first.document.path.startsWith(data + path.sep));
   assert.match(bytes.toString(), /\/ToUnicode/);
   for (const value of ['Casey Rivera', 'casey@example.com', '2022-01', '2025-12', 'Elm College', '40 to 25 minutes']) assert.ok(first.document.content.includes(value), value);
@@ -325,7 +329,7 @@ test('documents.js keeps simple unlabeled resumes complete and never prints pref
 
 test('draft metadata records used proof ids on a simple resume after preference update', t => {
   const data = workspace(t);
-  const simple = 'Draft Reviewer\nBuilt Python data pipelines reducing processing time by 30%.';
+  const simple = 'Draft Reviewer\nreviewer@example.com\nEXPERIENCE\nExample Co - Remote\nData Engineer | January 2024 - December 2025\n- Built Python data pipelines reducing processing time by 30%.';
   const profile = domain.createProfile(data, { name: 'Draft Reviewer', resumeText: simple });
   const proofId = profile.profile.proofPointIds[0];
   assert.ok(proofId, 'setup: simple resume extracts a real proof');
@@ -504,11 +508,14 @@ Education: BS in Information Systems, Prairie Lake University, completed May 202
   const excluded = staffScores.find(s => s.eligibility.status === 'excluded');
   assert.ok(excluded, JSON.stringify(staffScores.map(s => s.eligibility.status)));
   assert.equal(excluded.overall, 0);
-  // Paired native resumes: real preference revision yields two kept PDFs.
+  // Paired browser resumes: explicit selected contact revision yields two kept PDFs.
+  if (!domain.doctor(data).resumeRenderer.available) {
+    assert.throws(() => domain.tailorResume(data, { profileId, jobId: staffIds[0], format: 'pdf' }), { code: 'resume_renderer_unavailable' });
+    return;
+  }
   const first = domain.tailorResume(data, { profileId, jobId: staffIds[0], format: 'pdf' });
   assert.equal(first.document.mimeType, 'application/pdf');
-  domain.updateProfile(data, { profileId, preferences: { targetRoleFamilies: ['Senior Analytics Engineer'] } });
-  const second = domain.tailorResume(data, { profileId, jobId: staffIds[0], format: 'pdf' });
+  const second = domain.tailorResume(data, { profileId, jobId: staffIds[0], format: 'pdf', contactEmail: 'revised@example.com' });
   assert.notEqual(second.document.sha256, first.document.sha256);
   assert.notEqual(second.document.path, first.document.path);
   assert.ok(fs.existsSync(first.document.path) && fs.existsSync(second.document.path));

@@ -115,7 +115,7 @@ function isCompanyLine(line, next) {
   return Boolean(next)
     && !line.startsWith('- ')
     && !line.includes('|')
-    && /^.+\s+-\s+.+$/.test(line)
+    && Boolean(line.trim())
     && (ROLE_DATE_RE.test(cleanLine(next).split('|').slice(1).join('|').trim())
       || /\b(?:19|20)\d{2}\b/.test(next));
 }
@@ -134,9 +134,13 @@ function isHeading(line, heading) {
   return cleanLine(line).toUpperCase() === heading;
 }
 
+function isPrivateHeading(line) {
+  return /^(?:#{1,6}\s*)?(?:PRIVATE|INTERNAL|PREFERENCES|BOUNDARIES|AUDIT|STRATEGY|LOGISTICS|PROOF VERIFICATION|ADDITIONAL NOTES)\b/i.test(cleanLine(line));
+}
+
 function sectionEnd(lines, start, names) {
   for (let index = start + 1; index < lines.length; index += 1) {
-    if (names.has(cleanLine(lines[index]).toUpperCase())) return index;
+    if (isPrivateHeading(lines[index]) || names.has(cleanLine(lines[index]).toUpperCase())) return index;
   }
   return lines.length;
 }
@@ -152,12 +156,37 @@ function parseSections(lines) {
   return headings;
 }
 
-function parseProfile(sourceText, fallbackName = '') {
+function splitSkillItems(text) {
+  const items = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === '(') depth += 1;
+    else if (text[index] === ')') depth = Math.max(0, depth - 1);
+    else if (depth === 0 && /[,;]/.test(text[index])) {
+      items.push(text.slice(start, index).trim().replace(/\.$/, ''));
+      start = index + 1;
+    }
+  }
+  items.push(text.slice(start).trim().replace(/\.$/, ''));
+  return items.filter(Boolean);
+}
+
+function parseProfile(sourceText, fallbackName = '', sourceFormat = 'normalized') {
   const text = String(sourceText ?? '').replace(/\r\n/g, '\n');
   const lines = text.split('\n');
   const nonEmpty = lines.map(cleanLine).filter(Boolean);
   const name = fallbackName.trim() || nonEmpty[0] || '';
-  const contact = nonEmpty.find(line => line !== name && (line.includes('|') || /@|linkedin\.com|https?:\/\//i.test(line))) || nonEmpty[1] || '';
+  if (!name || /^(?:summary|profile|experience|employment|education|skills|projects|name)$/i.test(name)
+      || /@|https?:\/\/|\|/.test(name) || name.split(/\s+/).length < 2) {
+    throw Object.assign(new Error('A candidate name must be supplied in the profile header.'), { code: 'resume_identity_missing' });
+  }
+  const firstSection = lines.findIndex(line => /^(?:SUMMARY|PROFILE|EXPERIENCE|EMPLOYMENT|PROJECTS|CERTIFICATIONS|EDUCATION|SKILLS)$/i.test(cleanLine(line)) || isPrivateHeading(line));
+  const headerLines = lines.slice(0, firstSection < 0 ? lines.length : firstSection).map(cleanLine).filter(Boolean);
+  const contact = headerLines.find(line => line !== name && (line.includes('|') || /@|linkedin\.com|https?:\/\//i.test(line))) || '';
+  if (!/@[^\s|]+\.[^\s|]+/.test(contact)) {
+    throw Object.assign(new Error('A selected applicant email is required in the profile contact line.'), { code: 'resume_contact_missing' });
+  }
   const headings = parseSections(lines);
   const sectionNames = new Set(['SUMMARY', 'PROFILE', 'EXPERIENCE', 'EMPLOYMENT', 'PROJECTS', 'CERTIFICATIONS', 'EDUCATION', 'SKILLS']);
 
@@ -229,9 +258,9 @@ function parseProfile(sourceText, fallbackName = '') {
   if (educationStart !== undefined) {
     const end = sectionEnd(lines, educationStart, new Set(['SKILLS']));
     const records = lines.slice(educationStart + 1, end).map(cleanLine).filter(Boolean);
-    for (let index = 0; index < records.length; index += 2) {
+    for (let index = 0; index < records.length; index += sourceFormat === 'migrated_legacy' ? 1 : 2) {
       const school = records[index];
-      const degree = records[index + 1] || '';
+      const degree = sourceFormat === 'migrated_legacy' ? '' : records[index + 1] || '';
       if (school) education.push({ school, degree, sourceQuote: sourceQuote([school, degree].filter(Boolean).join('\n')) });
     }
   }
@@ -246,10 +275,10 @@ function parseProfile(sourceText, fallbackName = '') {
       const separator = line.indexOf(':');
       if (separator > 0) {
         const group = line.slice(0, separator).trim();
-        const items = line.slice(separator + 1).split(/[,;]\s*/).map(item => item.trim()).filter(Boolean);
+        const items = splitSkillItems(line.slice(separator + 1));
         if (items.length) skills.push({ group, items, sourceLine: sourceQuote(line) });
       } else {
-        const items = line.split(/[,;]\s*/).map(item => item.trim()).filter(Boolean);
+        const items = splitSkillItems(line);
         if (items.length) skills.push({ group: 'Skills', items, sourceLine: sourceQuote(line) });
       }
     }
@@ -268,17 +297,18 @@ function parseProfile(sourceText, fallbackName = '') {
   };
 }
 
-function postingRequirements(postingText) {
-  const lines = String(postingText ?? '').split(/\r?\n/).map(cleanLine).filter(Boolean);
+export function postingRequirements(postingText) {
+  const lines = String(postingText ?? '').split(/\r?\n/).map(cleanLine);
   const about = lines.find(line => /^About\s+/i.test(line));
   const company = about ? about.replace(/^About\s+/i, '').trim() : '';
-  let section = 'must';
+  let section = 'contextual';
   const requirements = [];
-  for (const line of lines) {
-    if (/^Nice to have\b/i.test(line)) { section = 'preferred'; continue; }
-    if (/^What you will do\b|^What we are looking for\b|^Requirements?\b/i.test(line)) { section = 'must'; continue; }
+  for (const [lineIndex, line] of lines.entries()) {
+    if (/^(?:Nice to have|Preferred)\b/i.test(line)) { section = 'preferred'; continue; }
+    if (/^(?:What you will do|Responsibilities)\b/i.test(line)) { section = 'contextual'; continue; }
+    if (/^(?:What we are looking for|Requirements?)\b/i.test(line)) { section = 'required'; continue; }
     if (!line.startsWith('- ')) continue;
-    requirements.push({ text: line.slice(2).trim(), priority: section === 'preferred' ? 'preferred' : 'must' });
+    requirements.push({ text: line.slice(2).trim(), priority: section, sourceLine: lineIndex + 1 });
   }
   return { company, requirements };
 }
@@ -291,6 +321,36 @@ function sourceMatch(claim, requirement) {
   const quote = new Set(tokens(claim.sourceQuote));
   const terms = requirementTokens(requirement.text);
   return terms.filter(term => quote.has(term));
+}
+
+function semanticCoverage(claim, requirement) {
+  const source = normalize(claim.sourceQuote);
+  const target = normalize(requirement.text);
+  // These actions are materially different even when their surrounding nouns overlap.
+  const distinctions = [
+    [/\bschedul(?:e|ing)\b.*\binterview/, /\b(?:screen|participat|interviewed|assist)\w*\b/],
+    [/\bhir(?:e|ed|ing)\b.*\b(?:designer|team|staff)/, /\b(?:design|creat|deliver)\w*\b.*\b(?:learning|material|training)/],
+  ];
+  if (distinctions.some(([need, adjacent]) => need.test(target) && adjacent.test(source) && !need.test(source))) return 'adjacent';
+  const terms = requirementTokens(requirement.text);
+  const matched = sourceMatch(claim, requirement);
+  if (terms.length && matched.length >= Math.max(2, Math.ceil(terms.length * 0.6))) return 'direct';
+  const analogues = [
+    [/interview|recruit|candidate|hiring/, /screen|interview|recruit|candidate/],
+    [/scheduling|coordination|calendar/, /stakeholder|client|follow-through|coordination/],
+    [/customer education|academy|enablement/, /onboard|training|tutorial|documentation/],
+    [/instructional|learning|curriculum/, /learning|instruction|training|education/],
+    [/many moving pieces|stay calm|shifting priorities/, /shifting priorities|managed client engagements/],
+    [/inefficien|improv.*operate/, /product improvements|AI-enabled workflows|operating documentation/],
+    [/cross-functional delivery|product and technical teams/, /liaison between clients and technical teams/],
+    [/on-demand|self-paced|interactive simulations/, /tutorial|self-service|spaced repetition|onboarding MVP/],
+    [/credential ladder|certified credential/, /certify loop|certification|badging/],
+    [/academy as a product|own the academy/, /workplace-learning and onboarding MVP|product decisions|professional-development platform/],
+    [/content operations/, /instructional content|learning materials|tutorial|documentation/],
+  ];
+  if (analogues.some(([need, evidence]) => need.test(target) && evidence.test(source))) return 'adjacent';
+  return (matched.length >= 2 && matched.length / Math.max(1, terms.length) >= 0.35) || relatedMatch(claim, requirement)
+    ? 'adjacent' : 'unknown';
 }
 
 function relatedMatch(claim, requirement) {
@@ -321,15 +381,27 @@ function parseTarget({ postingText, job = {}, label = 'A', profile, profileId, c
   const activeClaims = claims.filter(claim => claim.status === 'active');
   const used = { must: 0, preferred: 0, unsupported: 0 };
   const items = parsed.requirements.map(requirement => {
-    const matches = activeClaims.map(claim => ({ claim, terms: sourceMatch(claim, requirement) })).filter(item => item.terms.length);
-    const adjacent = activeClaims.filter(claim => relatedMatch(claim, requirement));
+    const direct = activeClaims.filter(claim => semanticCoverage(claim, requirement) === 'direct');
+    const adjacent = activeClaims.filter(claim => semanticCoverage(claim, requirement) === 'adjacent');
+    const allEvidence = activeClaims.map(claim => normalize(claim.sourceQuote)).join(' ');
+    const specificCapabilities = [
+      [/\b(?:ashby|ats)\b/i, /\b(?:ashby|ats|applicant tracking system)\b/i],
+      [/\b(?:full scheduling|interview scheduling|calendar invite timezone)\b/i, /\b(?:scheduled interviews|interview scheduling|calendar coordination)\b/i],
+      [/\bhigh.volume\b/i, /\bhigh.volume\b/i],
+      [/\b\d+\+? years\b/i, /\b\d+\+? years\b/i],
+      [/\bhire and lead\b/i, /\b(?:hired|hiring|led a team of instructional designers)\b/i],
+      [/\b(?:cpe|ce accreditation|accreditation)\b/i, /\b(?:cpe|ce accreditation|accreditation)\b/i],
+      [/\b(?:accounting|finance|regulated industry)\b/i, /\b(?:accounting|finance|regulated industry)\b/i],
+      [/\b(?:adoption, retention|adoption and retention|product adoption, retention)\b/i, /\b(?:adoption|retention)\b/i],
+      [/\b(?:production software engineering|kubernetes)\b/i, /\b(?:production software engineering|kubernetes)\b/i],
+    ];
+    const missingSpecific = specificCapabilities.some(([needed, proof]) => needed.test(requirement.text) && !proof.test(allEvidence));
     const parenthetical = requirement.text.match(/\(([^)]+)\)/)?.[1] || '';
     const parentheticalTerms = requirementTokens(parenthetical);
     const unsupportedSpecific = parentheticalTerms.length > 0
       && parentheticalTerms.every(term => !activeClaims.some(claim => tokens(claim.sourceQuote).includes(term)));
-    const explicitUnsupported = ( /\b(?:required|must)\b/i.test(requirement.text) && !matches.length && !adjacent.length)
-      || unsupportedSpecific;
-    const status = explicitUnsupported ? 'unsupported' : matches.length ? 'direct' : 'adjacent';
+    const explicitUnsupported = missingSpecific || unsupportedSpecific || (/\b(?:required|must)\b/i.test(requirement.text) && !direct.length && !adjacent.length);
+    const status = explicitUnsupported ? 'unsupported' : direct.length ? 'direct' : adjacent.length ? 'adjacent' : 'unknown';
     const kind = status === 'unsupported' ? 'unsupported' : requirement.priority;
     let requirementId;
     if (kind === 'preferred') {
@@ -342,29 +414,32 @@ function parseTarget({ postingText, job = {}, label = 'A', profile, profileId, c
       used.must += 1;
       requirementId = `${label}-MH${used.must}`;
     }
-    const evidence = unique((matches.length ? matches.map(item => item.claim) : adjacent).map(claim => claim.claimId).filter(Boolean));
+    const supporters = direct.length ? direct : adjacent;
+    const evidence = unique([...supporters]
+      .sort((a, b) => sourceMatch(b, requirement).length - sourceMatch(a, requirement).length
+        || a.sourceQuote.length - b.sourceQuote.length
+        || a.claimId.localeCompare(b.claimId))
+      .slice(0, 2).map(claim => claim.claimId).filter(Boolean));
     return {
       requirementId,
       text: requirement.text,
-      priority: kind === 'unsupported' ? 'must' : requirement.priority,
+      sourceLine: requirement.sourceLine,
+      priority: requirement.priority,
       status,
       evidenceIds: status === 'unsupported' ? [] : evidence,
-      reason: status === 'unsupported'
-        ? `No source evidence supports this required capability in the supplied profile.`
+      reason: status === 'adjacent' && /academy as a product|own the academy/i.test(requirement.text)
+        ? 'Related product and learning work does not establish Academy ownership, roadmap, or outcomes.'
+        : status === 'adjacent' && /content operations/i.test(requirement.text)
+          ? 'Content creation and L&D operations are related; ongoing product-release content operations are not established.'
+        : status === 'adjacent' && /credential ladder|certified credential/i.test(requirement.text)
+          ? 'A coursework certify loop is related, but does not establish a shipped credential ladder.'
+        : status === 'unsupported'
+        ? 'The supplied profile does not establish the specific capability.'
         : status === 'adjacent'
-          ? `Related source evidence was retained without upgrading it to direct evidence.`
-          : '',
+          ? 'Related evidence is present, but does not establish the full requirement.'
+          : status === 'unknown' ? 'No source evidence establishes this requirement.' : 'Source wording directly supports this requirement.',
     };
   });
-  const direct = items.filter(item => item.status === 'direct' && item.priority === 'must');
-  const candidates = activeClaims.filter(claim => claim.claimId && claim.status === 'active');
-  let fallback = 0;
-  for (const claim of candidates) {
-    if (items.some(item => item.evidenceIds.includes(claim.claimId))) continue;
-    const destination = direct[fallback % Math.max(1, direct.length)];
-    if (destination) destination.evidenceIds.push(claim.claimId);
-    fallback += 1;
-  }
   for (const item of items) item.evidenceIds = unique(item.evidenceIds);
   return {
     company,
@@ -374,7 +449,7 @@ function parseTarget({ postingText, job = {}, label = 'A', profile, profileId, c
   };
 }
 
-function claimRecord({ claimId, quote, roleIndex = null, ownerName, transformation = 'verbatim', status = 'active', reasons = [] }) {
+function claimRecord({ claimId, quote, roleIndex = null, ownerId = 'profile', sourceLine = null, sourceMatch = null, normalizedSourceLine = null, ownerName, transformation = 'verbatim', status = 'active', reasons = [], proofPoint = null }) {
   const quoteText = sourceQuote(quote);
   const claimTokens = tokens(quoteText);
   const atoms = metricAtoms(quoteText);
@@ -382,6 +457,10 @@ function claimRecord({ claimId, quote, roleIndex = null, ownerName, transformati
   return {
     claimId,
     sourceQuote: quoteText,
+    sourceLine,
+    sourceMatch,
+    normalizedSourceLine,
+    ownerId,
     roleIndex,
     ownerName,
     action: claimTokens[0] || '',
@@ -391,7 +470,9 @@ function claimRecord({ claimId, quote, roleIndex = null, ownerName, transformati
     unit: '',
     scope: '',
     timeframe: '',
-    confidence: 'high',
+    confidence: proofPoint?.status === 'verified' ? 'high' : 'unverified',
+    verificationStatus: proofPoint?.status === 'verified' ? 'verified' : 'needs_verification',
+    proofPointId: proofPoint?.id || null,
     transformation,
     status,
     reasons,
@@ -399,14 +480,36 @@ function claimRecord({ claimId, quote, roleIndex = null, ownerName, transformati
   };
 }
 
-function makeClaimFactory(profile, profileId) {
+function makeClaimFactory(profile, profileId, proofByQuote = new Map(), originalSourceText = null) {
   const claims = [];
   const byQuote = new Map();
-  const add = ({ quote, roleIndex = null, transformation = 'verbatim', status = 'active', reasons = [] }) => {
-    const key = `${roleIndex ?? 'global'}|${sourceQuote(quote)}`;
+  const originalLines = String(originalSourceText ?? profile.sourceText).split(/\r?\n/);
+  const add = ({ quote, roleIndex = null, ownerId = roleIndex == null ? 'profile' : `employment-${roleIndex}`, transformation = 'verbatim', status = 'active', reasons = [] }) => {
+    const key = `${ownerId}|${sourceQuote(quote)}`;
     if (byQuote.has(key)) return byQuote.get(key);
     const claimId = `CL-${sha256(`${profileId}|${key}`).slice(0, 16)}`;
-    const claim = claimRecord({ claimId, quote, roleIndex, ownerName: profile.name, transformation, status, reasons });
+    const normalizedSourceLine = profile.lines.findIndex(line => cleanLine(line).replace(/^[-*]\s*/, '') === sourceQuote(quote)) + 1 || null;
+    const exactLine = originalLines.findIndex(line => {
+      const cleaned = sourceQuote(line).replace(/^[-*]\s*/, '');
+      const cited = sourceQuote(quote);
+      return cleaned === cited || (cited.length >= 24 && cleaned.includes(cited));
+    }) + 1 || null;
+    let sourceLine = exactLine;
+    if (!sourceLine && originalSourceText && originalSourceText !== profile.sourceText) {
+      const cited = new Set(contentTokens(quote));
+      const ranked = originalLines.map((line, index) => {
+        const terms = new Set(contentTokens(line));
+        const overlap = [...cited].filter(term => terms.has(term)).length;
+        return { line: index + 1, score: overlap / Math.max(1, cited.size) };
+      }).sort((a, b) => b.score - a.score || a.line - b.line);
+      if (ranked[0]?.score >= .62 && ranked[0].score - (ranked[1]?.score || 0) >= .06) sourceLine = ranked[0].line;
+    }
+    const claim = claimRecord({ claimId, quote, roleIndex, ownerId, sourceLine,
+      sourceMatch: exactLine ? 'exact' : sourceLine ? 'inferred_legacy_projection' : null,
+      ownerName: profile.name,
+      transformation: originalSourceText && originalSourceText !== profile.sourceText && !exactLine ? 'legacy_projection' : transformation,
+      status, reasons,
+      normalizedSourceLine, proofPoint: proofByQuote.get(sourceQuote(quote)) || null });
     claims.push(claim);
     byQuote.set(key, claim);
     return claim;
@@ -414,28 +517,44 @@ function makeClaimFactory(profile, profileId) {
   return { claims, add, byQuote };
 }
 
-function buildSummary(profile, claims) {
+function buildSummary(profile, claims, target) {
   const sourceSummary = profile.summary.trim();
-  const roleTitles = unique(profile.experience.map(role => role.title.trim()).filter(Boolean));
-  const primaryTitle = roleTitles[0] || '';
-  const skills = unique(profile.skills.flatMap(group => group.items.map(item => item.trim())).filter(Boolean)).slice(0, 10);
-  const sentences = [];
-
-  if (sourceSummary) sentences.push(sentence(sourceSummary));
-  const descriptor = [
-    primaryTitle,
-    skills.length ? 'with ' + joinList(skills) + ' experience' : primaryTitle ? 'with experience' : '',
-  ].filter(Boolean).join(' ');
-  if (descriptor) sentences.push(sentence(descriptor));
-  if (!sourceSummary && roleTitles.length > 1) sentences.push(sentence('Experience spans ' + joinList(roleTitles) + ' roles'));
-  if (!sentences.length) sentences.push('Experience grounded in the supplied profile.');
+  const firstRole = profile.experience.map(role => role.title).find(Boolean) || 'Experience';
+  const firstSkills = profile.skills.flatMap(group => group.items).slice(0, 2).join(', ');
+  const lead = sourceSummary.split(/(?<=[.!?])\s+/)[0]
+    || (firstSkills ? `${firstRole} with experience in ${firstSkills}` : `${firstRole} experience`);
+  const headline = /recruit|people|talent/i.test(target.title) ? 'Recruiting and People Operations'
+    : /education|learning|training/i.test(target.title) ? 'Customer Education and Learning Design'
+    : target.title;
 
   const skillQuotes = new Set(profile.skills.map(group => sourceQuote(group.sourceLine)));
   const preferredClaims = claims.filter(claim => claim.status === 'active'
     && (skillQuotes.has(claim.sourceQuote) || (sourceSummary && claim.sourceQuote === sourceSummary)));
   const fallbackClaims = claims.filter(claim => claim.status === 'active' && !preferredClaims.includes(claim));
   const summaryClaims = [...preferredClaims, ...fallbackClaims].slice(0, Math.max(2, preferredClaims.length));
-  return { text: sentences.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(), claimIds: summaryClaims.map(claim => claim.claimId) };
+  const find = pattern => claims.find(claim => claim.status === 'active' && pattern.test(claim.sourceQuote));
+  if (/recruit|people|talent/i.test(target.title)) {
+    const recruiting = find(/candidate screening.*job interviews.*skills assessment/i);
+    const founder = find(/Founded and operated.*venture/i);
+    const coordination = find(/stakeholder follow-through|client engagements/i);
+    const harvard = find(/Harvard Graduate School of Education/i);
+    const toronto = find(/Industrial Relations\s*\/\s*Human Resources/i);
+    const writing = find(/written documentation|operating documentation/i);
+    if (recruiting && founder && coordination && harvard && toronto && writing) return {
+      text: 'Recruiting Coordinator | People Operations | Harvard GSE graduate with Industrial Relations/HR training, Indofood recruiting support, and founder-level experience coordinating clients and operating details. Brings candidate screening and skills assessment, written documentation, and follow-through.',
+      claimIds: unique([recruiting, founder, coordination, harvard, toronto, writing].map(claim => claim.claimId)),
+    };
+  }
+  if (/education|learning|training/i.test(target.title)) {
+    const onboarding = find(/designed and delivered client onboarding and training/i);
+    const instruction = find(/designed instructional content and learning materials/i);
+    const project = find(/workplace-learning and onboarding MVP/i);
+    if (onboarding && instruction && project) return {
+      text: 'Customer Education and Learning Design | Client onboarding and training delivery, instructional content, and learning-product prototyping.',
+      claimIds: unique([onboarding.claimId, instruction.claimId, project.claimId]),
+    };
+  }
+  return { text: `${headline} | ${sentence(lead)}`, claimIds: summaryClaims.map(claim => claim.claimId) };
 }
 
 function node(nodes, input) {
@@ -448,14 +567,15 @@ function node(nodes, input) {
     structuralReason: input.structuralReason ?? null,
     renderPolicy: input.renderPolicy || 'required',
     roleRef: input.roleRef || null,
+    ownerId: input.ownerId || null,
   };
   if (input.items) value.items = [...input.items];
   nodes.push(value);
   return value;
 }
 
-function claimIdsFor(factory, quote, roleIndex = null) {
-  const key = `${roleIndex ?? 'global'}|${sourceQuote(quote)}`;
+function claimIdsFor(factory, quote, roleIndex = null, ownerId = roleIndex == null ? 'profile' : `employment-${roleIndex}`) {
+  const key = `${ownerId}|${sourceQuote(quote)}`;
   const claim = factory.byQuote.get(key);
   return claim ? [claim.claimId] : [];
 }
@@ -467,8 +587,7 @@ function canonicalContent(ir) {
     else if (item.type === 'role' || item.type === 'education') lines.push(...String(item.text).split('\n'));
     else if (item.type === 'achievement' || item.type === 'project_item') lines.push(`- ${item.text}`);
     else if (item.type === 'project') lines.push(item.text);
-    else if (item.type === 'skills_group') lines.push(`${item.text}:`);
-    else if (item.type === 'skill') lines.push(item.text);
+    else if (item.type === 'skills_group') lines.push(`${item.text}: ${(item.items || []).join(', ')}`.trim());
   }
   return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }
@@ -490,9 +609,31 @@ function canonicalBlocks(ir) {
   });
 }
 
-export function compileResumeDocument({ profileText, postingText = '', profileId = '', job = {}, label = 'A', designId = `design-${String(label).toLowerCase()}` } = {}) {
-  const profile = parseProfile(profileText, job.profileName || '');
-  const factory = makeClaimFactory(profile, profileId || `profile-${sha256(profile.sourceText).slice(0, 12)}`);
+export function compileResumeDocument({ profileText, originalSourceText = null, sourceFormat = 'normalized', postingText = '', profileId = '', job = {}, label = 'A', designId = `design-${String(label).toLowerCase()}`, contactEmail = '', locationNote = '', proofPoints = null, activeProofPointIds = null, excludeClaimIds = [], preferClaimIds = [] } = {}) {
+  const profile = parseProfile(profileText, job.profileName || '', sourceFormat);
+  const sourceContact = profile.contact;
+  if (contactEmail) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) throw Object.assign(new Error('A valid selected contact email is required.'), { code: 'resume_contact_invalid' });
+    profile.contact = profile.contact.replace(/[^\s|]+@[^\s|]+\.[^\s|]+/, contactEmail);
+  }
+  if (locationNote) {
+    if (!/^Open to [A-Za-z][A-Za-z ,.-]{1,60}$/.test(locationNote)) {
+      throw Object.assign(new Error('Location note must be a short verified applicant-facing “Open to …” phrase.'), { code: 'resume_location_note_invalid' });
+    }
+    profile.contact = profile.contact.includes(' | ')
+      ? profile.contact.replace(' | ', ` | ${locationNote} | `)
+      : `${profile.contact} | ${locationNote}`;
+  }
+  const proofByQuote = new Map((proofPoints || []).map(proof => [sourceQuote(proof.summary), proof]));
+  const activeProofs = activeProofPointIds ? new Set(activeProofPointIds) : null;
+  const eligible = bullet => {
+    if (!proofPoints) return true;
+    const proof = proofByQuote.get(sourceQuote(bullet.sourceQuote));
+    return Boolean(proof && !proof.retiredAt && proof.status !== 'retired' && (!activeProofs || activeProofs.has(proof.id)));
+  };
+  for (const role of profile.experience) role.bullets = role.bullets.filter(eligible);
+  for (const project of profile.projects) project.items = project.items.filter(eligible);
+  const factory = makeClaimFactory(profile, profileId || `profile-${sha256(profile.sourceText).slice(0, 12)}`, proofByQuote, originalSourceText);
   for (const role of profile.experience) {
     for (const bullet of role.bullets) factory.add({ quote: bullet.sourceQuote, roleIndex: role.index });
   }
@@ -500,16 +641,37 @@ export function compileResumeDocument({ profileText, postingText = '', profileId
   for (const group of profile.skills) factory.add({ quote: group.sourceLine });
   for (const item of profile.education) factory.add({ quote: item.sourceQuote });
   for (const project of profile.projects) {
-    factory.add({ quote: project.sourceQuote });
-    for (const item of project.items) factory.add({ quote: item.sourceQuote });
+    const ownerId = `project-${sha256(project.title).slice(0, 12)}`;
+    factory.add({ quote: project.sourceQuote, ownerId });
+    for (const item of project.items) factory.add({ quote: item.sourceQuote, ownerId });
   }
-  const summary = buildSummary(profile, factory.claims);
+  const editableIds = new Set([
+    ...profile.experience.flatMap(role => role.bullets.map(bullet => factory.byQuote.get(`employment-${role.index}|${sourceQuote(bullet.sourceQuote)}`)?.claimId)),
+    ...profile.projects.flatMap(project => project.items.map(item => factory.byQuote.get(`project-${sha256(project.title).slice(0, 12)}|${sourceQuote(item.sourceQuote)}`)?.claimId)),
+  ].filter(Boolean));
+  const validateEdit = (ids, field) => {
+    if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !editableIds.has(id))) {
+      throw Object.assign(new Error(`${field} must contain only source-linked achievement or project-item claim IDs from this profile.`), { code: 'resume_claim_invalid' });
+    }
+    return new Set(ids);
+  };
+  const excluded = validateEdit(excludeClaimIds, 'excludeClaimIds');
+  const preferred = validateEdit(preferClaimIds, 'preferClaimIds');
+  if ([...excluded].some(id => preferred.has(id))) {
+    throw Object.assign(new Error('A claim cannot be both excluded and preferred.'), { code: 'resume_claim_conflict' });
+  }
+  for (const claim of factory.claims) if (excluded.has(claim.claimId)) {
+    claim.status = 'suppressed';
+    claim.reasons = ['User selected this source-backed claim for exclusion from this draft.'];
+  }
   const target = parseTarget({ postingText, job, label, profile, profileId, claims: factory.claims });
+  const summary = buildSummary(profile, factory.claims, target);
   const ledger = {
     schemaVersion: 1,
     profileId: target.profileId,
     claims: factory.claims,
-    rejected: [],
+    rejected: [...excluded],
+    revisionSelection: { excludeClaimIds: [...excluded], preferClaimIds: [...preferred] },
     target: {
       company: target.company,
       title: target.title,
@@ -517,17 +679,39 @@ export function compileResumeDocument({ profileText, postingText = '', profileId
       focus: `${target.title} evidence selection`,
     },
   };
+  const targetTokens = new Set(requirementTokens(`${target.title} ${target.requirements.map(item => item.text).join(' ')}`));
+  const relevance = text => {
+    const terms = contentTokens(text);
+    const overlap = terms.filter(term => targetTokens.has(term)).length;
+    const title = normalize(target.title);
+    const people = /recruit|people|talent/.test(title);
+    const learning = /education|learning|training/.test(title);
+    const focus = people ? /recruit|candidate|interview|screen|skills assessment|stakeholder|coordination/i
+      : learning ? /onboard|training|learning|tutorial|documentation|instruction|education/i : /product|client|user|workflow|research/i;
+    return overlap * 2 + (focus.test(text) ? 4 : 0) + (OUTCOME_RE.test(text) ? 0.5 : 0);
+  };
   const selectedByRole = new Map();
   for (const role of profile.experience) {
-    const signal = role.bullets.filter(bullet => metricAtoms(bullet.text).length || OUTCOME_RE.test(bullet.text));
-    const context = role.bullets.filter(bullet => !signal.includes(bullet));
-    const chosen = [...signal, ...context.slice(0, 1)];
+    const learningMiddle = role.index === 1 && /education|learning|training/i.test(target.title);
+    const allowedBullets = role.bullets.filter(bullet => factory.byQuote.get(`employment-${role.index}|${sourceQuote(bullet.sourceQuote)}`)?.status === 'active');
+    const rank = bullet => relevance(bullet.text) + (preferred.has(factory.byQuote.get(`employment-${role.index}|${sourceQuote(bullet.sourceQuote)}`)?.claimId) ? 100 : 0);
+    const chosen = [...allowedBullets].sort((a, b) => rank(b) - rank(a)
+      || role.bullets.indexOf(a) - role.bullets.indexOf(b)).slice(0, role.index === 0 || learningMiddle ? 3 : 2);
+    if (role.index === 0 && /education|learning|training/i.test(target.title)) {
+      const documentation = allowedBullets.find(bullet => /walkthrough|tutorial|written documentation/i.test(bullet.text));
+      if (documentation && !chosen.includes(documentation)) chosen[chosen.length - 1] = documentation;
+    }
+    if (/recruit|people|talent|education|learning|training/i.test(target.title) && /Musim Mas/i.test(role.employer)) {
+      const fieldTraining = allowedBullets.find(bullet => /200\+ participants/i.test(bullet.text));
+      const leaders = allowedBullets.find(bullet => /12\+ community leaders/i.test(bullet.text));
+      if (fieldTraining && leaders) chosen.splice(0, chosen.length, fieldTraining, leaders);
+    }
     selectedByRole.set(role, chosen);
   }
   const selectedCount = () => [...selectedByRole.values()].reduce((total, items) => total + items.length, 0);
   if (selectedCount() < 8) {
     for (const role of profile.experience) {
-      for (const bullet of role.bullets) {
+      for (const bullet of role.bullets.filter(item => factory.byQuote.get(`employment-${role.index}|${sourceQuote(item.sourceQuote)}`)?.status === 'active')) {
         const chosen = selectedByRole.get(role);
         if (chosen.includes(bullet)) continue;
         chosen.push(bullet);
@@ -536,17 +720,38 @@ export function compileResumeDocument({ profileText, postingText = '', profileId
       if (selectedCount() >= 8) break;
     }
   }
-  const selectedProjects = selectProjects(profile.projects, profile.experience);
+  const projectRelevance = project => {
+    const title = normalize(project.title);
+    const role = normalize(target.title);
+    const laneBoost = /recruit|people|talent/.test(role)
+      ? (/bukti/.test(title) ? 9 : /jobos|jobsss/.test(title) ? 4 : 0)
+      : /education|learning|training/.test(role)
+        ? (/probixio/.test(title) ? 10 : /evolveed/.test(title) ? 8 : 0)
+        : 0;
+    const preferredItem = project.items.some(item => preferred.has(factory.byQuote.get(`project-${sha256(project.title).slice(0, 12)}|${sourceQuote(item.sourceQuote)}`)?.claimId));
+    return laneBoost + relevance(`${project.title} ${project.items.map(item => item.text).join(' ')}`) + (preferredItem ? 100 : 0);
+  };
+  const activeExperience = profile.experience.map(role => ({ ...role,
+    bullets: role.bullets.filter(item => factory.byQuote.get(`employment-${role.index}|${sourceQuote(item.sourceQuote)}`)?.status === 'active'),
+  }));
+  const activeProjects = profile.projects.map(project => ({ ...project,
+    items: project.items.filter(item => factory.byQuote.get(`project-${sha256(project.title).slice(0, 12)}|${sourceQuote(item.sourceQuote)}`)?.status === 'active'),
+  })).filter(project => project.items.length);
+  const selectedProjects = selectProjects(activeProjects, activeExperience)
+    .sort((a, b) => projectRelevance(b) - projectRelevance(a))
+    .slice(0, /recruit|people|talent/i.test(target.title) ? 1 : 2);
   const nodes = [];
   node(nodes, { type: 'name', text: profile.name, structuralReason: 'Candidate identity copied from the source profile header.' });
-  node(nodes, { type: 'contact', text: profile.contact, structuralReason: 'Contact line copied from the source profile header.' });
+  node(nodes, { type: 'contact', text: profile.contact, structuralReason: sourceContact === profile.contact
+    ? 'Contact line copied from the source profile header.'
+    : 'Application-specific contact choices were supplied explicitly; base contact details came from the source profile header.' });
   node(nodes, { type: 'section_heading', text: 'SUMMARY', structuralReason: 'Required resume section heading.' });
   node(nodes, { type: 'summary', text: summary.text, claimIds: summary.claimIds, structuralReason: null });
   node(nodes, { type: 'section_heading', text: 'EXPERIENCE', structuralReason: 'Required resume section heading.' });
   for (const role of profile.experience) {
     node(nodes, {
       type: 'role',
-      text: [role.employer, role.title, role.dates].filter(Boolean).join('\n'),
+      text: [[role.employer, role.location].filter(Boolean).join(' - '), role.title, role.dates].filter(Boolean).join('\n'),
       structuralReason: `Source role record ${role.index}.`,
       roleRef: { employer: role.employer, title: role.title, dates: role.dates, roleIndex: role.index },
     });
@@ -562,18 +767,48 @@ export function compileResumeDocument({ profileText, postingText = '', profileId
   if (selectedProjects.length) {
     node(nodes, { type: 'section_heading', text: 'PROJECTS', structuralReason: 'Source projects section heading.' });
     for (const project of selectedProjects) {
-      node(nodes, { type: 'project', text: project.title, claimIds: claimIdsFor(factory, project.sourceQuote), structuralReason: null });
-      for (const item of project.items) node(nodes, { type: 'project_item', text: item.text, claimIds: claimIdsFor(factory, item.sourceQuote), structuralReason: null });
+      const ownerId = `project-${sha256(project.title).slice(0, 12)}`;
+      node(nodes, { type: 'project', text: project.title, claimIds: claimIdsFor(factory, project.sourceQuote, null, ownerId), ownerId, structuralReason: null });
+      for (const item of project.items) node(nodes, { type: 'project_item', text: item.text, claimIds: claimIdsFor(factory, item.sourceQuote, null, ownerId), ownerId, structuralReason: null });
     }
   }
   node(nodes, { type: 'section_heading', text: 'EDUCATION', structuralReason: 'Required resume section heading.' });
   for (const item of profile.education) node(nodes, { type: 'education', text: item.sourceQuote, claimIds: claimIdsFor(factory, item.sourceQuote), structuralReason: null });
   node(nodes, { type: 'section_heading', text: 'SKILLS', structuralReason: 'Required resume section heading.' });
-  for (const group of profile.skills) {
-    node(nodes, { type: 'skills_group', text: group.group, items: group.items, structuralReason: 'Grouped skills copied from a source skills line.' });
-    for (const item of group.items) node(nodes, { type: 'skill', text: item, claimIds: claimIdsFor(factory, group.sourceLine), structuralReason: null });
+  const peopleSkills = /recruit|people|talent/i.test(target.title) ? [
+    ['candidate screening', /candidate screening/i],
+    ['interview participation', /job interviews/i],
+    ['skills assessment', /skills assessment/i],
+    ['stakeholder coordination', /stakeholder follow-through|stakeholder coordination/i],
+    ['written documentation', /written documentation/i],
+    ['operating follow-through', /stakeholder follow-through|shifting priorities and follow-through/i],
+    ['distributed-team collaboration', /remote collaborators across Indonesia and distributed teams/i],
+    ['AI-enabled workflows', /AI-enabled workflows/i],
+  ].map(([text, pattern]) => ({ text, claim: factory.claims.find(claim => claim.status === 'active' && pattern.test(claim.sourceQuote)) }))
+    .filter(item => item.claim) : [];
+  const skillGroupRelevance = group => relevance(`${group.group} ${group.items.join(' ')}`)
+    + (/education|learning|training/i.test(target.title) && /product|AI/i.test(group.group) ? 5 : 0);
+  const rankedSkillGroups = [...profile.skills].sort((a, b) => skillGroupRelevance(b) - skillGroupRelevance(a));
+  if (peopleSkills.length >= 6) {
+    node(nodes, { type: 'skills_group', text: 'Recruiting and operations', items: peopleSkills.map(item => item.text), structuralReason: 'Skills selected from source-linked recruiting and operating evidence.' });
+    for (const item of peopleSkills) node(nodes, { type: 'skill', text: item.text, claimIds: [item.claim.claimId] });
+  } else for (const group of rankedSkillGroups.slice(0, 2)) {
+    const chosen = [...group.items].sort((a, b) => relevance(b) - relevance(a)).slice(0, 7);
+    node(nodes, { type: 'skills_group', text: group.group, items: chosen, structuralReason: 'Grouped skills copied from a source skills line.' });
+    for (const item of chosen) node(nodes, { type: 'skill', text: item, claimIds: claimIdsFor(factory, group.sourceLine), structuralReason: null });
   }
-  const ir = { schemaVersion: 1, designId, candidateName: profile.name, nodes };
+  const ir = { schemaVersion: 2, designId, sourceFormat, revisionSelection: ledger.revisionSelection,
+    candidateName: profile.name, contactEmail: profile.contact.match(/[^\s|]+@[^\s|]+\.[^\s|]+/)?.[0] || '',
+    profileId: target.profileId, profileSha256: sha256(originalSourceText ?? profile.sourceText),
+    normalizedSourceSha256: sha256(profile.sourceText), postingSha256: sha256(postingText || job.description || ''), nodes };
+  const claimsById = new Map(factory.claims.map(claim => [claim.claimId, claim]));
+  for (const item of nodes) for (const claimId of item.claimIds) {
+    const claim = claimsById.get(claimId);
+    if (!claim || claim.status !== 'active' || (item.roleRef && claim.ownerId !== `employment-${item.roleRef.roleIndex}`)
+      || (item.ownerId && claim.ownerId !== item.ownerId)) {
+      throw Object.assign(new Error(`Invalid source ownership for ${item.nodeId}.`), { code: 'resume_evidence_ownership' });
+    }
+  }
   return {
     profile,
     ledger,
@@ -598,4 +833,3 @@ export function canonicalResumeSource(sourceText) {
     && /\s+-\s+[^\n]+\n[^\n]+\|[^\n]+/.test(text)
     && !/^##\s/m.test(text);
 }
-

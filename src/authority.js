@@ -27,6 +27,7 @@ import { loadStore, commitStore, hashText, id, now, ensureDataDir, redactSecrets
 export const TRUSTED_DECISION_ACTIONS = Object.freeze([
   'proof.verify',
   'artifact.approve',
+  'artifact.review_visual',
   'artifact.reject',
   'contact.approve',
   'contact.suppress',
@@ -41,7 +42,7 @@ export const TRUSTED_DECISION_ACTIONS = Object.freeze([
 
 const ACTIONS_BY_TYPE = Object.freeze({
   proof: ['proof.verify'],
-  artifact: ['artifact.approve', 'artifact.reject'],
+  artifact: ['artifact.review_visual', 'artifact.approve', 'artifact.reject'],
   contact: ['contact.approve', 'contact.suppress'],
   story: ['story.verify', 'story.retire'],
   debrief: ['debrief.record', 'debrief.correct'],
@@ -122,7 +123,11 @@ function canonicalHash(entity, type) {
 function pendingKindFor(entity, type) {
   switch (type) {
     case 'proof': return entity.verifiedAt ? null : 'proof.verify';
-    case 'artifact': return entity.approvedAt || entity.rejectedAt ? null : 'artifact.approve';
+    case 'artifact':
+      if (entity.approvedAt || entity.rejectedAt) return null;
+      if (entity.kind === 'resume_draft' && entity.resumeDocument && entity.export?.qa
+          && entity.export.qa.visualReview !== 'passed_by_trusted_local') return 'artifact.review_visual';
+      return 'artifact.approve';
     case 'contact': return entity.humanApproved || entity.doNotUse ? null : 'contact.approve';
     case 'story': return entity.state === 'verified' || entity.state === 'retired' ? null : 'story.verify';
     case 'debrief': return entity.debriefRecordedAt ? 'debrief.correct' : 'debrief.record';
@@ -224,10 +229,19 @@ function applyDecisionEffect(entity, type, action, args, at) {
       entity.verifiedAt = at;
       entity.verifiedBy = 'trusted_local';
       break;
+    case 'artifact.review_visual':
+      entity.export.qa.visualReview = 'passed_by_trusted_local';
+      entity.export.qa.visualReviewedAt = at;
+      entity.export.qa.visualReviewedBy = 'trusted_local';
+      if (args.note) entity.export.qa.visualReviewNote = String(args.note);
+      break;
     case 'artifact.approve':
       entity.status = 'approved';
       entity.approvedAt = at;
       entity.approvedBy = 'trusted_local';
+      if (entity.kind === 'resume_draft' && entity.resumeDocument && entity.export?.qa) {
+        entity.export.qa.contentReview = 'passed_by_trusted_local';
+      }
       break;
     case 'artifact.reject':
       entity.status = 'rejected';
@@ -295,6 +309,7 @@ function applyDecisionEffect(entity, type, action, args, at) {
 function decisionMessage(action) {
   switch (action) {
     case 'proof.verify': return 'Proof verified through the trusted local CLI by a human. No external action was performed.';
+    case 'artifact.review_visual': return 'Resume PDF visual review recorded through the trusted local CLI by a human. Content approval remains pending.';
     case 'artifact.approve': return 'Artifact approved through the trusted local CLI by a human for local use. No external action was performed.';
     case 'artifact.reject': return 'Artifact rejected through the trusted local CLI by a human. No external action was performed.';
     case 'contact.approve': return 'Contact approved for local use through the trusted local CLI by a human. Nothing was transmitted.';
@@ -421,6 +436,44 @@ function validateBinding(store, entity, type, action, entityId, revision, conten
       `stale_conflict: revision ${revision} does not match current revision ${currentRevision} for ${entityId}`
     );
   }
+  if (action === 'artifact.review_visual' && (type !== 'artifact' || entity.kind !== 'resume_draft' || !entity.resumeDocument)) {
+    throw typedError('decision_action_incompatible', 'Visual review applies only to canonical resume drafts.');
+  }
+  if (type === 'artifact' && (entity.approvedAt || entity.rejectedAt)) {
+    throw typedError('decision_already_complete', 'This artifact already has a final human decision.');
+  }
+  if (action === 'artifact.review_visual' && entity.export?.qa?.visualReview === 'passed_by_trusted_local') {
+    throw typedError('resume_visual_review_complete', 'Visual review is already recorded.');
+  }
+  if (type === 'artifact' && (action === 'artifact.approve' || action === 'artifact.review_visual') && entity.kind === 'resume_draft' && entity.resumeDocument) {
+    const qa = entity.export?.qa;
+    const ir = entity.resumeDocument.ir;
+    if (!qa?.onePage || !qa.searchableTextMapping || !qa.layoutBoundsPx
+        || entity.export.pageSize !== 'Letter' || entity.export.engine !== 'local-chrome-edge'
+        || !ir?.candidateName?.trim() || !ir?.contactEmail?.trim()) {
+      throw typedError('resume_qa_incomplete', 'A canonical resume requires a validated local-browser PDF before human approval.');
+    }
+    if (action === 'artifact.approve' && qa.visualReview !== 'passed_by_trusted_local') {
+      throw typedError('resume_visual_review_required', 'Review the rendered resume PDF visually through artifact.review_visual before content approval.');
+    }
+    if (action === 'artifact.approve') {
+    const claims = new Map((entity.resumeDocument.ledger?.claims || []).map(claim => [claim.claimId, claim]));
+    for (const node of ir.nodes || []) {
+      if (node.renderPolicy !== 'required') continue;
+      for (const claimId of node.claimIds || []) {
+        const claim = claims.get(claimId);
+        if (!claim || claim.status !== 'active'
+            || (node.roleRef && claim.ownerId !== `employment-${node.roleRef.roleIndex}`)
+            || (node.ownerId && claim.ownerId !== node.ownerId)) {
+          throw typedError('resume_evidence_ownership', 'Resume approval blocked by invalid claim ownership.');
+        }
+        if (claim.proofPointId && store.proofPoints?.[claim.proofPointId]?.status !== 'verified') {
+          throw typedError('resume_proof_unverified', 'Verify every cited resume proof point before human approval.');
+        }
+      }
+    }
+    }
+  }
   return { currentHash, currentRevision };
 }
 
@@ -519,7 +572,7 @@ Usage:
       persist nothing.
 
 Actions:
-  proof.verify  artifact.approve  artifact.reject  contact.approve  contact.suppress
+  proof.verify  artifact.review_visual  artifact.approve  artifact.reject  contact.approve  contact.suppress
   story.verify  story.retire  debrief.record  debrief.correct
   outreach.sent  outreach.outcome  application.observe_status
 

@@ -2090,7 +2090,7 @@
     "length": 713058,
     "sha256": "fe39aa1327ed120c03e92d18e6da0cf9f3dbd9460916fa56e69e699ad206be1f"
   },
-  "productVersion": "0.1.0",
+  "productVersion": "0.1.1",
   "publishedBase": "a380827d3cfd58c7c4dca014a109ead0326db18c",
   "reproductionCommand": "JOBSSS_NATIVE_CACHE=\"$(mktemp -d)\" ./bin/jobsss evidence --out \"$(pwd)/evidence/native-validation.json\"",
   "runtimeVerification": {

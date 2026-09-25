@@ -6,30 +6,31 @@
       "name": "jobsss",
       "repo": "lpbangun/jobsss",
       "subdir": "agent-plugin",
-      "ref": "0f3c452a0211b8b0ae8e41b935c647d187f475ad"
+      "ref": "ec70fdf2023472b642785d27877279909d0c89f8"
     },
     {
       "name": "people-finder",
       "repo": "lpbangun/people-finder",
-      "ref": "913fcb5dd771aa4cd5565f319b52e3f953685443"
+      "ref": "8bc9d5cb998e4c0854af104d89958cca5a9a4ca1"
     },
     {
       "name": "contact-brief",
       "repo": "lpbangun/contact-brief",
-      "ref": "29ea479c26fa20ffbeebffc34fa9ce06a45495b0"
+      "ref": "91d7ee1ca13a7fbcde3689d72c29e050930c5e47"
     }
   ],
   "adapter": {
     "purpose": "Codex Windows launch compatibility and three-product composition",
     "businessLogic": false,
+    "sourceSha256": "100adf4f40d604b9aa32ae7ed75cf81dd229e1e722fc790697005a1e60433bb7",
     "pythonResolution": "PATH first; Codex bundled dependency fallback on Windows",
-    "cachebuster": "0198fefd1789"
+    "cachebuster": "e197d03cd02c"
   },
   "files": {
-    ".codex-plugin/plugin.json": "92990c704e0a06d2b83c1b7b9ea949063fbf85ee57620f203df7ab50c0d5d9ca",
+    ".codex-plugin/plugin.json": "d6ec619f0338e23fa365a9aa7a6f827d9eb5acefdcc31ebdf00fe9f0e0c2a15b",
     ".mcp.json": "e6e527f94cf4a7afd9eff17c6c87d716ad8eaf15bccfafacd2c71c2b395fc3e5",
     "products/jobsss/bin/jobsss": "73a0e355cd5e5179a426a97b963b471bad15ed97b8390237be05e2ef9c2fd540",
-    "products/jobsss/plugin.json": "e0db6074046e475ea3f29dfd48d51b884f4e0e48782ad058f3ee6790c0bcfd2f",
+    "products/jobsss/plugin.json": "94536170c07551c9be03d973d904de3d6d8f78a80605213dfcd1893dd0fc542f",
     "products/jobsss/src/authority.js": "e8dee9fd737f00545f52760d49e34f07daab462c6ad7b2f3f6a207754ba2b47d",
     "products/jobsss/src/checklist.js": "03412611b7e8ef22dcec3d6b8499147f96957b9f2e21fd552f9dcba7a9aaa1e6",
     "products/jobsss/src/cli.js": "118ae3628d5a1b6c1fd31f4c6182d7c5d6e0b9d179bc827d0b4ff33bac24c462",
@@ -68,27 +69,27 @@
     "products/people-finder/src/people_finder/results.py": "f09e3280ae2822cec438cfc66ce2bf7a41e33ad6463cf96b1f56d6ce55b2576f",
     "products/people-finder/src/people_finder/schema.py": "b15741e7e7464f954cdbcbeadb873b5d5870b51a66bb99425b2cabaa3cd823e4",
     "products/people-finder/src/people_finder/textutil.py": "fc8b554f9d3772a2feb529e429855f567cecec1be110275bc8e9124d707e3d47",
-    "scripts/python-launcher.mjs": "a9134350bafcfdc222567ed91083d7613aa089be75bfb3d0284f5bbd964d86db",
-    "skills/contact-brief/examples/offline-request.json": "7c175c91d879a36e23614d6ca687fd679bd4e08896ce80eba6857c1d96f0b5e2",
+    "scripts/python-launcher.mjs": "166fe069f275b742c3cefc959820be6650aa2769f6a9fb6a7536ee71fae05244",
     "skills/contact-brief/LICENSE": "55f6c5576024415610ee75457279a2d67a7124a5c8bbedcbf48dd7731f7d6cc5",
-    "skills/contact-brief/README.md": "5490b1dacf8231160500145eb4295d54d395f322cfcb25161e1bd4daab98ae5c",
+    "skills/contact-brief/README.md": "fb8e8e3f6c9c900351f4718ace6cbdc4df74d19464973340b4424b526b0faae1",
+    "skills/contact-brief/SKILL.md": "3370a89de8d8b5f711e1d0f15341526181ccd47684b846dbf041e4a3d9f15777",
+    "skills/contact-brief/examples/offline-request.json": "7c175c91d879a36e23614d6ca687fd679bd4e08896ce80eba6857c1d96f0b5e2",
     "skills/contact-brief/references/contact-brief.schema.json": "18eb1429c48ac4666642ae9e95b7f2777c22c43d4c2572102081d2acd6497e32",
     "skills/contact-brief/references/exa-plugin-result.md": "7e934fff206b8d1c81784df33fcb068e194c063b76755a29cbab225a382a56c7",
     "skills/contact-brief/references/exa-plugin-result.schema.json": "cf2fb6a33b5493781296e997952129fa0470be945c6cfa1383ac12a349f8ec15",
     "skills/contact-brief/references/fiber-agent-result.schema.json": "50a8286d03ac42de1db31694f69140ff9d76645f62af07a14679a3cdad39d859",
-    "skills/contact-brief/references/jobsss.md": "be5dfd2c999eb588c1136ca9daf497fcc6c889b72f2ef56fee8542aea9d85c71",
+    "skills/contact-brief/references/jobsss.md": "a66b735709d0a1f63c196077576ccbb78559b1d8e2e1eb772169dbc44b6553db",
     "skills/contact-brief/references/providers.md": "344662ac759615238083aba0384a5fb8080fb97060c2e514a1b1812df4d80c11",
     "skills/contact-brief/requirements.txt": "4046ca1e3a64f4ea791fb4fb3d8566242086ff1c8e2431e2c349e1052ffc6ba0",
     "skills/contact-brief/routes.json": "9397d452be8f5525222996f8d759aaae13da3bc437a227bac45784434def1240",
     "skills/contact-brief/scripts/cb_providers.py": "3041e7ac3df55c13a47056c7af4f1853ba8e8fc91ef1ffec3455f5738a341f30",
     "skills/contact-brief/scripts/contact_brief.py": "53f05db3fbf1b8d5a8bea26de034a6feac51d18699614c5f17562e14d1d2b58e",
     "skills/contact-brief/scripts/live_test.py": "71f4f4bc247300c446df89af2eb30f207a0d715873009eaecbb1c91ddb2108f7",
-    "skills/contact-brief/SKILL.md": "ee0ec869c030305fe71c19807baff9e8df298d887bf141d5e8a5ad04c37ec505",
+    "skills/jobsss/SKILL.md": "bc34e25553e506cafe271c527c1ce76f50a567bf85b3aefba11ffde430f8a264",
     "skills/jobsss/references/client-compatibility.md": "1c5178c98a9c2ac483ba4e83bb8d9112f7f915caab0ebf57f2546513539722ae",
     "skills/jobsss/references/human-only-handoffs.md": "a13014e3fb78b7578bc21cc281cff8f7cfe7e3b2b69f26ab381fd344d68ceb64",
     "skills/jobsss/references/resume-workflow.md": "4f50428af608041a77ee6c8abb27dcffaca32ace06181caae1f984c9271386ec",
     "skills/jobsss/references/standalone-journey.md": "1f3ee058b489052981df896b4633495cd3f61636c43bc688c56984ec3eed508d",
-    "skills/jobsss/SKILL.md": "a4e67b34899c176d89038d817313765dbf3c7223ca01445982a5376c3a626db7",
-    "skills/people-finder/SKILL.md": "dfda9ca472d2c24ee087a08971fd7e6567468375544781d80d677faf7b3b355b"
+    "skills/people-finder/SKILL.md": "5c477e68a692848f09e0b4f498d23002be21af4436dd068116fd91b71537d4d3"
   }
 }

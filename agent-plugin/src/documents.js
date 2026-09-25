@@ -4,10 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { ensureDataDir, hashText, tokenize } from './store.js';
-import { parseResumeSource, composeResume, resumeBlocks } from './resume-document.js';
+import { parseResumeSource, composeResume } from './resume-document.js';
 import { renderLatexPdf } from './resume-latex.js';
 import { compileResumeDocument, canonicalResumeSource } from './resume-compiler.js';
 import { renderResumeDocument } from './resume-ir-latex.js';
+import { renderResumeBrowser } from './resume-browser.js';
 
 function clean(value) {
   return String(value || '').replace(/^#{1,6}\s*/, '').replace(/^[-*•]\s*/, '')
@@ -223,25 +224,84 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
 
 export function buildResumeMaterial(profile, selected = [], omittedProofs = [], options = {}) {
   const source = String(profile.resumeText || '');
-  if (canonicalResumeSource(source) && options.job?.company === 'Unknown company') {
-    const canonical = compileResumeDocument({
-      profileText: source,
-      postingText: options.job?.description || '',
-      profileId: profile.id,
-      job: options.job,
-      label: options.label || 'A',
-      designId: options.designId || `design-${String(options.label || 'A').toLowerCase()}`,
-    });
-    return { content: canonical.content, blocks: canonical.blocks, parsed: canonical.profile, canonical };
+  const profileText = canonicalResumeSource(source) ? source
+    : migrateLegacyResumeSource(profile, selected, omittedProofs, options);
+  const canonical = compileResumeDocument({
+    profileText,
+    originalSourceText: source,
+    sourceFormat: profileText === source ? 'normalized' : 'migrated_legacy',
+    postingText: options.job?.description || '',
+    profileId: profile.id,
+    job: options.job,
+    label: options.label || 'A',
+    designId: options.designId || `design-${String(options.label || 'A').toLowerCase()}`,
+    contactEmail: options.contactEmail || '',
+    locationNote: options.locationNote || '',
+    proofPoints: profileText === source ? options.proofPoints ?? null : null,
+    activeProofPointIds: profileText === source ? options.activeProofPointIds ?? null : null,
+    excludeClaimIds: options.excludeClaimIds || [],
+    preferClaimIds: options.preferClaimIds || [],
+  });
+  return { content: canonical.content, blocks: canonical.blocks, parsed: canonical.profile, canonical };
+}
+
+function migrateLegacyResumeSource(profile, selected, omittedProofs, options) {
+  const original = parseResumeSource(profile.resumeText || '');
+  const name = String(original.identity || profile.name || '').trim();
+  const sourceLines = String(profile.resumeText || '').split(/\r?\n/);
+  const boundary = sourceLines.findIndex(line => /^(?:#{1,6}\s*)?(?:experience|employment|chronological employment|supported achievements|achievements|projects|education|skills|preferences|boundaries|audit|additional notes|internal|proof verification)\b/i.test(line.trim()));
+  const header = sourceLines.slice(0, boundary < 0 ? sourceLines.length : boundary).map(line => line.trim());
+  const headerContacts = header.filter(line => /@|^(?:Phone|Professional profile|LinkedIn|Website|Location):/i.test(line))
+    .map(line => line.replace(/^(?:Email|Phone|Professional profile|LinkedIn|Website|Location):\s*/i, '').replace(/\.\s*Timezone:[\s\S]*$/i, '').trim());
+  const standalonePlace = header.find(line => /^[A-Z][A-Za-z .'-]+,\s*[A-Z][A-Za-z .'-]+$/.test(line));
+  const contacts = [...headerContacts, ...(standalonePlace && !headerContacts.some(line => line.includes(standalonePlace)) ? [standalonePlace] : [])].join(' | ');
+  if (!name || !/@[^\s|]+\.[^\s|]+/.test(contacts)) {
+    throw Object.assign(new Error('Legacy profile needs a verified name and contact before resume migration.'), { code: 'resume_migration_identity_missing' });
   }
-  const explicitName = source.split(/\r?\n/).some(line => /^Name:\s*/i.test(line.trim()));
-  const parsed = parseResumeSource(source);
-  const opts = { preferences: options.preferences ?? profile?.preferences, job: options.job };
-  if (!explicitName && parsed.experience.some(role => role.company)) {
-    const composed = composeResume(parsed, selected, opts);
-    return { content: composed.content, blocks: resumeBlocks(parsed, selected, opts), parsed };
+  const projected = resumeCopy(profile, selected, omittedProofs, options);
+  const sections = new Map();
+  let section = '';
+  for (const raw of projected.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (/^(EXPERIENCE|PROJECTS|EDUCATION|SKILLS|SUMMARY)$/.test(line)) { section = line; sections.set(section, []); continue; }
+    if (section && line) sections.get(section).push(line);
   }
-  return { content: resumeCopy(profile, selected, omittedProofs, options), blocks: null, parsed };
+  const experience = [];
+  for (const line of sections.get('EXPERIENCE') || []) {
+    if (line.startsWith('- ')) { experience.push(line); continue; }
+    const pipe = line.match(/^((?:19|20)\d{2}(?:-\d{2})?\s*(?:through|to|until|[–—-])\s*(?:(?:19|20)\d{2}(?:-\d{2})?|present))\s*\|\s*([^|]+)\|\s*([^|]+)(?:\|\s*(.+))?$/i);
+    const colon = line.match(/^((?:19|20)\d{2}(?:-\d{2})?\s*(?:through|to|until|[–—-])\s*(?:(?:19|20)\d{2}(?:-\d{2})?|present))\s*:\s*(.+)$/i);
+    const parenthesized = line.match(/^(.+?),\s+(.+?)\s+\(((?:19|20)\d{2}(?:-\d{2})?\s*(?:through|to|until|[–—-])\s*(?:(?:19|20)\d{2}(?:-\d{2})?|present))\)$/i);
+    if (pipe || colon || parenthesized) {
+      const dates = (pipe || colon)?.[1]?.replace(/\s+through\s+|\s+to\s+|\s+until\s+/i, ' - ')
+        || parenthesized[3].replace(/\s+through\s+|\s+to\s+|\s+until\s+/i, ' - ');
+      const parts = pipe ? [pipe[2], pipe[3], pipe[4]] : colon ? colon[2].replace(/\.$/, '').split(/,\s*/) : [parenthesized[1], parenthesized[2]];
+      const title = String(parts[0] || '').trim();
+      const employer = String(parts[1] || '').trim();
+      const location = parts.slice(2).filter(Boolean).join(', ').trim();
+      if (!title || !employer) throw Object.assign(new Error('Legacy role cannot be attributed safely.'), { code: 'resume_migration_role_invalid' });
+      experience.push(employer + (location ? ` - ${location}` : ''), `${title} | ${dates}`);
+    } else experience.push(line);
+  }
+  const education = [];
+  const skills = [...(sections.get('SKILLS') || [])];
+  for (const line of sections.get('EDUCATION') || []) {
+    if (/^(?:Production|Languages|Skills):/i.test(line)) skills.push(line);
+    else education.push(line);
+  }
+  if (!experience.length && !sections.get('PROJECTS')?.length) {
+    throw Object.assign(new Error('Legacy profile has no attributable employment or project evidence to migrate.'), { code: 'resume_migration_evidence_missing' });
+  }
+  const lines = [name, contacts];
+  if (original.summary || sections.get('SUMMARY')?.length) lines.push('', 'SUMMARY', original.summary || sections.get('SUMMARY').join(' '));
+  lines.push('', 'EXPERIENCE', ...experience);
+  if (sections.get('PROJECTS')?.length) lines.push('', 'PROJECTS', ...sections.get('PROJECTS'));
+  if (education.length) {
+    lines.push('', 'EDUCATION');
+    for (const line of education) lines.push(line, '');
+  }
+  if (skills.length) lines.push('', 'SKILLS', ...skills);
+  return lines.join('\n').trim() + '\n';
 }
 
 export function resumeCopy(profile, selected = [], omittedProofs = [], options = {}) {
@@ -571,8 +631,14 @@ export function renderPdf(content, options = {}) {
 }
 
 export function exportPdf(dataDir, content, options = {}) {
+  if (!['resume', 'cover_letter'].includes(options.kind)) {
+    throw Object.assign(new Error('PDF export requires an explicit document kind.'), { code: 'document_kind_required' });
+  }
+  if (options.kind === 'resume' && !options.document) {
+    throw Object.assign(new Error('Resume PDF requires a canonical validated document.'), { code: 'resume_document_required' });
+  }
   const rendered = options.document
-    ? (renderResumeDocument(options.document, { style: options.style, requireLatex: true, sourceDateEpoch: options.sourceDateEpoch }) || renderPdf(content, options))
+    ? renderResumeBrowser(options.document)
     : (renderLatexPdf(content, options) || renderPdf(content, options));
   const { bytes, ...layout } = rendered;
   const root = ensureDataDir(dataDir);

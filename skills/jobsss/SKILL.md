@@ -31,7 +31,7 @@ What JobSSS does, and what it never claims:
   `./bin/jobsss decide`, and that record is attributed to the human, never to
   JobSSS;
 - unsupported / deferred — external sending, application submission, interview
-  scheduling or attestation, packet freezing, and browser automation are
+  scheduling or attestation, packet freezing, and browser automation against sites are
   blocked, out of scope, and never claimed.
 
 ## Core journey (offline, local, no API key)
@@ -82,7 +82,7 @@ and browser actions stay blocked or human-only.
 | Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`, `save_job`, `skip_job`, `archive_job`, `list_jobs` | Fetch public Greenhouse ATS boards by `boardToken`, or select the public ohshi.work intelligence saved-search source with query filters; staged offline search data under `PLUGIN_DATA` is also supported. ohshi data is CC BY 4.0 and must retain attribution. Discoveries stay database-only until saved/pursued. |
 | Scoring | `score_job`, `get_score` | Offline deterministic multidimensional fit (`jobos.fit-score.v1`) with all seven weighted dimensions; no API key. `get_score` is a read-only restart readback of the stored fit/eligibility/constraints for an owned job. |
 | Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` — it cannot attest submission. |
-| Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Tailoring extracts posting requirements, selects relevant owned proof, and reports coverage gaps. Answers use exact owned proof wording; never arbitrary claims, invented metrics, auto-fill, or send. `save_answer` accepts only `sensitivity: public \| personal \| sensitive \| restricted` (default `personal`) and `reuseScope: global \| employer_specific \| never_auto_fill`; other values fail with typed `invalid_sensitivity`/`invalid_reuse_scope` for the caller to correct. |
+| Materials | `inspect_resume_requirements`, `tailor_resume`, `revise_resume`, `render_resume`, `inspect_resume_qa`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Resume drafting uses one canonical document for normalized and migrated legacy profiles. Revise by preferring or suppressing source-linked claim IDs, then inspect requirement spans and the stored PDF QA before human review. Answers use exact owned proof wording; never arbitrary claims, invented metrics, auto-fill, or send. `save_answer` accepts only `sensitivity: public \| personal \| sensitive \| restricted` (default `personal`) and `reuseScope: global \| employer_specific \| never_auto_fill`; other values fail with typed `invalid_sensitivity`/`invalid_reuse_scope` for the caller to correct. |
 | Networking drafts | `record_research`, `list_research`, `map_reachable_network`, `plan_outreach`, `draft_outreach`, `list_outreach` | Local people/company research, maps, plans, follow-ups, and drafts only. Sending stays human-only; `mark_outreach_sent` is not MCP. |
 | Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep`, `get_interview_prep`, `interview_debrief_handoff` | Local story drafting, preparation, coverage gaps, and a non-attesting handoff. Verification/debrief confirmation stays human-only via trusted CLI/TUI. |
 | Sync preview | `preview_sync` | Dry-run, secret-safe preview of derived/export data. No automatic or cloud sync. |
@@ -138,22 +138,23 @@ human-only catalog.
 
 ### Applicant documents and fit/contact evidence
 
-For a requested PDF, call `tailor_resume` or `draft_cover_letter` with
-`{profileId, jobId, format: "pdf"}`. The native runtime writes real searchable
-PDF bytes under `PLUGIN_DATA`; return the actual `document.path`, page count,
-and layout metadata, not Markdown relabeled as PDF or an external conversion.
-Export is bundled in standalone releases and needs no browser, system converter,
-font installation, or network. Letter pages use 44pt margins and body text of
-10–11pt; longer sources paginate rather than clip or hide content. Latin/WinAnsi
-text is supported; unsupported scripts return `pdf_unsupported_character`
-instead of silently dropping characters. Inspect every exported page before
-sharing. Searchable single-column text is an ATS-readability proxy, not a
-proprietary ATS score or guarantee.
+For a resume, follow [the resume workflow](references/resume-workflow.md).
+Use `doctor.resumeRenderer` before `render_resume` with
+`{profileId, jobId, contactEmail}`. A local Chrome/Edge executable
+prints plugin-generated HTML from a local file. Return the actual `document.path`,
+renderer, page count, and QA metadata. Missing browser returns
+`resume_renderer_unavailable`; do not substitute the native material renderer.
+The one-page Letter PDF remains under `PLUGIN_DATA`. Call
+`inspect_resume_requirements` and `inspect_resume_qa`, then inspect the
+source-linked draft, requirement gaps, searchable text, and rendered page before
+sharing. Trusted approval requires PDF QA and verified cited proof points.
+For a cover letter, `draft_cover_letter` with `format: "pdf"` retains the native
+renderer. Searchable text is an ATS-readability proxy, not an ATS guarantee.
 
 Keep the imported resume as the fact source. Change preferences with
 `update_profile`; never replace achievements with formatting instructions.
 A real preference revision (for example the target role family) flows into
-the tailored resume focus line, so successive native `tailor_resume` PDFs
+the tailored resume focus, so successive `tailor_resume` PDFs
 stay distinct truthful revisions and both are kept under `PLUGIN_DATA`;
 formatting-only changes regenerate the identical file.
 Applicant copy excludes proof IDs, posting inventories, and human-review notes;

@@ -19,7 +19,7 @@ The release pipeline still uses the sole native implementation in `src/packaging
 Complete evidence is recorded once:
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `e10f723d6d61a46d8a53255fbd0adb4bf0be8f2c7c054a26d3e2382b387f090f`
+- SHA-256: `6c8a61d96393738f506e4bb17531ea1fd81cf4725c9f93c8373274bfbe24b624`
 - Exact reproduction command:
 
 ```bash
@@ -33,6 +33,8 @@ Current native artifact refresh (2026-09-20, host-composition slice): the pinned
 Current native artifact refresh (2026-09-20, install-surface slice): the pinned evidence command was re-run with a caller-selected external `JOBSSS_NATIVE_CACHE` after the Hermes install-surface runtime changes (portable account-database home lookup through `os.userInfo` in `src/compat-probe.js` replacing direct system account-file parsing, tolerance for a checkout test tree absent next to the runtime — the thin install package ships none, and the frozen-fixture content-hash allowlist already covers that case — plus semantics-preserving message and identifier rephrasings in `src/release.js`, `src/sea-build.js`, `src/p3-contracts.js`, and `src/evidence.js`). Those runtime source changes moved the SEA payload (payload length `628266` → `645596` bytes) and the recorded native output hashes and layout offsets, so the previously committed bytes (`c21afefe6c6432cd5a3eac3e055c892007f9aa4ee3d889ff9c33806b4091bb31`) were stale; B67 rejected them instead of silently accepting a stale artifact. Official inputs, injector and validator pins are unchanged. This remains local build/test structural validation only — not publication, matching-host runtime proof, or a new reviewer verdict.
 
 Current native artifact refresh (2026-09-21, Codex portability slice): the pinned evidence command was run in two fresh processes with separate empty external caches after the job-heading parser, native resume layout, Windows evidence-launcher, and CRLF SEA-transform fixes. Both outputs were byte-identical at SHA-256 `e10f723d6d61a46d8a53255fbd0adb4bf0be8f2c7c054a26d3e2382b387f090f`. Official inputs, injector, and independent validator pins are unchanged. This is local structural evidence only; cross-built targets remain unverified at runtime.
+
+Current native artifact refresh (2026-09-24, first-class resume slice): after the source-linked compiler, local Chrome/Edge resume adapter, and standalone bundle list changed, the pinned evidence command was run twice with separate empty external caches. The outputs were byte-identical at the current SHA-256 cited above. The local browser is a declared runtime prerequisite only for resume PDF export; no browser binary is bundled. Native format evidence remains structural and does not attest browser availability on other hosts.
 
 The command uses a caller-selected external empty cache, downloads only locked inputs, verifies checksums before validation, avoids user configuration/data and prior generated files, and emits deterministic path- and timestamp-free JSON. Frozen B67 requires two fresh processes with empty caches to produce byte-identical output matching the repository artifact.
 

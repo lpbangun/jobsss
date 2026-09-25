@@ -67,6 +67,7 @@ const MODULES = Object.freeze([
   'resume-compiler.js',
   'resume-latex.js',
   'resume-ir-latex.js',
+  'resume-browser.js',
   'documents.js',
   'scoring.js',
   'workflows.js',

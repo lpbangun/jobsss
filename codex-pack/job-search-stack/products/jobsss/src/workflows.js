@@ -17,6 +17,7 @@
 //   - preview/export payloads are secret-safe (no resume text dumps, no env
 //     secrets) and never claim a sync or send happened
 import { id, now, hashText, tokenize, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
+import fs from 'node:fs';
 import { resumeCopy, coverLetterCopy, exportPdf, supportedAchievement, buildResumeMaterial } from './documents.js';
 
 // Local, human-reviewable application states. Anything that would attest an
@@ -645,7 +646,7 @@ function buildCoverage(requirements, selected) {
  * present in profile proof points may appear as achievements; no metrics are
  * invented. Persists a review artifact and returns the document content.
  */
-function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir, style, label, designId }) {
+function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir, style, label, designId, contactEmail, locationNote, excludeClaimIds = [], preferClaimIds = [] }) {
   format = String(format).toLowerCase();
   if (!['markdown', 'md', 'text', 'pdf'].includes(format)) throw Object.assign(new Error('Supported document formats: markdown, text, pdf.'), { code: 'unsupported_document_format' });
   const job = requireJobOwned(store, jobId, profileId);
@@ -661,7 +662,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   const ranked = selectRelevantProofs(store, profileId, requirements);
   const selected = ranked.selected;
   const selectedIds = selected.map(entry => entry.proof.id);
-  const coverage = buildCoverage(requirements, selected);
+  let coverage = buildCoverage(requirements, selected);
   const selectedProofs = selected.map(entry => entry.proof);
   let blocks = null;
   let canonical = null;
@@ -672,12 +673,28 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
         profile,
         selectedProofs,
         Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId && !proofs.some(active => active.id === proof.id)),
-        { preferences: profile.preferences, job, label, designId },
+        { preferences: profile.preferences, job, label, designId, contactEmail, locationNote,
+          excludeClaimIds, preferClaimIds,
+          proofPoints: Object.values(store.proofPoints || {}).filter(proof => proof.profileId === profileId),
+          activeProofPointIds: activeProofIdsFor(store, profileId) ? [...activeProofIdsFor(store, profileId)] : null },
       );
       blocks = material.blocks;
       canonical = material.canonical || null;
       return material.content;
     })();
+  if (canonical) {
+    const items = canonical.ledger.target.requirements.map(item => ({
+      requirementId: item.requirementId,
+      sourceText: item.text,
+      sourceLine: item.sourceLine,
+      priority: item.priority,
+      status: item.status,
+      evidenceIds: item.evidenceIds,
+      rationale: item.reason || (item.status === 'direct' ? 'Source wording directly supports this requirement.' : 'No source evidence establishes this requirement.'),
+    }));
+    coverage = { items, matches: items.filter(item => item.status === 'direct'),
+      gaps: items.filter(item => item.status !== 'direct') };
+  }
   const styleId = String(style || 'navy').toLowerCase();
   const normClaim = text => tokenize(String(text || '')).join(' ');
   const citationPool = kind === 'cover_letter' ? selectedProofs : proofs;
@@ -687,15 +704,20 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     return ` ${normClaim(body)} `.includes(` ${claim} `);
   }).map(proof => proof.id);
   const proofPointIds = usedProofIds.length ? usedProofIds : selectedIds;
-  const pdf = format === 'pdf' ? exportPdf(dataDir, body, { style: styleId, blocks, document: canonical?.ir }) : null;
-  const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${format}:${styleId}:${hashText(body).slice(0, 12)}`);
+  const contentHash = canonical
+    ? hashText(JSON.stringify({ body, irSha256: canonical.irSha256, ledger: canonical.ledger, selectedIds, proofPointIds }))
+    : hashText(body);
+  const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${format}:${styleId}:${contentHash.slice(0, 12)}`);
   const nowIso = now();
   const existingArtifact = ensure(store, 'artifacts')[artifactId];
   // Unchanged regeneration must retain trusted artifact approvals/rejections,
   // actor/timestamps, and decision ledger/history: identical content returns
   // the existing record untouched. Changed content mints a distinct id above
   // and never inherits an unrelated human approval.
-  if (existingArtifact && existingArtifact.contentHash === hashText(body) && existingArtifact.content === body) {
+  if (existingArtifact && existingArtifact.contentHash === contentHash && existingArtifact.content === body) {
+    if (format === 'pdf' && (!existingArtifact.export?.path || !fs.existsSync(existingArtifact.export.path))) {
+      throw Object.assign(new Error('Stored resume PDF is missing; the existing review artifact cannot be reused.'), { code: 'document_export_missing' });
+    }
     return {
       ok: true,
       jobId,
@@ -705,24 +727,25 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
       requirements,
       selectedProofPointIds: selectedIds,
       selectedProofIds: selectedIds,
-      coverage: { matches: coverage.matches, gaps: coverage.gaps },
+      coverage,
       gaps: coverage.gaps,
       document: {
         content: body,
-        ...(pdf || {}),
+        ...(existingArtifact.export || {}),
         format: existingArtifact.format || format,
         kind,
         proofPointIds: existingArtifact.proofPointIds || proofPointIds,
         selectedProofPointIds: selectedIds,
         requirements,
         gaps: coverage.gaps,
-        ...(canonical ? { resumeDocument: canonical } : {}),
+        ...(existingArtifact.resumeDocument ? { resumeDocument: existingArtifact.resumeDocument } : {}),
       },
       proofPointIds: existingArtifact.proofPointIds || proofPointIds,
       format: existingArtifact.format || format,
       message: 'Unchanged draft already exists; trusted human review state was preserved with no overwrite.',
     };
   }
+  const pdf = format === 'pdf' ? exportPdf(dataDir, body, { style: styleId, blocks, document: canonical?.ir, kind }) : null;
   const artifact = {
     id: artifactId,
     jobId,
@@ -731,7 +754,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     title: kind === 'resume' ? `Resume draft: ${job.title}` : `Cover letter draft: ${job.title}`,
     status: 'draft_needs_human_review',
     proofPointIds,
-    contentHash: hashText(body),
+    contentHash,
     ...(pdf ? { export: pdf } : {}),
     ...(canonical ? { resumeDocument: canonical } : {}),
     reviewNote: 'human verification required',
@@ -755,7 +778,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     requirements,
     selectedProofPointIds: selectedIds,
     selectedProofIds: selectedIds,
-    coverage: { matches: coverage.matches, gaps: coverage.gaps },
+    coverage,
     gaps: coverage.gaps,
     document: {
       content: body,
@@ -775,8 +798,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   };
 }
 
-export function tailorResume(store, { jobId, profileId, format = 'markdown', dataDir, style, label, designId }) {
-  return buildMaterialDraft(store, { jobId, profileId, kind: 'resume', format, dataDir, style, label, designId });
+export function tailorResume(store, { jobId, profileId, format = 'markdown', dataDir, style, label, designId, contactEmail, locationNote, excludeClaimIds, preferClaimIds }) {
+  return buildMaterialDraft(store, { jobId, profileId, kind: 'resume', format, dataDir, style, label, designId, contactEmail, locationNote, excludeClaimIds, preferClaimIds });
 }
 
 export function draftCoverLetter(store, { jobId, profileId, format = 'markdown', dataDir }) {

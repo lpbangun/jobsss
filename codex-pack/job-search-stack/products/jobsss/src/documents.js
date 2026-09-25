@@ -638,7 +638,7 @@ export function exportPdf(dataDir, content, options = {}) {
     throw Object.assign(new Error('Resume PDF requires a canonical validated document.'), { code: 'resume_document_required' });
   }
   const rendered = options.document
-    ? renderResumeBrowser(options.document)
+    ? renderResumeBrowser(options.document, { style: options.style || 'navy' })
     : (renderLatexPdf(content, options) || renderPdf(content, options));
   const { bytes, ...layout } = rendered;
   const root = ensureDataDir(dataDir);

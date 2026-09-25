@@ -33,13 +33,22 @@ appear covered. No tool here submits an application or contacts an employer.
    their project owner, and distinguish prototypes, coursework, and live work.
    Do not turn interview participation into scheduling ownership or learning
    material creation into hiring/management tenure. Name genuine gaps.
-5. Run `doctor` and check `resumeRenderer.available`. Call `render_resume` (or
-   `tailor_resume` with `format: "pdf"`). Local
+5. Run `doctor` and check `resumeRenderer.available`. Call
+   `list_resume_designs` to see the current design catalog. Choose `style: "navy"`,
+   `"editorial"`, or `"scan"` when calling `render_resume` (or `tailor_resume`
+   with `format: "pdf"`). Keep the contact address, location note, claim
+   selection, and source revision fixed when comparing styles. Each style
+   creates its own draft PDF and visual review binding; differences in layout
+   alone do not establish which design performs better with employers. Use
+   `compare_resume_designs` with the same profile and job to render all three
+   from one content revision. `list_resume_design_variants` reads them back;
+   `select_resume_design` records a user's preferred artifact. Selection is a
+   local preference, not evidence that the resume was sent, used, or successful. Local
    Chrome/Edge prints plugin-generated HTML to a one-page Letter PDF. Set
    `JOBSSS_RESUME_BROWSER` to an absolute Chrome/Edge executable path if detection
    fails. The browser must stay on the local generated file; it is not an
    application browser. Missing capability returns `resume_renderer_unavailable`.
-6. Call `inspect_resume_qa`; the local browser checks actual layout bounds at
+6. Call `inspect_resume_qa` for each variant; the local browser checks actual layout bounds at
    Letter printable width, then the PDF page count and searchable text mapping.
    Trusted approval blocks missing PDF QA, invalid ownership, or unverified
    cited proof points. Review the rendered PDF visually, then record that

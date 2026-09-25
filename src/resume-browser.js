@@ -41,7 +41,39 @@ function escape(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export function resumeHtml(document) {
+const RESUME_DESIGNS = Object.freeze([
+  Object.freeze({
+    id: 'navy', name: 'Navy Professional', version: 1,
+    description: 'The existing restrained navy design with a shaded summary and clear section dividers.',
+    bodyFontSize: 9.7,
+  }),
+  Object.freeze({
+    id: 'editorial', name: 'Editorial Serif', version: 1,
+    description: 'A classic serif design with a centered name and a quiet, literary hierarchy.',
+    bodyFontSize: 9.7,
+  }),
+  Object.freeze({
+    id: 'scan', name: 'Quick Scan', version: 1,
+    description: 'A compact sans-serif design with strong section labels and a high-contrast teal accent.',
+    bodyFontSize: 9.4,
+  }),
+]);
+
+export function listResumeDesigns() {
+  return RESUME_DESIGNS.map(({ id, name, version, description }) => ({ id, name, version, description }));
+}
+
+function resolveResumeDesign(style = 'navy') {
+  const id = String(style || 'navy').trim().toLowerCase();
+  const design = RESUME_DESIGNS.find(item => item.id === id);
+  if (!design) {
+    throw Object.assign(new Error(`Unknown resume design "${id}". Choose navy, editorial, or scan.`), { code: 'resume_design_invalid' });
+  }
+  return design;
+}
+
+export function resumeHtml(document, { style = 'navy' } = {}) {
+  const design = resolveResumeDesign(style);
   const nodes = document.nodes.filter(node => node.renderPolicy === 'required');
   const body = [];
   let list = false;
@@ -77,10 +109,40 @@ h3 { color:#202633; font-size:9.6pt; line-height:1.13; margin:5px 0 2px; break-a
 p { margin:0 0 3px; } .education { font-size:9.3pt; } .skills-group { font-weight:bold; margin-bottom:1px; }
 .skill { display:inline; font-size:9pt; } .skill:after { content:" · "; } .skill:last-child:after { content:""; }
 ul { margin:2px 0 5px 18px; padding:0; } li { margin:0 0 3px; padding-left:3px; }
-</style></head><body>${body.join('\n')}</body></html>`;
+
+/* Editorial keeps the same single-column content order but uses typographic
+   hierarchy and spacing in place of the navy design's shaded panels. */
+.design-editorial { font-family:Georgia,'Times New Roman',serif; color:#302d2a; line-height:1.22; padding-top:0; border-top:0; }
+.design-editorial h1 { color:#513a3a; font-size:21pt; font-weight:normal; letter-spacing:.01em; line-height:1.04; text-align:center; margin:0 0 4px; }
+.design-editorial .contact { color:#625d58; font-family:Arial,Helvetica,sans-serif; font-size:8.4pt; line-height:1.2; text-align:center; border-bottom:1px solid #cfc5b8; margin:0 0 9px; padding-bottom:7px; }
+.design-editorial .summary { background:transparent; border-left:2px solid #9a775b; color:#48433e; font-size:9.7pt; line-height:1.3; margin:0 0 9px; padding:2px 0 2px 10px; }
+.design-editorial h2 { color:#76554d; border-bottom:1px solid #d8cec3; font-family:Arial,Helvetica,sans-serif; font-size:9.5pt; font-weight:700; letter-spacing:.04em; line-height:1.1; margin:9px 0 4px; padding-bottom:3px; text-transform:uppercase; }
+.design-editorial h3 { color:#302d2a; font-size:9.6pt; line-height:1.15; margin:4px 0 2px; }
+.design-editorial p { margin-bottom:3px; } .design-editorial .education { color:#47413c; font-size:9.2pt; }
+.design-editorial .skills-group { color:#514840; font-family:Arial,Helvetica,sans-serif; font-size:9.2pt; }
+.design-editorial .skill { font-family:Arial,Helvetica,sans-serif; font-size:8.9pt; }
+.design-editorial .skill:after { content:"  /  "; color:#a28d7b; }
+.design-editorial .skill:last-child:after { content:""; }
+.design-editorial ul { margin:2px 0 5px 17px; } .design-editorial li { margin-bottom:3px; padding-left:2px; }
+
+/* Quick Scan uses a compact sans-serif rhythm and shaded section labels. */
+.design-scan { font-family:Arial,Helvetica,sans-serif; color:#1e2933; font-size:9.4pt; line-height:1.18; border-top:4px solid #187b78; padding-top:7px; }
+.design-scan h1 { color:#173b47; font-size:19pt; letter-spacing:.005em; line-height:1.02; margin:0 0 3px; }
+.design-scan .contact { color:#425761; font-size:8.4pt; line-height:1.1; margin:0 0 7px; }
+.design-scan .summary { background:#fff; border:0; border-bottom:1px solid #bac9cc; color:#253a40; font-size:9.5pt; line-height:1.22; margin:0 0 7px; padding:0 0 7px; }
+.design-scan h2 { background:#edf3f3; border:0; border-left:3px solid #187b78; color:#174c4c; font-size:9.4pt; letter-spacing:.07em; line-height:1.04; margin:8px 0 4px; padding:4px 6px; text-transform:uppercase; }
+.design-scan h3 { color:#1e2933; font-size:9.3pt; line-height:1.25; margin:5px 0 3px; }
+.design-scan p { margin:0 0 2px; } .design-scan .education { color:#384950; font-size:9pt; }
+.design-scan .skills-group { color:#25464a; font-size:9pt; margin-bottom:0; }
+.design-scan .skill { color:#35444b; font-size:8.7pt; }
+.design-scan .skill:after { content:"  •  "; color:#57918e; }
+.design-scan .skill:last-child:after { content:""; }
+.design-scan ul { margin:1px 0 4px 17px; } .design-scan li { margin-bottom:2px; padding-left:2px; }
+</style></head><body class="design-${design.id}">${body.join('\n')}</body></html>`;
 }
 
-export function renderResumeBrowser(document) {
+export function renderResumeBrowser(document, { style = 'navy' } = {}) {
+  const design = resolveResumeDesign(style);
   if (!document?.candidateName?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(document.contactEmail || '')
       || !document.nodes?.some(node => node.type === 'name' && node.text === document.candidateName)
       || !document.nodes?.some(node => node.type === 'contact' && node.text.includes(document.contactEmail))) {
@@ -92,7 +154,7 @@ export function renderResumeBrowser(document) {
   try {
     const html = path.join(temp, 'resume.html');
     const pdf = path.join(temp, 'resume.pdf');
-    const htmlText = resumeHtml(document);
+    const htmlText = resumeHtml(document, { style: design.id });
     fs.writeFileSync(html, htmlText, { mode: 0o600 });
     // Probe the same CSS at Letter's printable width. The browser measures
     // actual laid-out boxes before export; the PDF page count remains a
@@ -138,10 +200,12 @@ export function renderResumeBrowser(document) {
     if (pageCount !== 1 || !bytes.includes(Buffer.from('/ToUnicode'))) {
       throw Object.assign(new Error(`Resume PDF QA failed: ${pageCount} page(s) or missing searchable-text mapping.`), { code: 'resume_pdf_qa_failed' });
     }
-    return { bytes, pageCount, pageSize: 'Letter', bodyFontSize: 9.7, marginsPt: 28.8,
+    return { bytes, pageCount, pageSize: 'Letter', bodyFontSize: design.bodyFontSize, marginsPt: 28.8,
       pageMarginsPt: { top: 28.8, right: 34.56, bottom: 30.24, left: 34.56 },
       engine: 'local-chrome-edge', rendererExecutable: capability.executable,
-      qa: { onePage: true, searchableTextMapping: true,
+      design: { id: design.id, name: design.name, version: design.version, description: design.description },
+      designId: design.id,
+      qa: { onePage: true, searchableTextMapping: true, designId: design.id,
         layoutBoundsPx: { minX: measured.minX, maxX: measured.maxX, maxY: measured.maxY,
           printableWidth: printableWidthPx, printableHeight: printableHeightPx },
         measuredBodyFontPx: measured.bodyFontPx, contentReview: 'required', visualReview: 'required' } };

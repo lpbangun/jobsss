@@ -19,6 +19,7 @@
 import { id, now, hashText, tokenize, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
 import fs from 'node:fs';
 import { resumeCopy, coverLetterCopy, exportPdf, supportedAchievement, buildResumeMaterial } from './documents.js';
+import { listResumeDesigns } from './resume-browser.js';
 
 // Local, human-reviewable application states. Anything that would attest an
 // external action (applied, submitted, sent, approved, ...) is rejected.
@@ -649,6 +650,10 @@ function buildCoverage(requirements, selected) {
 function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir, style, label, designId, contactEmail, locationNote, excludeClaimIds = [], preferClaimIds = [] }) {
   format = String(format).toLowerCase();
   if (!['markdown', 'md', 'text', 'pdf'].includes(format)) throw Object.assign(new Error('Supported document formats: markdown, text, pdf.'), { code: 'unsupported_document_format' });
+  const styleId = String(style || 'navy').trim().toLowerCase();
+  if (kind === 'resume' && !listResumeDesigns().some(design => design.id === styleId)) {
+    throw Object.assign(new Error(`Unknown resume design "${styleId}". Choose navy, editorial, or scan.`), { code: 'resume_design_invalid' });
+  }
   const job = requireJobOwned(store, jobId, profileId);
   const profile = requireProfile(store, profileId);
   const proofs = proofPointsFor(store, profileId);
@@ -695,7 +700,6 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     coverage = { items, matches: items.filter(item => item.status === 'direct'),
       gaps: items.filter(item => item.status !== 'direct') };
   }
-  const styleId = String(style || 'navy').toLowerCase();
   const normClaim = text => tokenize(String(text || '')).join(' ');
   const citationPool = kind === 'cover_letter' ? selectedProofs : proofs;
   const usedProofIds = citationPool.filter(proof => {
@@ -707,6 +711,9 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   const contentHash = canonical
     ? hashText(JSON.stringify({ body, irSha256: canonical.irSha256, ledger: canonical.ledger, selectedIds, proofPointIds }))
     : hashText(body);
+  const variantGroupId = kind === 'resume'
+    ? id('resume-variants', `${profileId}:${jobId}:${contentHash}`)
+    : null;
   const artifactId = id('artifact', `${profileId}:${jobId}:${kind}:${format}:${styleId}:${contentHash.slice(0, 12)}`);
   const nowIso = now();
   const existingArtifact = ensure(store, 'artifacts')[artifactId];
@@ -714,7 +721,13 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   // actor/timestamps, and decision ledger/history: identical content returns
   // the existing record untouched. Changed content mints a distinct id above
   // and never inherits an unrelated human approval.
-  if (existingArtifact && existingArtifact.contentHash === contentHash && existingArtifact.content === body) {
+  // Prior releases accepted style but ignored it for canonical browser PDFs.
+  // Re-render once when the stored export lacks the requested design metadata.
+  const currentDesign = kind === 'resume' ? listResumeDesigns().find(item => item.id === styleId) : null;
+  const existingDesignMatches = format !== 'pdf' || kind !== 'resume'
+    || (existingArtifact?.export?.design?.id === styleId
+      && existingArtifact?.export?.design?.version === currentDesign.version);
+  if (existingArtifact && existingArtifact.contentHash === contentHash && existingArtifact.content === body && existingDesignMatches) {
     if (format === 'pdf' && (!existingArtifact.export?.path || !fs.existsSync(existingArtifact.export.path))) {
       throw Object.assign(new Error('Stored resume PDF is missing; the existing review artifact cannot be reused.'), { code: 'document_export_missing' });
     }
@@ -723,6 +736,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
       jobId,
       profileId,
       artifactId,
+      contentHash,
+      ...(variantGroupId ? { variantGroupId } : {}),
       artifact: existingArtifact,
       requirements,
       selectedProofPointIds: selectedIds,
@@ -734,6 +749,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
         ...(existingArtifact.export || {}),
         format: existingArtifact.format || format,
         kind,
+        ...(variantGroupId ? { variantGroupId, designId: styleId,
+          design: existingArtifact.export?.design || listResumeDesigns().find(item => item.id === styleId) } : {}),
         proofPointIds: existingArtifact.proofPointIds || proofPointIds,
         selectedProofPointIds: selectedIds,
         requirements,
@@ -745,6 +762,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
       message: 'Unchanged draft already exists; trusted human review state was preserved with no overwrite.',
     };
   }
+  const design = kind === 'resume' ? listResumeDesigns().find(item => item.id === styleId) : null;
   const pdf = format === 'pdf' ? exportPdf(dataDir, body, { style: styleId, blocks, document: canonical?.ir, kind }) : null;
   const artifact = {
     id: artifactId,
@@ -755,6 +773,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     status: 'draft_needs_human_review',
     proofPointIds,
     contentHash,
+    ...(variantGroupId ? { variantGroupId, designId: styleId, design: pdf?.design || design } : {}),
     ...(pdf ? { export: pdf } : {}),
     ...(canonical ? { resumeDocument: canonical } : {}),
     reviewNote: 'human verification required',
@@ -774,6 +793,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     jobId,
     profileId,
     artifactId,
+    contentHash,
+    ...(variantGroupId ? { variantGroupId } : {}),
     artifact,
     requirements,
     selectedProofPointIds: selectedIds,
@@ -785,6 +806,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
       ...(pdf || {}),
       format,
       kind,
+      ...(variantGroupId ? { variantGroupId, designId: styleId, design: pdf?.design || design } : {}),
       proofPointIds,
       selectedProofPointIds: selectedIds,
       requirements,
@@ -800,6 +822,91 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
 
 export function tailorResume(store, { jobId, profileId, format = 'markdown', dataDir, style, label, designId, contactEmail, locationNote, excludeClaimIds, preferClaimIds }) {
   return buildMaterialDraft(store, { jobId, profileId, kind: 'resume', format, dataDir, style, label, designId, contactEmail, locationNote, excludeClaimIds, preferClaimIds });
+}
+
+/** Render all available visual treatments from one unchanged resume revision. */
+export function compareResumeDesigns(store, options = {}) {
+  if (options.format && String(options.format).toLowerCase() !== 'pdf') {
+    throw Object.assign(new Error('Resume design comparisons require PDF output.'), { code: 'unsupported_document_format' });
+  }
+  const designs = listResumeDesigns();
+  const variants = designs.map(design => tailorResume(store, { ...options, format: 'pdf', style: design.id }));
+  const first = variants[0];
+  if (variants.some(variant => variant.contentHash !== first.contentHash || variant.variantGroupId !== first.variantGroupId)) {
+    throw Object.assign(new Error('Resume design comparison did not preserve one shared canonical content revision.'), { code: 'resume_variant_content_mismatch' });
+  }
+  return {
+    ok: true,
+    jobId: options.jobId,
+    profileId: options.profileId,
+    contentHash: first.contentHash,
+    variantGroupId: first.variantGroupId,
+    variants: variants.map((variant, index) => ({
+      designId: designs[index].id,
+      design: variant.artifact.design || designs[index],
+      artifactId: variant.artifactId,
+      contentHash: variant.contentHash,
+      variantGroupId: variant.variantGroupId,
+      status: variant.artifact.status,
+      ...(variant.artifact.export ? { export: variant.artifact.export } : {}),
+      ...(variant.document?.format ? { format: variant.document.format } : {}),
+    })),
+    message: 'Every design uses the same canonical resume content. Compare the drafts visually; this records no submission, use, or winning design.',
+  };
+}
+
+/** Record a user's local design preference for a generated resume variant. */
+export function selectResumeDesign(store, { profileId, artifactId }) {
+  const profile = requireProfile(store, profileId);
+  const artifact = store.artifacts?.[String(artifactId || '').trim()];
+  if (!artifact || artifact.profileId !== profile.id || artifact.kind !== 'resume_draft' || !artifact.resumeDocument) {
+    throw Object.assign(new Error('A profile-owned canonical resume variant is required.'), { code: 'resume_artifact_not_found' });
+  }
+  const designId = String(artifact.export?.design?.id || artifact.designId || '').trim();
+  const variantGroupId = String(artifact.variantGroupId || '').trim();
+  if (!variantGroupId || !designId || !artifact.export?.path) {
+    throw Object.assign(new Error('Render a PDF design variant before selecting it.'), { code: 'resume_design_variant_missing' });
+  }
+  const selectedAt = now();
+  const selection = {
+    profileId: profile.id,
+    jobId: artifact.jobId,
+    variantGroupId,
+    artifactId: artifact.id,
+    designId,
+    selectedAt,
+    meaning: 'User preference for review; does not attest submission or use and is not an outcome measurement.',
+  };
+  for (const sibling of Object.values(store.artifacts || {})) {
+    if (sibling.profileId === profile.id && sibling.kind === 'resume_draft' && sibling.variantGroupId === variantGroupId) {
+      sibling.designSelection = selection;
+    }
+  }
+  store.audit = Array.isArray(store.audit) ? store.audit : [];
+  store.audit.push({ event: 'resume_design_selected', profileId: profile.id, jobId: artifact.jobId,
+    variantGroupId, artifactId: artifact.id, designId, createdAt: selectedAt });
+  return { ok: true, selection, message: 'Local design preference recorded. No resume was submitted or marked as used.' };
+}
+
+/** Read the persisted alternatives for one profile-owned content revision. */
+export function listResumeDesignVariants(store, { profileId, variantGroupId }) {
+  const profile = requireProfile(store, profileId);
+  const group = String(variantGroupId || '').trim();
+  if (!group) throw Object.assign(new Error('variantGroupId is required.'), { code: 'missing_variant_group' });
+  const variants = Object.values(store.artifacts || {})
+    .filter(item => item.profileId === profile.id && item.kind === 'resume_draft' && item.variantGroupId === group
+      && item.format === 'pdf' && item.export?.design?.id)
+    .sort((a, b) => String(a.designId).localeCompare(String(b.designId)))
+    .map(item => ({ artifactId: item.id, jobId: item.jobId, designId: item.designId,
+      design: item.design || item.export?.design || null, contentHash: item.contentHash,
+      variantGroupId: item.variantGroupId, status: item.status, format: item.format,
+      export: item.export ? { path: item.export.path, mimeType: item.export.mimeType,
+        sha256: item.export.sha256, pageCount: item.export.pageCount, pageSize: item.export.pageSize,
+        engine: item.export.engine, qa: item.export.qa } : null,
+      designSelection: item.designSelection || null }));
+  if (!variants.length) throw Object.assign(new Error('No resume variants were found for this profile and variantGroupId.'), { code: 'resume_variant_group_not_found' });
+  return { ok: true, profileId: profile.id, variantGroupId: group, variants,
+    selectedDesign: variants.find(item => item.designSelection)?.designSelection || null };
 }
 
 export function draftCoverLetter(store, { jobId, profileId, format = 'markdown', dataDir }) {

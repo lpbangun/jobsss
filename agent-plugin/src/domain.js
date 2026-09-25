@@ -19,7 +19,9 @@ import {
   requireJobOwned, pursueJob as pursueLocal, saveJob as saveLocal, skipJob as skipLocal,
   archiveJob as archiveLocal, updateApplicationStatus as updateLocalStatus,
   listTasks as tasksForProfile, updateTask as updateLocalTask,
-  tailorResume as tailorLocal, draftCoverLetter as coverLocal,
+  tailorResume as tailorLocal, compareResumeDesigns as compareResumeDesignsLocal,
+  selectResumeDesign as selectResumeDesignLocal, listResumeDesignVariants as listResumeDesignVariantsLocal,
+  draftCoverLetter as coverLocal,
   listReviewArtifacts, addAnswer, listAnswers, matchAnswers, previewSync as syncPreview,
 } from './workflows.js';
 import {
@@ -28,7 +30,7 @@ import {
   listInterviewStories, interviewPrep, getInterviewPrep, interviewDebriefHandoff,
 } from './relationships.js';
 import { PRODUCT_VERSION } from './version.js';
-import { detectResumeRenderer } from './resume-browser.js';
+import { detectResumeRenderer, listResumeDesigns as resumeDesignCatalog } from './resume-browser.js';
 import { postingRequirements } from './resume-compiler.js';
 import { unansweredRequiredFor } from './checklist.js';
 
@@ -1278,6 +1280,18 @@ export async function dailyDiscovery(dataDir, args = {}) {
 export function listTasks(dataDir, args = {}) { return tasksForProfile(loadStore(dataDir), args); }
 export function updateTask(dataDir, args = {}) { return mutate(dataDir, args, store => updateLocalTask(store, args)); }
 export function tailorResume(dataDir, args = {}) { return mutate(dataDir, args, store => tailorLocal(store, { ...args, dataDir })); }
+export function listResumeDesigns() {
+  return { ok: true, designs: resumeDesignCatalog(), selectionAndOutcomeNote: 'Design selection records only a local preference. This release does not attribute later application outcomes to a design.' };
+}
+export function compareResumeDesigns(dataDir, args = {}) {
+  return mutate(dataDir, args, store => compareResumeDesignsLocal(store, { ...args, format: args.format || 'pdf', dataDir }));
+}
+export function selectResumeDesign(dataDir, args = {}) {
+  return mutate(dataDir, args, store => selectResumeDesignLocal(store, args));
+}
+export function listResumeDesignVariants(dataDir, args = {}) {
+  return listResumeDesignVariantsLocal(loadStore(dataDir), args);
+}
 export function draftCoverLetter(dataDir, args = {}) { return mutate(dataDir, args, store => coverLocal(store, { ...args, dataDir })); }
 export function saveAnswer(dataDir, args = {}) { return mutate(dataDir, args, store => addAnswer(store, args)); }
 export function answersList(dataDir, args = {}) { return listAnswers(loadStore(dataDir), args); }

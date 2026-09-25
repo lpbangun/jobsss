@@ -286,7 +286,7 @@ floor.
 | --- | --- |
 | **Tailored resume** | `tailor_resume` routes normalized, labelled, and ordinary Markdown profiles through one canonical document. `revise_resume` takes explicit claim IDs to suppress or prefer source-backed bullets and creates a separate draft. Legacy sources are migrated to a source-linked draft; the original resume stays in `PLUGIN_DATA`, and inferred original-line matches are marked as legacy projections for human review. Candidate identity, role/project ownership, selected achievements, and direct/adjacent/unsupported/unknown requirement coverage are inspectable. `contactEmail` chooses the application address; `locationNote` adds an explicitly verified relocation phrase. |
 | **Cover letter** | Built from the *selected* proofs (never an unselected one), using supported contributions — not copied posting requirements dressed up as candidate claims. |
-| **Resume PDF export** | `render_resume` or `tailor_resume` with `format: "pdf"` prints plugin-generated local HTML through an installed Chrome or Edge executable. `doctor.resumeRenderer` reports detection; a missing browser fails with `resume_renderer_unavailable`. Browser layout is measured at Letter printable width before printing; the PDF must be one searchable Letter page. `inspect_resume_qa` reads the stored result. Trusted visual review and content approval are separate decisions; approval blocks missing PDF QA or unverified cited proof points. No employer site is opened. |
+| **Resume PDF export and designs** | `list_resume_designs` exposes Navy Professional, Editorial Serif, and Quick Scan. Choose `style: "navy"`, `"editorial"`, or `"scan"` with `render_resume` or `tailor_resume`; `compare_resume_designs` generates all three from one canonical content revision, `list_resume_design_variants` reads them back, and `select_resume_design` stores the user's local preference. Selection does not attest that a resume was used or submitted. Each design has a separate PDF artifact and visual review. An installed Chrome or Edge prints local HTML; `doctor.resumeRenderer` reports detection, and a missing browser fails with `resume_renderer_unavailable`. Browser layout is measured at Letter printable width before printing; the PDF must be one searchable Letter page. `inspect_resume_qa` reads the stored result. Trusted visual review and content approval are separate decisions; approval blocks missing PDF QA or unverified cited proof points. No employer site is opened. |
 | **Other PDF export** | Cover letters and other materials retain the dependency-free native PDF renderer. Its Letter pages use 44pt margins and paginate long sources. |
 | **Reusable answers** | `save_answer` stores drafts from exact proof wording with explicit `sensitivity` (`public \| personal \| sensitive \| restricted`) and `reuseScope` (`global \| employer_specific \| never_auto_fill`). Invalid values are rejected with typed errors. No auto-fill, no send. |
 | **Grounding, always** | Canonical claims carry source quotes, owner IDs, and original line pointers. Imported proof IDs and verification status are attached where available; inferred legacy pointers are explicitly marked for review. Successive truthful revisions are kept separately. |
@@ -369,11 +369,12 @@ floor.
 </details>
 
 <details>
-<summary><b>Materials and answers</b> (9)</summary>
+<summary><b>Materials and answers</b> (13)</summary>
 
 `inspect_resume_requirements`, `tailor_resume`, `revise_resume`, `render_resume`,
-`inspect_resume_qa`, `draft_cover_letter`, `save_answer`, `list_answers`,
-`match_answers`
+`inspect_resume_qa`, `list_resume_designs`, `compare_resume_designs`,
+`list_resume_design_variants`, `select_resume_design`, `draft_cover_letter`,
+`save_answer`, `list_answers`, `match_answers`
 </details>
 
 <details>

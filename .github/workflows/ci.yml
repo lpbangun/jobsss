@@ -25,6 +25,21 @@ jobs:
           node scripts/build-agent-plugin.mjs --check
           node scripts/build-install-surfaces.mjs --check
           node scripts/build-codex-pack.mjs --check
+      - name: Verify Codex pack against exact pinned sibling sources
+        run: |
+          for name in people-finder contact-brief; do
+            ref=$(node -e 'const p=require("./compat/install-pins.json"); console.log(p.products.find(x=>x.name===process.argv[1]).ref)' "$name")
+            git clone --filter=blob:none "https://github.com/lpbangun/$name.git" "$RUNNER_TEMP/$name"
+            git -C "$RUNNER_TEMP/$name" fetch origin "$ref"
+            git -C "$RUNNER_TEMP/$name" checkout --detach "$ref"
+          done
+          node scripts/build-codex-pack.mjs --check \
+            --people-finder "$RUNNER_TEMP/people-finder" \
+            --contact-brief "$RUNNER_TEMP/contact-brief"
+      - name: Install shipped Contact Brief compiler dependency
+        run: python -m pip install -r codex-pack/job-search-stack/skills/contact-brief/requirements.txt
+      - name: Run installed Codex pack smoke
+        run: node --test tests/codex-pack-source-check.test.mjs tests/codex-pack-installed-smoke.test.mjs
       - name: Run deterministic acceptance bar
         run: >-
           node --test --test-concurrency=1
@@ -59,12 +74,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.22.3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Verify generated plugin surfaces
         shell: pwsh
         run: |
           node scripts/build-agent-plugin.mjs --check
           node scripts/build-install-surfaces.mjs --check
           node scripts/build-codex-pack.mjs --check
+      - name: Install shipped Contact Brief compiler dependency
+        shell: pwsh
+        run: python -m pip install -r codex-pack/job-search-stack/skills/contact-brief/requirements.txt
+      - name: Run installed Codex pack smoke
+        shell: pwsh
+        run: node --test tests/codex-pack-source-check.test.mjs tests/codex-pack-installed-smoke.test.mjs
       - name: Run Windows-safe packaging regressions
         shell: pwsh
         run: >-

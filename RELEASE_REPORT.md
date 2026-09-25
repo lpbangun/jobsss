@@ -10,7 +10,7 @@ Current native artifact refresh (2026-09-07, separately authorized closure round
 
 ## Release summary
 
-JobSSS remains one portable Agent Plugin, one canonical skill, and one bundled MCP runtime. Authoritative product version **0.1.0** comes from `plugin.json` and agrees across real CLI help/version, doctor, MCP initialize/doctor, and generated `release-manifest.json`, including SEA execution.
+JobSSS remains one portable Agent Plugin, one canonical skill, and one bundled MCP runtime. Authoritative product version **0.1.1** comes from `plugin.json` and agrees across real CLI help/version, doctor, MCP initialize/doctor, and generated `release-manifest.json`, including SEA execution.
 
 The release pipeline still uses the sole native implementation in `src/packaging.js` and checksum-pinned postject 1.0.0-alpha.6. No release was published and no custom injector was added.
 
@@ -25,6 +25,8 @@ Complete evidence is recorded once:
 ```bash
 JOBSSS_NATIVE_CACHE="$(mktemp -d)" ./bin/jobsss evidence --out "$(pwd)/evidence/native-validation.json"
 ```
+
+Current native artifact refresh (2026-09-24, profile recovery release candidate): two fresh processes with separate empty external caches emitted identical JSON at SHA-256 `6d24f991ff11a418b99ff9c057a11ea648b6759e5ca22c14400b00bec1f6e466` after the profile import/recovery runtime fixes and version 0.1.1 bump. Official input, injector, and validator pins are unchanged. This is local structural evidence; cross-built targets still need matching-host execution.
 
 Current native artifact refresh (2026-09-12, B67 consistency): the pinned evidence command was re-run on two fresh processes with separate empty caller-selected caches from the merged main tree, and both regenerations were byte-identical to each other and to the canonical artifact cited above. The previously committed bytes (`827416cdb222737f915576ff2e610e544d3765c832867adb6fd112dc7ec7ee78`) predated the RC-2–RC-6, Greenhouse-promotion and P1b–P3 integration merges, whose runtime source changes moved the SEA payload (payload length `407102` → `465906` bytes, with shifted Mach-O and PE layout offsets). Stale evidence therefore failed the B67 byte-identity comparison instead of being silently accepted. Official inputs, injector and validator pins are unchanged. This remains local build/test structural validation only — not publication, matching-host runtime proof, or a new reviewer verdict.
 
@@ -63,7 +65,7 @@ Exact PE resource preservation result: 9 original type/name/language/size/SHA-25
 
 ## Generic restricted-PATH MCP evidence
 
-The current-host standalone release is built and exercised with Node and JobOS absent from PATH. Generic stdio MCP initialize, tools/list, doctor/start, journey behavior, and restart persistence pass. The generated manifest reports version 0.1.0.
+The current-host standalone release is built and exercised with Node and JobOS absent from PATH. Generic stdio MCP initialize, tools/list, doctor/start, journey behavior, and restart persistence pass. The generated manifest reports version 0.1.1.
 
 ## Client compatibility matrix
 

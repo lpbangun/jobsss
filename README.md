@@ -4,7 +4,7 @@
 
 **An independent Agent Plugin that gives your agent a local, evidence-grounded job-search workspace.**
 
-`Agent Plugins 1.0.0` · `v0.1.0` · `MIT` · `Node 22+` · `zero npm dependencies` · `zero API keys`
+`Agent Plugins 1.0.0` · `v0.1.1` · `MIT` · `Node 22+` · `zero npm dependencies` · `zero API keys`
 
 </div>
 
@@ -13,7 +13,9 @@
 > **JobSSS is a standalone Agent Plugin — not a component of another product,
 > and it has no sibling requirement.** It ships one skill and one bundled MCP
 > runtime, and at runtime it resolves, imports, and spawns nothing outside
-> itself: no other installation, no `PATH` entry, no API key, no account. The
+> itself: no other plugin installation, no API key, no account. The portable
+> launcher requires Node 22+ on the agent host service's `PATH` (see
+> [INSTALL.md](INSTALL.md)). The
 > network is optional and used only for public job intake. Portions of the design
 > derive from an earlier MIT-licensed project and are attributed in
 > [NOTICE](NOTICE); attribution is provenance, not a dependency.
@@ -61,7 +63,7 @@ reviewed commits recorded in `compat/install-pins.json`. Install from a clean
 checkout of the release:
 
 ```bash
-git clone --depth 1 --branch v0.1.0 https://github.com/lpbangun/jobsss.git
+git clone --depth 1 --branch v0.1.1 https://github.com/lpbangun/jobsss.git
 cd jobsss
 codex plugin marketplace add .
 codex plugin add job-search-stack@jobsss-local
@@ -73,8 +75,8 @@ natural-language activation, including MCP initialize, profile creation, job
 discovery, tailored searchable-PDF resume generation, and contact-brief import.
 
 Prefer a browser download? Use the
-[v0.1.0 source ZIP](https://github.com/lpbangun/jobsss/archive/refs/tags/v0.1.0.zip),
-extract it, open a terminal in the extracted `jobsss-0.1.0` directory, and run
+[v0.1.1 source ZIP](https://github.com/lpbangun/jobsss/archive/refs/tags/v0.1.1.zip),
+extract it, open a terminal in the extracted `jobsss-0.1.1` directory, and run
 the same two `codex plugin` commands.
 
 JobSSS itself needs no API key. Live Exa Connect/Fiber contact lookup is optional,
@@ -336,9 +338,10 @@ floor.
 </details>
 
 <details>
-<summary><b>Profile, resume and proof</b> (6)</summary>
+<summary><b>Profile, resume and proof</b> (8)</summary>
 
-`create_profile`, `list_profiles`, `update_profile`, `add_proof_point`,
+`create_profile`, `list_profiles`, `update_profile`, `archive_profile`,
+`restore_profile`, `add_proof_point`,
 `list_resumes`, `get_resume`
 </details>
 
@@ -403,7 +406,14 @@ floor.
 `preview_sync`
 </details>
 
-`47` is the entire advertised surface: `tools/list` is audited to contain no
+<details>
+<summary><b>Bounded preparation and contact evidence</b> (4)</summary>
+
+`prepare_applications_batch`, `record_contact_discovery`,
+`list_preparation_batches`, `list_contact_discoveries`
+</details>
+
+`53` is the entire advertised surface: `tools/list` is audited to contain no
 hidden or extra names, and no blocked name may appear there.
 
 ## Human-only authority
@@ -589,18 +599,18 @@ reproducible per commit.
   title        = {JobSSS: a standalone Agent Plugin for local, evidence-grounded job-search workflows},
   author       = {{JobSSS contributors}},
   year         = {2026},
-  version      = {0.1.0},
+  version      = {0.1.1},
   license      = {MIT},
   url          = {https://github.com/lpbangun/jobsss},
-  note         = {Agent Plugins 1.0.0; 57 local MCP tools; frozen pass bar B1-B70; release v0.1.0}
+  note         = {Agent Plugins 1.0.0; 57 local MCP tools; frozen pass bar B1-B70; release v0.1.1}
 }
 ```
 
 Plain text:
 
 > JobSSS contributors. *JobSSS: a standalone Agent Plugin for local,
-> evidence-grounded job-search workflows.* v0.1.0, MIT, 2026.
-> Agent Plugins 1.0.0. Release `v0.1.0`.
+> evidence-grounded job-search workflows.* v0.1.1, MIT, 2026.
+> Agent Plugins 1.0.0. Release `v0.1.1`.
 
 Reproducing a claim: quote the commit, the tool name, the arguments, and the
 persisted readback (tool output or a file under `PLUGIN_DATA`). Anything a human
@@ -608,8 +618,8 @@ completed belongs to the human and is recorded with `actor: trusted_local`.
 
 ## Status and limitations
 
-- Pre-release `0.1.0`. The deterministic offline core, discovery/intake, scoring,
-  materials with the declared resume PDF adapter and native other-material PDFs, networking drafts, interview prep, review/authority
+- Pre-release `0.1.1`. The deterministic offline core, discovery/intake, scoring,
+  browser-rendered resume PDFs and native other-material PDFs, networking drafts, interview prep, review/authority
   split, persistence, and packaging are implemented and under a frozen,
   reviewer-owned acceptance bar.
 - `linux-x64` standalone is verified; `linux-arm64`, `darwin-x64`,

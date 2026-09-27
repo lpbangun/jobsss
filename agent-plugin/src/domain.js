@@ -594,13 +594,24 @@ export function start(dataDir, args = {}) {
   // store both report false; only a store below the bundled schema reports
   // true. Read before the commit so the value describes the pre-commit state.
   const schemaOnDisk = storeSchemaVersionOnDisk(dataDir);
+  const requestedMode = args.outputMode == null ? null : String(args.outputMode).trim().toLowerCase();
+  if (requestedMode && !['full', 'compact'].includes(requestedMode)) {
+    throw error('invalid_output_mode', 'outputMode must be full or compact');
+  }
   const committed = commitStore(dataDir, { expectedRevision: expected(args) }, store => {
+    const isNew = store.revision === 0;
+    const existingMode = store.outputMode === 'compact' ? 'compact' : 'full';
+    if (requestedMode && !isNew && requestedMode !== existingMode) {
+      throw error('output_mode_migration_required', 'Output mode can only be selected for a new workspace; existing files require an explicit migration.');
+    }
+    if (isNew && requestedMode) store.outputMode = requestedMode;
     store.audit = Array.isArray(store.audit) ? store.audit : [];
     store.audit.push({ event: 'start', createdAt: now() });
     return store;
   });
   const migrated = schemaOnDisk !== null && schemaOnDisk < STORE_SCHEMA_VERSION;
   return { ok: true, initialized: true, migrated, schemaVersion: STORE_SCHEMA_VERSION, revision: committed.revision,
+    outputMode: committed.store.outputMode === 'compact' ? 'compact' : 'full',
     dataDir: path.resolve(dataDir), storePath: committed.storePath, message: 'Versioned durable state initialized under PLUGIN_DATA' };
 }
 
@@ -1292,7 +1303,11 @@ export function selectResumeDesign(dataDir, args = {}) {
 export function listResumeDesignVariants(dataDir, args = {}) {
   return listResumeDesignVariantsLocal(loadStore(dataDir), args);
 }
-export function draftCoverLetter(dataDir, args = {}) { return mutate(dataDir, args, store => coverLocal(store, { ...args, dataDir })); }
+export function draftCoverLetter(dataDir, args = {}) {
+  return mutate(dataDir, args, store => coverLocal(store, {
+    ...args, format: args.format ?? (store.outputMode === 'compact' ? 'docx' : 'markdown'), dataDir,
+  }));
+}
 export function saveAnswer(dataDir, args = {}) { return mutate(dataDir, args, store => addAnswer(store, args)); }
 export function answersList(dataDir, args = {}) { return listAnswers(loadStore(dataDir), args); }
 export function answersMatch(dataDir, args = {}) { return matchAnswers(loadStore(dataDir), args); }

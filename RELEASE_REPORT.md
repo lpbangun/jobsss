@@ -19,7 +19,7 @@ The release pipeline still uses the sole native implementation in `src/packaging
 Complete evidence is recorded once:
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `3671ff1a0041719a6cf21e2049109ce8dcf486e261a717097239b34bcb1cd0c5`
+- SHA-256: `0b279b1d33dba5614f6be68988e2427932a4901190bedeedcbd14bdbcc7b4a47`
 - Exact reproduction command:
 
 ```bash
@@ -41,6 +41,7 @@ Current native artifact refresh (2026-09-24, first-class resume slice): after th
 Current native artifact refresh (2026-09-25, resume-design slice): two fresh processes with separate empty external caches produced byte-identical evidence after the three resume designs and local comparison/selection APIs changed the runtime. The current SHA-256 is cited above. PDF layout, page size, and extracted text were checked separately through local browser rendering; native-format evidence does not attest browser availability on other hosts.
 
 Current native artifact refresh (2026-09-25, PR #24 main integration): after merging the 0.1.1 release changes with the resume-design branch, two fresh processes with separate empty external caches produced byte-identical evidence at the current SHA-256 cited above. The merged product pin and generated install surfaces were rebuilt separately.
+Current native artifact refresh (2026-09-27, compact-output and cover-letter DOCX slice): two fresh processes with separate empty external caches produced byte-identical evidence at the SHA-256 cited above. This validates the native bundle structure after the runtime change; DOCX package parsing and applicant text were checked separately.
 
 The command uses a caller-selected external empty cache, downloads only locked inputs, verifies checksums before validation, avoids user configuration/data and prior generated files, and emits deterministic path- and timestamp-free JSON. Frozen B67 requires two fresh processes with empty caches to produce byte-identical output matching the repository artifact.
 

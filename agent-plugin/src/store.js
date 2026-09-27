@@ -825,23 +825,23 @@ export function commitStore(dataDir, { expectedRevision = null } = {}, mutate = 
       );
     }
     const result = mutate(store) || store;
-    // B27: reject symlink/junction/non-directory projection targets BEFORE any
-    // write is staged or persisted. A rejected escape throws here, so the
-    // on-disk store, revision, and state remain untouched and no file is
-    // written outside PLUGIN_DATA.
-    assertProjectionRootsSafe(dir);
-    const targets = deriveProjectionTargets(result);
-    for (const target of targets) assertProjectionTargetSafe(dir, target);
-    // Deterministic human-readable workspace projection (profile.md,
-    // tracker.md, applications/<jobId>/application.md, resume.md,
-    // cover-letter.md, contacts/<key>.md). Validated with the same no-follow
-    // confinement lens as every other projection BEFORE anything is staged.
-    const workspaceWrites = workspaceProjectionWrites(result);
-    for (const write of workspaceWrites) assertProjectionPathSafe(dir, write.segments.slice(0, -1));
+    // Compact workspaces keep the same canonical state and document artifacts,
+    // but do not materialize read-only JSON/Markdown copies of that state.
+    const compact = result.outputMode === 'compact';
+    let targets = [];
+    let workspaceWrites = [];
+    if (!compact) {
+      // Legacy workspaces retain their projection confinement and output contract.
+      assertProjectionRootsSafe(dir);
+      targets = deriveProjectionTargets(result);
+      for (const target of targets) assertProjectionTargetSafe(dir, target);
+      workspaceWrites = workspaceProjectionWrites(result);
+      for (const write of workspaceWrites) assertProjectionPathSafe(dir, write.segments.slice(0, -1));
+    }
     bumpMeta(result);
     incrementRevision(result);
     const writes = [
-      ...buildAggregateProjectionWrites(result).map(write => ({ ...write, abs: path.join(dir, ...write.segments) })),
+      ...(compact ? [] : buildAggregateProjectionWrites(result).map(write => ({ ...write, abs: path.join(dir, ...write.segments) }))),
       ...targets.map(target => ({
         segments: target.segments,
         abs: path.join(dir, ...target.segments),

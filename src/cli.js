@@ -34,7 +34,9 @@ function printHelp() {
 Usage:
   jobsss mcp --data <dir>     Start MCP stdio server with PLUGIN_DATA
   jobsss doctor --data <dir>  Diagnose bundled runtime
-  jobsss start --data <dir>   Initialize PLUGIN_DATA
+  jobsss start --data <dir> [--compact]
+                              Initialize PLUGIN_DATA; --compact selects the
+                              reduced output layout for a new workspace
   jobsss release --out <dir> --target <id> [--node-binary <path>]
                               Build a deterministic standalone release
                               (targets: current-host linux-x64 linux-arm64
@@ -84,7 +86,7 @@ export function runCli(argv = process.argv.slice(2)) {
       console.error('requires --data <dir>');
       process.exit(2);
     }
-    const out = cmd === 'doctor' ? doctor(dir) : start(dir);
+    const out = cmd === 'doctor' ? doctor(dir) : start(dir, argv.includes('--compact') ? { outputMode: 'compact' } : {});
     console.log(JSON.stringify(out, null, 2));
     return;
   }

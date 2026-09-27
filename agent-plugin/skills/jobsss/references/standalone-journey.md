@@ -105,6 +105,11 @@ Regeneration is deterministic and never overwrites human-only decisions
 (artifact approval, contact approval/suppression, externally observed
 statuses).
 
+These files describe the default full output mode. A new workspace started
+with `outputMode: "compact"` keeps the same canonical records and tool
+readbacks but omits automatic projection files. Batch results then return no
+projection paths; requested PDF and DOCX documents retain their export paths.
+
 ## Contact intake — plain cards and `contact-brief.v1`
 
 `import_contact` accepts either shape, inline or staged under `PLUGIN_DATA`:

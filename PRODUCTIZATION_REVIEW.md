@@ -21,7 +21,7 @@ The authoritative JobSSS product version is **0.1.1** from `plugin.json`. The re
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `3671ff1a0041719a6cf21e2049109ce8dcf486e261a717097239b34bcb1cd0c5`
+- SHA-256: `0b279b1d33dba5614f6be68988e2427932a4901190bedeedcbd14bdbcc7b4a47`
 - Exact reproduction command:
 
 ```bash
@@ -43,6 +43,7 @@ Current native artifact refresh (2026-09-24, first-class resume slice): the pinn
 Current native artifact refresh (2026-09-25, resume-design slice): the pinned evidence command was run in two fresh processes with separate empty external caches after the three browser design treatments and MCP comparison/selection routes changed runtime bytes. Both results were byte-identical at the current SHA-256 cited above. This is structural native-format evidence; PDF layout and content were checked separately through local browser rendering.
 
 Current native artifact refresh (2026-09-25, PR #24 main integration): after merging the 0.1.1 release changes with the resume-design branch, two fresh processes with separate empty external caches produced byte-identical evidence at the current SHA-256 cited above. The merged product pin and generated install surfaces were rebuilt separately.
+Current native artifact refresh (2026-09-27, compact-output and cover-letter DOCX slice): two fresh processes with separate empty external caches produced byte-identical evidence at the SHA-256 cited above. The evidence is structural native-format validation; DOCX parsing and content were checked separately.
 
 The artifact and `src/packaging.lock.json` are the exact entries for official Node v22.22.3 Darwin x64, Darwin arm64, and Windows x64 URLs, archive hashes, executable-input hashes, and architectures. The artifact also contains all four complete cases, payload lengths/hashes, fuse state, output hashes, Mach-O LC_SYMTAB/dysymtab/linkedit/code-signature and offset/range evidence, and PE alignment/security/overlay/section/`SizeOfImage` evidence.
 

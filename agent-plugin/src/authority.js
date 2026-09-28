@@ -23,6 +23,9 @@
 // listed hash or revision stale.
 
 import { loadStore, commitStore, hashText, id, now, ensureDataDir, redactSecrets, evidenceFreshnessForStore } from './store.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 export const TRUSTED_DECISION_ACTIONS = Object.freeze([
   'proof.verify',
@@ -357,7 +360,7 @@ export function applyHumanDecision(dataDir, args = {}) {
     throw typedError('decision_action_incompatible', `Action ${action} does not apply to a ${found.type} entity`);
   }
   // Typed stale pre-checks against the current on-disk state; nothing persists.
-  validateBinding(snapshot, found.entity, found.type, action, entityId, rawRevision, contentHash);
+  validateBinding(snapshot, found.entity, found.type, action, entityId, rawRevision, contentHash, dataDir);
 
   let outcome;
   commitStore(dataDir, {}, locked => {
@@ -368,7 +371,7 @@ export function applyHumanDecision(dataDir, args = {}) {
     }
     // Re-validate under the exclusive lock so a concurrent trusted decision on
     // the same entity is rejected as stale instead of being overwritten.
-    validateBinding(locked, lockedFound.entity, lockedFound.type, action, entityId, rawRevision, contentHash);
+    validateBinding(locked, lockedFound.entity, lockedFound.type, action, entityId, rawRevision, contentHash, dataDir);
     const at = now();
     const ledger = ensureLedger(locked);
     const prior = ledger[entityId] || null;
@@ -420,7 +423,7 @@ export function applyHumanDecision(dataDir, args = {}) {
   return outcome;
 }
 
-function validateBinding(store, entity, type, action, entityId, revision, contentHash) {
+function validateBinding(store, entity, type, action, entityId, revision, contentHash, dataDir) {
   const currentHash = canonicalHash(entity, type);
   if (contentHash !== currentHash) {
     throw typedError(
@@ -435,6 +438,18 @@ function validateBinding(store, entity, type, action, entityId, revision, conten
       'stale_revision',
       `stale_conflict: revision ${revision} does not match current revision ${currentRevision} for ${entityId}`
     );
+  }
+  if (type === 'artifact' && action === 'artifact.approve' && entity.kind === 'cover_letter_draft' && entity.format === 'docx') {
+    const root = ensureDataDir(dataDir);
+    const exported = entity.export || {};
+    const file = typeof exported.path === 'string' ? path.resolve(exported.path) : '';
+    let valid = false;
+    try {
+      valid = path.dirname(file) === root && fs.lstatSync(file).isFile()
+        && !fs.lstatSync(file).isSymbolicLink()
+        && createHash('sha256').update(fs.readFileSync(file)).digest('hex') === exported.sha256;
+    } catch { /* missing or unsafe export */ }
+    if (!valid) throw typedError('document_export_changed', 'The cover-letter DOCX is missing or changed; review a fresh export before approval.');
   }
   if (action === 'artifact.review_visual' && (type !== 'artifact' || entity.kind !== 'resume_draft' || !entity.resumeDocument)) {
     throw typedError('decision_action_incompatible', 'Visual review applies only to canonical resume drafts.');

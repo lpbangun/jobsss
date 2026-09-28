@@ -19,6 +19,7 @@
 import { id, now, hashText, tokenize, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
 import fs from 'node:fs';
 import { resumeCopy, coverLetterCopy, exportPdf, supportedAchievement, buildResumeMaterial } from './documents.js';
+import { exportCoverLetterDocx } from './docx.js';
 import { listResumeDesigns } from './resume-browser.js';
 
 // Local, human-reviewable application states. Anything that would attest an
@@ -649,7 +650,11 @@ function buildCoverage(requirements, selected) {
  */
 function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir, style, label, designId, contactEmail, locationNote, excludeClaimIds = [], preferClaimIds = [] }) {
   format = String(format).toLowerCase();
-  if (!['markdown', 'md', 'text', 'pdf'].includes(format)) throw Object.assign(new Error('Supported document formats: markdown, text, pdf.'), { code: 'unsupported_document_format' });
+  if (!['markdown', 'md', 'text', 'pdf', 'docx'].includes(format) || (format === 'docx' && kind !== 'cover_letter')) {
+    throw Object.assign(new Error(kind === 'cover_letter'
+      ? 'Supported cover-letter formats: markdown, text, pdf, docx.'
+      : 'Supported resume formats: markdown, text, pdf.'), { code: 'unsupported_document_format' });
+  }
   const styleId = String(style || 'navy').trim().toLowerCase();
   if (kind === 'resume' && !listResumeDesigns().some(design => design.id === styleId)) {
     throw Object.assign(new Error(`Unknown resume design "${styleId}". Choose navy, editorial, or scan.`), { code: 'resume_design_invalid' });
@@ -728,8 +733,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     || (existingArtifact?.export?.design?.id === styleId
       && existingArtifact?.export?.design?.version === currentDesign.version);
   if (existingArtifact && existingArtifact.contentHash === contentHash && existingArtifact.content === body && existingDesignMatches) {
-    if (format === 'pdf' && (!existingArtifact.export?.path || !fs.existsSync(existingArtifact.export.path))) {
-      throw Object.assign(new Error('Stored resume PDF is missing; the existing review artifact cannot be reused.'), { code: 'document_export_missing' });
+    if (['pdf', 'docx'].includes(format) && (!existingArtifact.export?.path || !fs.existsSync(existingArtifact.export.path))) {
+      throw Object.assign(new Error('Stored document export is missing; the existing review artifact cannot be reused.'), { code: 'document_export_missing' });
     }
     return {
       ok: true,
@@ -763,7 +768,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     };
   }
   const design = kind === 'resume' ? listResumeDesigns().find(item => item.id === styleId) : null;
-  const pdf = format === 'pdf' ? exportPdf(dataDir, body, { style: styleId, blocks, document: canonical?.ir, kind }) : null;
+  const exported = format === 'pdf' ? exportPdf(dataDir, body, { style: styleId, blocks, document: canonical?.ir, kind })
+    : format === 'docx' ? exportCoverLetterDocx(dataDir, body) : null;
   const artifact = {
     id: artifactId,
     jobId,
@@ -773,8 +779,8 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     status: 'draft_needs_human_review',
     proofPointIds,
     contentHash,
-    ...(variantGroupId ? { variantGroupId, designId: styleId, design: pdf?.design || design } : {}),
-    ...(pdf ? { export: pdf } : {}),
+    ...(variantGroupId ? { variantGroupId, designId: styleId, design: exported?.design || design } : {}),
+    ...(exported ? { export: exported } : {}),
     ...(canonical ? { resumeDocument: canonical } : {}),
     reviewNote: 'human verification required',
     format,
@@ -803,10 +809,10 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     gaps: coverage.gaps,
     document: {
       content: body,
-      ...(pdf || {}),
+      ...(exported || {}),
       format,
       kind,
-      ...(variantGroupId ? { variantGroupId, designId: styleId, design: pdf?.design || design } : {}),
+      ...(variantGroupId ? { variantGroupId, designId: styleId, design: exported?.design || design } : {}),
       proofPointIds,
       selectedProofPointIds: selectedIds,
       requirements,

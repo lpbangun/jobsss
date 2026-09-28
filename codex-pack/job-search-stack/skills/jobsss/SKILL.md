@@ -129,6 +129,12 @@ natural language; no slash sub-intent is needed.
   `applications/<jobId>/contacts/<contactKey>.md`. Human-only state
   (artifact approval, contact approval or suppression, recorded external
   outcomes) is preserved across regeneration and is never overwritten.
+- On a new workspace, MCP `start` with `outputMode: "compact"` opts out of
+  automatic JSON and Markdown projections. All state and history still live in
+  `store.json`; use the MCP readback tools. Existing workspaces keep their mode.
+  `draft_cover_letter` defaults to editable DOCX in compact mode and also
+  accepts `format: "docx"` explicitly;
+  text, Markdown, and PDF remain available.
 - Read back at any time with `list_preparation_batches` and
   `list_contact_discoveries`; both are plain local reads from `PLUGIN_DATA`.
 
@@ -148,8 +154,9 @@ The one-page Letter PDF remains under `PLUGIN_DATA`. Call
 `inspect_resume_requirements` and `inspect_resume_qa`, then inspect the
 source-linked draft, requirement gaps, searchable text, and rendered page before
 sharing. Trusted approval requires PDF QA and verified cited proof points.
-For a cover letter, `draft_cover_letter` with `format: "pdf"` retains the native
-renderer. Searchable text is an ATS-readability proxy, not an ATS guarantee.
+For a cover letter, use `draft_cover_letter` with `format: "docx"` for an editable
+Word document or `format: "pdf"` for the native PDF renderer. Searchable PDF
+text is an ATS-readability proxy, not an ATS guarantee.
 
 Keep the imported resume as the fact source. Change preferences with
 `update_profile`; never replace achievements with formatting instructions.

@@ -235,7 +235,7 @@ flowchart LR
 | **Offline by default** | The entire core journey (doctor → start → profile → intake → score → pursue → pipeline → review) runs with no network, no API key, and no provider. Network is used only for optional public intake. |
 | **One data root** | All durable state lives under `PLUGIN_DATA`. Nothing is written into the plugin directory, and no user state leaks into the repository. |
 | **Restart-safe** | Versioned store with lossless migration from the legacy `store.json`, plus read-only restart readbacks (`get_resume`, `get_score`, `get_interview_prep`). |
-| **Readable state** | Canonical `store.json` plus JSON projections and a Markdown `audit.md` mirror so humans and agents can inspect state without a running service. |
+| **Readable state** | Canonical `store.json` plus JSON and Markdown mirrors in the default full mode. A new workspace can opt into compact mode to keep only canonical state and requested document exports; tool readbacks still work. |
 
 ### Profile, resume and proof
 
@@ -287,7 +287,7 @@ floor.
 | Feature | What you get |
 | --- | --- |
 | **Tailored resume** | `tailor_resume` routes normalized, labelled, and ordinary Markdown profiles through one canonical document. `revise_resume` takes explicit claim IDs to suppress or prefer source-backed bullets and creates a separate draft. Legacy sources are migrated to a source-linked draft; the original resume stays in `PLUGIN_DATA`, and inferred original-line matches are marked as legacy projections for human review. Candidate identity, role/project ownership, selected achievements, and direct/adjacent/unsupported/unknown requirement coverage are inspectable. `contactEmail` chooses the application address; `locationNote` adds an explicitly verified relocation phrase. |
-| **Cover letter** | Built from the *selected* proofs (never an unselected one), using supported contributions — not copied posting requirements dressed up as candidate claims. |
+| **Cover letter** | Built from the *selected* proofs (never an unselected one), using supported contributions — not copied posting requirements dressed up as candidate claims. Export as editable DOCX or PDF, or read the text through the tool. |
 | **Resume PDF export and designs** | `list_resume_designs` exposes Navy Professional, Editorial Serif, and Quick Scan. Choose `style: "navy"`, `"editorial"`, or `"scan"` with `render_resume` or `tailor_resume`; `compare_resume_designs` generates all three from one canonical content revision, `list_resume_design_variants` reads them back, and `select_resume_design` stores the user's local preference. Selection does not attest that a resume was used or submitted. Each design has a separate PDF artifact and visual review. An installed Chrome or Edge prints local HTML; `doctor.resumeRenderer` reports detection, and a missing browser fails with `resume_renderer_unavailable`. Browser layout is measured at Letter printable width before printing; the PDF must be one searchable Letter page. `inspect_resume_qa` reads the stored result. Trusted visual review and content approval are separate decisions; approval blocks missing PDF QA or unverified cited proof points. No employer site is opened. |
 | **Other PDF export** | Cover letters and other materials retain the dependency-free native PDF renderer. Its Letter pages use 44pt margins and paginate long sources. |
 | **Reusable answers** | `save_answer` stores drafts from exact proof wording with explicit `sensitivity` (`public \| personal \| sensitive \| restricted`) and `reuseScope` (`global \| employer_specific \| never_auto_fill`). Invalid values are rejected with typed errors. No auto-fill, no send. |
@@ -451,6 +451,24 @@ PLUGIN_DATA/
 │   └── audit.md                    human/agent-readable audit trail
 └── … job, document and profile payloads (including exported PDFs)
 ```
+
+This is the default **full** mode. To choose a smaller layout for a new data
+directory, run `./bin/jobsss start --data <dir> --compact` or call the MCP
+`start` tool with `{ "outputMode": "compact" }`. Compact mode automatically
+writes only `store.json` until a document is explicitly exported. User-staged
+intake files, if any, remain the user's files. It keeps profiles, jobs,
+searches, evidence, decisions, and audit history in that canonical store; the
+normal readback tools remain available. It omits automatic JSON and Markdown
+mirrors, including `application.md` packet links in batch results. Text and
+Markdown drafts remain available as tool responses when no resume PDF renderer
+is installed. A compact workspace retains its mode on restart; changing the
+mode of an existing workspace requires a separate migration.
+
+Cover letters default to editable DOCX in compact mode; full mode keeps its
+Markdown default. `draft_cover_letter` also accepts `format: "docx"` explicitly,
+and Markdown, text, and PDF formats remain available. Exported
+DOCX files, like PDFs, use content-addressed names so a reviewed version is
+not silently overwritten.
 
 - Durable state is created and migrated on `start`; a legacy `store.json`
   migrates losslessly with ids preserved and an audit trail.

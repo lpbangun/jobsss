@@ -459,6 +459,7 @@ export function prepareApplicationsBatch(dataDir, args = {}) {
     });
   }
   const format = field(args.format, 'markdown').toLowerCase();
+  const coverLetterFormat = field(args.coverLetterFormat, store.outputMode === 'compact' ? 'docx' : format).toLowerCase();
   const plan = planPreparationBatch(store, { profileId, jobIds: args.jobIds, limit: args.limit });
   const suppliedContacts = new Map();
   for (const raw of (Array.isArray(args.contacts) ? args.contacts : [])) {
@@ -560,10 +561,12 @@ export function prepareApplicationsBatch(dataDir, args = {}) {
       const beforeCover = loadStore(dataDir);
       const cover = coverLetterDecision(beforeCover, (beforeCover.jobs || {})[jobId] || {}, profileId, args.coverLetter);
       if (cover.draft) {
-        const letter = draftCoverLetter(dataDir, { jobId, profileId, format });
+        const letter = draftCoverLetter(dataDir, { jobId, profileId, format: coverLetterFormat });
         item.artifacts.coverLetter = {
           artifactId: letter.artifactId,
           reason: cover.reason,
+          format: letter.format || coverLetterFormat,
+          path: letter.document?.path || null,
           coverageGaps: (letter.gaps || []).map(gap => field(gap.requirementId, 'requirement')),
         };
       } else {
@@ -714,7 +717,7 @@ export function prepareApplicationsBatch(dataDir, args = {}) {
     status: batchStatus,
     summary,
     items: results,
-    projections: results
+    projections: store.outputMode === 'compact' ? [] : results
       .filter(item => item.status === 'prepared' || item.status === 'partial')
       .map(item => ({
         jobId: item.jobId,

@@ -473,7 +473,7 @@ export function coverLetterCopy(profile, job, selected = [], options = {}) {
   const evidenceParagraph = (claim, lead) => {
     const sentence = contributionSentence(claim);
     const match = sentence.match(/^I\s+(.+?)\.$/);
-    if (match && lead !== 'A relevant example from my work is') {
+    if (match && / includes$/.test(lead)) {
       const prefix = lead.replace(/ includes$/, ' includes work where')
         .replace(/^My work across teams includes work where$/, 'In my cross-team work,')
         .replace(/^My learning and enablement work includes work where$/, 'In my learning and enablement work,')
@@ -481,7 +481,7 @@ export function coverLetterCopy(profile, job, selected = [], options = {}) {
         .replace(/^My technical work includes work where$/, 'In my technical work,');
       return `${prefix} I ${match[1]}.`;
     }
-    return `${lead}: ${sentence}`;
+    return sentence;
   };
   if (chosen.length) body.push(evidenceParagraph(chosen[0], evidenceLead));
   if (chosen.length > 1) body.push(evidenceParagraph(chosen[1], 'A second example from my work'));

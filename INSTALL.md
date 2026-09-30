@@ -89,6 +89,7 @@ can collide with the plugin's own server registration.
 ### Runtime requirement: Node.js 22+ through PATH or `JOBSSS_NODE`
 
 Both portable package roots declare Node.js `>=22` in `package.json`. The
+metadata declarations do not guarantee that an installer enforces this requirement.
 launcher needs a Node.js 22+ executable available to the Hermes service, either
 as `node` or `nodejs` on its `PATH`, or through `JOBSSS_NODE` set to the absolute
 path of a Node.js 22+ executable. An interactive shell's PATH change may not

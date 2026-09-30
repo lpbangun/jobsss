@@ -14,7 +14,7 @@ test('Codex pack check detects canonical source drift even when its inventory ag
     for (const rel of [
       'scripts/build-codex-pack.mjs', 'scripts/build-install-surfaces.mjs',
       'compat/install-pins.json', 'codex-pack/job-search-stack',
-      'bin', 'src', 'skills/jobsss', 'plugin.json'
+      'bin', 'src', 'skills/jobsss', 'plugin.json', 'LICENSE', 'NOTICE'
     ]) cpSync(path.join(ROOT, rel), path.join(scratch, rel), { recursive: true });
     const command = ['scripts/build-codex-pack.mjs', '--check'];
     const before = spawnSync(process.execPath, command, { cwd: scratch, encoding: 'utf8' });

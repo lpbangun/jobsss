@@ -68,7 +68,7 @@ Exact PE resource preservation result: 9 original type/name/language/size/SHA-25
 
 ## Generic restricted-PATH MCP evidence
 
-The current-host standalone release is built and exercised with Node and JobOS absent from PATH. Generic stdio MCP initialize, tools/list, doctor/start, journey behavior, and restart persistence pass. The generated manifest reports version 0.1.1.
+The current-host standalone release is built and exercised without Node or an external product runtime on PATH. Generic stdio MCP initialize, tools/list, doctor/start, journey behavior, and restart persistence pass.
 
 ## Client compatibility matrix
 
@@ -77,10 +77,10 @@ The current-host standalone release is built and exercised with Node and JobOS a
 | Pi | unverified |
 | OMP | unverified |
 | Codex aggregate pack | verified on Windows (fresh marketplace install, skill activation, MCP handshake and state-changing workflow) |
-| Hermes | verified |
-| Claude | verified |
+| Hermes | unverified (2026-09-30 isolated connectivity probe timed out) |
+| Claude | unverified (executable absent on this host) |
 
-Adapters remain thin and canonical assets remain authoritative. These retained Hermes/Claude labels describe historical MCP connectivity probes only, not canonical skill loading, a state-changing agent-host journey, or native Agent Plugins package loading. Current version availability observations are recorded separately in `compat/matrix.json` and do not upgrade verification.
+Adapters remain thin and canonical assets remain authoritative. Historical Hermes/Claude connectivity and Windows Codex marketplace results do not verify this changed runtime. Current observations are recorded separately in `compat/matrix.json`; pack installation and live connectivity are separate checks.
 
 ## Human-authority behavior
 

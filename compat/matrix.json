@@ -36,15 +36,15 @@
     },
     "hermes": {
       "id": "hermes",
-      "status": "verified",
+      "status": "unverified",
       "loading": "native",
       "version": "0.21.0",
       "versionObservedAt": "2026-09-07T03:00:00Z",
       "versionNote": "availability observation only (binary present); not a new integration verification, status unchanged",
       "adapter": "compat/hermes/config.yaml.template",
       "probe": "./bin/jobsss compat-probe --client hermes --config-dir <temp> --plugin-root <plugin>",
-      "verifiedBy": "real isolated launch: hermes mcp test jobsss connected to the bundled runtime in a temporary HERMES_HOME and discovered its tools",
-      "notes": "verified by the compat-probe isolated launch; unverified clients and platforms are never claimed as verified."
+      "previousVerification": "Historical isolated MCP connectivity probe connected to the bundled runtime; this is not current verification of the changed runtime.",
+      "notes": "2026-09-30 isolated hermes mcp test jobsss exceeded the bounded 20-second command deadline. Current MCP connectivity is unverified; historical pack installation is a separate claim."
     },
     "claude": {
       "id": "claude",
@@ -64,7 +64,7 @@
       "status": "built",
       "platform": "linux",
       "arch": "x64",
-      "notes": "current-host artifact built and exercised by the packaging slice (B30-B32): standalone bin/jobsss runs generic stdio MCP with node and jobos absent from PATH."
+      "notes": "current-host artifact built and exercised by the packaging slice (B30-B32): standalone bin/jobsss runs generic stdio MCP without Node or any external product runtime on PATH."
     },
     "linux-x64": { "id": "linux-x64", "status": "verified", "platform": "linux", "arch": "x64", "notes": "byte-identical to the current-host artifact built from the real host Node executable (official v22.22.3) via the checksum-pinned postject SEA injector and exercised through generic stdio MCP under a restricted PATH (B30-B32)." },
     "linux-arm64": { "id": "linux-arm64", "status": "unverified", "platform": "linux", "arch": "arm64", "notes": "checksum-pinned postject ELF definition over a genuine official Node v22.22.3 linux-arm64 executable validates structurally; unverified until exercised on a real arm64 Linux host." },

@@ -53,7 +53,7 @@ function ensureSelfProductPin(pins) {
   }
   const changed = execFileSync('git', [
     '-C', ROOT, '-c', 'core.filemode=false', 'diff', '--name-only', '--ignore-space-at-eol', self.ref, '--',
-    'bin', 'src', 'skills/jobsss', 'plugin.json', 'mcp.json', 'package.json'
+    'bin', 'src', 'skills/jobsss', 'plugin.json', 'mcp.json', 'package.json', 'LICENSE', 'NOTICE'
   ], { encoding: 'utf8' }).trim();
   if (changed) throw new Error(`JobSSS product differs from its install pin:\n${changed}`);
 }
@@ -152,6 +152,7 @@ function build() {
   copyTree(ROOT, 'bin', OUT, path.join('products', 'jobsss', 'bin'));
   copyTree(ROOT, 'src', OUT, path.join('products', 'jobsss', 'src'));
   copyFile(ROOT, 'plugin.json', OUT, path.join('products', 'jobsss', 'plugin.json'));
+  for (const file of ['LICENSE', 'NOTICE']) copyFile(ROOT, file, OUT, path.join('products', 'jobsss', file));
   copyTree(ROOT, path.join('skills', 'jobsss'), OUT, path.join('skills', 'jobsss'));
 
   // people-finder exact pinned runtime and skill.
@@ -260,6 +261,8 @@ function check() {
     ['bin', 'products/jobsss/bin'],
     ['src', 'products/jobsss/src'],
     ['plugin.json', 'products/jobsss/plugin.json'],
+    ['LICENSE', 'products/jobsss/LICENSE'],
+    ['NOTICE', 'products/jobsss/NOTICE'],
     ['skills/jobsss', 'skills/jobsss']
   ]) assertMirror(ROOT, source, packed);
   const peopleRoot = arg('--people-finder') || process.env.PEOPLE_FINDER_SOURCE;

@@ -81,8 +81,8 @@ test('INSTALL documents deferred Hermes activation and the Node PATH diagnosis',
     '${PLUGIN_ROOT}',
     '${PLUGIN_DATA}',
     "Node.js `>=22`",
-    "/usr/bin/env: 'node': No such file or directory",
-    'exit code 127, empty stdout',
+    'JOBSSS_NODE',
+    'Node.js 22 or newer is required, but this service could not find node or nodejs on PATH.',
     '/proc/<pid>/environ',
     'do not guarantee that an installer enforces',
     'Node-free startup'
@@ -91,7 +91,7 @@ test('INSTALL documents deferred Hermes activation and the Node PATH diagnosis',
   }
 });
 
-test('launcher reports the documented failure when a verified-empty PATH has no node', { skip: process.platform !== 'linux' }, () => {
+test('launcher reports an actionable failure when a verified-empty PATH has no Node.js', { skip: process.platform !== 'linux' }, () => {
   const scratch = mkdtempSync(path.join(os.tmpdir(), 'jobsss-no-node-path-'));
   const emptyPath = path.join(scratch, 'empty-bin');
   const dataDir = path.join(scratch, 'plugin-data');
@@ -107,7 +107,8 @@ test('launcher reports the documented failure when a verified-empty PATH has no 
     });
     assert.equal(result.status, 127);
     assert.equal(result.stdout, '');
-    assert.match(result.stderr, /^\/usr\/bin\/env: 'node': No such file or directory\n?$/);
+    assert.match(result.stderr, /^jobsss: Node\.js 22 or newer is required, but this service could not find node or nodejs on PATH\.\n/);
+    assert.match(result.stderr, /Set JOBSSS_NODE to an executable Node\.js 22\+ binary/);
     assert.equal(existsSync(dataDir), false, 'the launcher must fail before creating plugin state');
   } finally {
     rmSync(scratch, { recursive: true, force: true });

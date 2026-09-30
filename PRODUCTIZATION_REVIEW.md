@@ -61,11 +61,11 @@ Darwin x64, Darwin arm64, and Windows x64 are **unverified** runtime targets on 
 
 ## Current-host restricted-PATH release evidence
 
-The frozen release checks build the current-host standalone, then exercise generic restricted-PATH MCP with Node and JobOS absent from PATH. Initialize, tools/list, doctor/start, persistence after restart, and product version succeed. Generated release metadata remains deterministic and path-free.
+The frozen release checks build the current-host standalone, then exercise generic restricted-PATH MCP without Node or an external product runtime on PATH. Initialize, tools/list, doctor/start, persistence after restart, and product version succeed. Generated release metadata remains deterministic and path-free.
 
 ## Adapter behavior
 
-Compatibility adapters remain thin references to canonical assets. Hermes and Claude retain historical MCP-connectivity-only verified labels; Pi and OMP remain unverified. The generated root-level Codex aggregate pack is verified separately on Windows through a fresh marketplace install, explicit and natural skill activation, MCP initialize, and a state-changing profile-to-contact workflow. The legacy `compat/codex/config.toml.template` remains only a thin metadata adapter and is not the verified aggregate. Current version availability observations are recorded separately in `compat/matrix.json` and do not upgrade unrelated clients.
+Compatibility adapters remain thin references to canonical assets. Hermes is currently unverified after its 2026-09-30 isolated connectivity probe timed out; Claude is unverified because its executable is absent. Pi and OMP remain unverified. Historical Windows Codex marketplace installation and profile-to-contact results do not verify this changed aggregate pack. The legacy `compat/codex/config.toml.template` remains only a thin metadata adapter. Current observations are recorded separately in `compat/matrix.json`.
 
 ## Human authority
 

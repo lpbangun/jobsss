@@ -612,7 +612,7 @@ under `PLUGIN_DATA` and (2) the frozen Gate 0 fixtures
 `/etc/passwd`, `$HOME`, temp files outside `PLUGIN_DATA`, `file:` URLs, and
 JobOS user-state trees are forbidden.
 
-Fit scores must use contract `jobos.fit-score.v1` in `deterministic-degraded`
+Fit scores must use contract `jobsss.fit-score.v1` in `deterministic-degraded`
 mode without API keys, with dimensions and weights:
 `roleFit` 28, `domainFit` 18, `seniority` 14, `locationWorkModel` 12,
 `compensation` 8, `missionInterest` 14, `networkAccess` 6.
@@ -809,7 +809,7 @@ every frozen extended MCP tool. Inline `import_job` text deduplicates to
 one job id. `create_saved_search` with adapter `greenhouse` and a fixture
 copied under `PLUGIN_DATA` plus `daily_discovery` / `search_jobs` must
 return discovered jobs without API keys. `score_job` returns
-`jobos.fit-score.v1` in `deterministic-degraded` mode with all seven
+`jobsss.fit-score.v1` in `deterministic-degraded` mode with all seven
 weighted dimensions (`roleFit` 28, `domainFit` 18, `seniority` 14,
 `locationWorkModel` 12, `compensation` 8, `missionInterest` 14,
 `networkAccess` 6) and a JobOS `scoreStatus`.

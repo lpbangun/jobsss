@@ -65,7 +65,10 @@ test('P2 agent-plugin ships the install surface and nothing reviewer-owned', () 
   }
   assert.ok(files.some(rel => rel.startsWith('src/')), 'the bundled runtime src/ must ship inside the package');
   // Reviewer-owned evidence and development trees must never enter the install surface.
-  for (const banned of ['BENCHMARK.md', 'README.md', 'AGENTS.md', 'LICENSE']) {
+  for (const legal of ['LICENSE', 'NOTICE']) {
+    assert.equal(readPackage(legal), readFileSync(path.join(REPO_ROOT, legal), 'utf8'), `${legal} must preserve canonical attribution`);
+  }
+  for (const banned of ['BENCHMARK.md', 'README.md', 'AGENTS.md']) {
     assert.equal(files.includes(banned), false, `${banned} must stay out of the install package`);
   }
   for (const bannedPrefix of ['tests/', 'docs/', 'evaluation/', 'contracts/', 'compat/', 'scripts/', '.github/', '.hermes/']) {

@@ -10,7 +10,7 @@
  *
  *   agent-plugin/
  *     plugin.json, mcp.json   — the two manifests, byte-identical to the root
- *     bin/, src/              — the bundled runtime (no JobOS import or spawn)
+ *     bin/, src/              — the self-contained bundled runtime
  *     skills/jobsss/**        — the single agent skill
  *
  * The package is a mechanical byte-for-byte mirror of the canonical root files;
@@ -33,7 +33,7 @@ export const PACKAGE_DIRNAME = 'agent-plugin';
 /** Whole canonical directories mirrored into the package. */
 export const MIRROR_DIRS = Object.freeze(['bin', 'src', 'skills']);
 /** Canonical root metadata and manifests mirrored into the package. */
-export const MIRROR_FILES = Object.freeze(['package.json', 'plugin.json', 'mcp.json']);
+export const MIRROR_FILES = Object.freeze(['package.json', 'plugin.json', 'mcp.json', 'LICENSE', 'NOTICE']);
 
 function listFiles(absDir, prefix) {
   const found = [];

@@ -53,8 +53,8 @@
 // per-injection working copies live under the temporary cache directory
 // (JOBSSS_NATIVE_CACHE or the OS temp dir), never inside the plugin tree.
 // The released runtime inherits none of this: postject is build-only and
-// never shipped, and the downloaded JobSSS release requires neither Node
-// nor JobOS on PATH (B52).
+// never shipped, and the downloaded JobSSS release requires no external
+// runtime executable on PATH (B52).
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';

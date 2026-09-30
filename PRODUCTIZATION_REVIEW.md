@@ -12,16 +12,22 @@ Current native artifact refresh (2026-09-07, separately authorized closure round
 
 ## B1–B41
 
+Current validation (2026-09-30): **161/161** required acceptance and relevant regression tests passed, including two fresh-cache native-evidence reproductions. Generated packages match canonical source. The Windows Codex pack runtime smoke test passed with Contact-Brief's declared dependency supplied in a temporary test directory. Two captured resume formats rendered through actual Windows Chrome to one searchable page and were visually inspected. Word and native cover-letter page checks also passed.
+
+This does not claim a green repository-wide sweep: eighteen audit/closure/composition failures reproduce on the unchanged `c160555` base; the B52 package-metadata assertion conflicts with that base's existing dependency-free manifest, and three Linux PDF checks lack a local Linux browser. Historical acceptance below remains separate from these current results.
+
 The frozen thirteen-file acceptance command preserves B1–B64 and adds B65–B70. Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`. Agent Plugin layout, the canonical skill and MCP tool surface, generic stdio transport, `${PLUGIN_DATA}` isolation, scoring, discovery, workflows, persistence, audit behavior, adapters, and the human authority boundary remain unchanged.
 
-The authoritative JobSSS product version is **0.1.1** from `plugin.json`. The real CLI help/version surface, doctor response, MCP initialize `serverInfo.version`, MCP doctor result, and generated `release-manifest.json` agree through `src/version.js`; the same module is included in the SEA bundle.
+The current authoritative JobSSS product version is **0.1.2** from `plugin.json`. The real CLI help/version surface, doctor response, MCP initialize `serverInfo.version`, MCP doctor result, and generated `release-manifest.json` agree through `src/version.js`; the same module is included in the SEA bundle.
 
 ## Cross-platform build definitions and canonical independent native evidence
+
+The 2026-09-30 release candidate is version 0.1.2. Issues #15 and #26–#30 are addressed in one worktree, alongside voice-guided cover-letter preparation and preserved editorial revisions. Short, normal-length, and multipage synthetic letters were visually checked in actual Word PDF exports and the native PDF renderer; oversized paragraphs preserve their final lines above the bottom margin. B67 reproduced the refreshed canonical evidence in two fresh processes with separate empty external caches. Cross-built targets still require matching-host verification.
 
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `0b279b1d33dba5614f6be68988e2427932a4901190bedeedcbd14bdbcc7b4a47`
+- SHA-256: `af8e4fe39a143c6ddf4a154179f4ee0cfb1569c4caa77e0e507edc855f7fa846`
 - Exact reproduction command:
 
 ```bash

@@ -6,7 +6,7 @@
 // mcp.json, skills/jobsss/SKILL.md, skills/jobsss/references/, bin/jobsss —
 // or bin/jobsss.exe for Windows) plus justified metadata (LICENSE, README,
 // release-manifest), with a genuinely standalone `bin/jobsss` that runs
-// stdio MCP without `node` or `jobos` on PATH.
+// stdio MCP without external runtime executables on PATH.
 //
 // Targets come from src/packaging.js (the separated native-format
 // definitions module): linux-x64, linux-arm64 (ELF), darwin-x64,
@@ -106,7 +106,7 @@ function manifestTargetEntries({ builtTargetId, hostId, isCurrentHostBuild, fixt
       baseNodeSha256: meta.baseNodeSha256,
       blobSha256: meta.blobSha256,
       artifactSha256: binSha,
-      exercisedBy: 'generic stdio MCP subprocess with node and jobos absent from PATH (B31/B32)',
+      exercisedBy: 'generic stdio MCP subprocess with external runtime executables absent from PATH (B31/B32)',
     };
   } else {
     currentHost.status = 'unverified';
@@ -267,6 +267,7 @@ export function releaseCommand(argv, { repoRoot = repoRootFromSource() } = {}) {
   copyFileIfPresent(path.join(repoRoot, 'plugin.json'), path.join(pluginDir, 'plugin.json'));
   copyFileIfPresent(path.join(repoRoot, 'mcp.json'), path.join(pluginDir, 'mcp.json'));
   copyFileIfPresent(path.join(repoRoot, 'LICENSE'), path.join(pluginDir, 'LICENSE'));
+  copyFileIfPresent(path.join(repoRoot, 'NOTICE'), path.join(pluginDir, 'NOTICE'));
   copyFileIfPresent(path.join(repoRoot, 'README.md'), path.join(pluginDir, 'README.md'));
   assert(fs.existsSync(path.join(pluginDir, 'plugin.json')), 'release: plugin.json missing from source tree');
   assert(fs.existsSync(path.join(pluginDir, 'mcp.json')), 'release: mcp.json missing from source tree');

@@ -1,22 +1,18 @@
 // Deterministic offline multidimensional fit scoring for the standalone journey.
-// Attributed port: adapted from JobOS src/scoring.js `finalizeFitScore` and
-// `deterministicProposal` (jobos.fit-score.v1 contract, seven weighted
-// dimensions, JobOS scoreStatus semantics), reimplemented for the standalone
-// bundled runtime using plain JSON profile/job objects with no external
-// provider. JobOS remains MIT (see root LICENSE) and is never imported.
+// Algorithm attribution for adapted scoring behavior is recorded in NOTICE.
+// This module operates on local profile/job objects and uses no external provider.
 //
 // Contract (BENCHMARK.md B19):
-//   - returns jobos.fit-score.v1 in deterministic-degraded mode, provider null
+//   - returns jobsss.fit-score.v1 in deterministic-degraded mode, provider null
 //   - all seven dimensions: roleFit 28, domainFit 18, seniority 14,
 //     locationWorkModel 12, compensation 8, missionInterest 14, networkAccess 6
 //   - every dimension carries a weight and a human-readable reason
-//   - scoreStatus follows JobOS semantics (scored / review_required /
-//     insufficient_evidence)
+//   - scoreStatus values are scored / review_required / insufficient_evidence
 //   - no external providers or API keys; no invented facts beyond local evidence
 import { tokenize } from './store.js';
 import { parseCompensation } from './compensation.js';
 
-export const FIT_CONTRACT = 'jobos.fit-score.v1';
+export const FIT_CONTRACT = 'jobsss.fit-score.v1';
 
 export const FIT_DIMENSION_WEIGHTS = Object.freeze({
   roleFit: 28,
@@ -607,7 +603,7 @@ function finalizeFitScore(proposal, { profile, job }) {
 
 /**
  * Deterministic offline multidimensional fit score for one profile/job pair.
- * No external provider or API key is used. Returns the jobos.fit-score.v1
+ * No external provider or API key is used. Returns the jobsss.fit-score.v1
  * contract with all seven weighted dimensions.
  */
 export function localScore({ profile, job }) {

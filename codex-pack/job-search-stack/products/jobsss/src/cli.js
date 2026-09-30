@@ -1,13 +1,5 @@
-// Shared CLI routing for the bundled JobSSS runtime.
-//
-// Single source of truth for command dispatch: the source launcher
-// (`bin/jobsss`) and the standalone release binary (built by
-// `src/sea-build.js`) both route through `runCli`, so the released runtime
-// behaves identically to the source runtime.
-//
-// JobOS attribution: launch/transport framing concepts are attributed to
-// JobOS src/mcp.js and are reimplemented for the standalone PLUGIN_DATA
-// runtime (see src/mcp.js).
+// Shared CLI routing for the bundled JobSSS runtime. Source and standalone
+// release launchers both route through runCli for consistent behavior.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,7 +25,9 @@ function printHelp() {
   console.log(`jobsss bundled runtime v${PRODUCT_VERSION}
 Usage:
   jobsss mcp --data <dir>     Start MCP stdio server with PLUGIN_DATA
-  jobsss doctor --data <dir>  Diagnose bundled runtime
+  jobsss doctor --data <dir> [--scan <root> ...]
+                              Diagnose the selected store; optional scans inspect
+                              only caller-selected roots and never delete stores
   jobsss start --data <dir> [--compact]
                               Initialize PLUGIN_DATA; --compact selects the
                               reduced output layout for a new workspace
@@ -86,7 +80,23 @@ export function runCli(argv = process.argv.slice(2)) {
       console.error('requires --data <dir>');
       process.exit(2);
     }
-    const out = cmd === 'doctor' ? doctor(dir) : start(dir, argv.includes('--compact') ? { outputMode: 'compact' } : {});
+    const scanRoots = [];
+    if (cmd === 'doctor') {
+      for (let i = 1; i < argv.length; i += 1) {
+        if (argv[i] === '--scan') {
+          if (!argv[i + 1] || argv[i + 1].startsWith('--')) {
+            console.error('--scan requires a directory path');
+            process.exit(2);
+          }
+          scanRoots.push(argv[++i]);
+        } else if (argv[i].startsWith('--scan=')) {
+          scanRoots.push(argv[i].slice('--scan='.length));
+        }
+      }
+    }
+    const out = cmd === 'doctor'
+      ? doctor(dir, scanRoots.length ? { scanRoots } : {})
+      : start(dir, argv.includes('--compact') ? { outputMode: 'compact' } : {});
     console.log(JSON.stringify(out, null, 2));
     return;
   }

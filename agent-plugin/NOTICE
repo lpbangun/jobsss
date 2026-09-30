@@ -1,0 +1,27 @@
+JobSSS attribution notice
+
+Portions of the standalone JobSSS runtime adapt algorithms and product behavior
+from the MIT-licensed JobOS project (Copyright (c) 2026 JobOS contributors):
+
+- `src/cli.js` and `src/mcp.js`: launch and JSON-RPC framing concepts from
+  JobOS `src/mcp.js`.
+- `src/domain.js`: profile, job, discovery, scoring, lifecycle, artifact, and
+  persistence domain concepts implemented by JobOS modules for profiles, jobs,
+  discovery, scoring, lifecycle, and artifacts.
+- `src/discovery.js`: public URL safety (`publicUrl`, `isBlockedIp`), job text
+  parsing and deduplication (`parseJob`, `dedupeKey`), Greenhouse board
+  normalization, posting liveness classification, and saved-search result
+  handling from JobOS discovery/job modules.
+- `src/scoring.js`: deterministic fit scoring behavior (`finalizeFitScore`,
+  `deterministicProposal`) from JobOS `src/scoring.js`.
+- `src/store.js`: versioned local persistence and workspace concepts from
+  JobOS `src/db.js` and `src/workspace.js`.
+- `src/workflows.js`: pursuit, application lifecycle, and next-action concepts
+  from JobOS lifecycle modules.
+- `src/relationships.js`: contact selection and research planning from JobOS
+  `src/research/contacts.js`, plus interview story and preparation concepts
+  from JobOS `src/interview.js`.
+
+The JobOS project is not loaded, imported, or spawned at runtime. This notice
+records provenance; JobSSS remains a standalone implementation. The MIT license
+and copyright notices are preserved in `LICENSE`.

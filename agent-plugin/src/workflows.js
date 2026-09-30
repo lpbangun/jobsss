@@ -1,10 +1,6 @@
 // Bundled JobSSS workflow helpers — standalone store-object functions.
-// Attributed ports: lifecycle/next-action concepts from JobOS src/lifecycle.js
-// and src/utils.js validStatuses; artifacts and review state from
-// src/artifacts.js / src/domain-tools.js; proof-grounded tailoring from
-// src/tailoring.js and src/resume-tailoring.js; reusable answers from
-// src/answers.js. Reimplemented as pure store-object helpers for the bundled
-// runtime; JobOS is never imported or required (MIT, see root LICENSE).
+// Local pipeline, proof-grounded material drafting, and reusable answers.
+// Third-party provenance and notices are centralized in NOTICE and LICENSE.
 //
 // Design contract (frozen B21–B23 plus broader lifecycle):
 //   - every job-scoped helper enforces profile ownership (profile_mismatch)
@@ -16,8 +12,10 @@
 //   - answers are reusable, profile-owned, and never auto-filled
 //   - preview/export payloads are secret-safe (no resume text dumps, no env
 //     secrets) and never claim a sync or send happened
-import { id, now, hashText, tokenize, activeProofIdsForStore, evidenceFreshnessForStore } from './store.js';
+import { id, now, hashText, tokenize, activeProofIdsForStore, evidenceFreshnessForStore, ensureDataDir } from './store.js';
 import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { resumeCopy, coverLetterCopy, exportPdf, supportedAchievement, buildResumeMaterial } from './documents.js';
 import { exportCoverLetterDocx } from './docx.js';
 import { listResumeDesigns } from './resume-browser.js';
@@ -422,9 +420,8 @@ function proofPointsFor(store, profileId) {
 
 // ---------------------------------------------------------------------------
 // Job-specific requirement extraction and proof selection.
-// Attributed port: deterministic inventory/coverage concepts from JobOS
-// src/requirements.js (extractRequirementInventory, buildRequirementCoverage)
-// reimplemented here as pure store-object helpers (no external providers).
+// Deterministic inventory and source-grounded coverage concepts.
+// Pure store-object helpers with no external providers.
 // ---------------------------------------------------------------------------
 
 const REQUIREMENT_SKILL_PHRASES = Object.freeze([
@@ -648,7 +645,7 @@ function buildCoverage(requirements, selected) {
  * present in profile proof points may appear as achievements; no metrics are
  * invented. Persists a review artifact and returns the document content.
  */
-function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir, style, label, designId, contactEmail, locationNote, excludeClaimIds = [], preferClaimIds = [] }) {
+function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown', dataDir, style, label, designId, contactEmail, date, locationNote, excludeClaimIds = [], preferClaimIds = [] }) {
   format = String(format).toLowerCase();
   if (!['markdown', 'md', 'text', 'pdf', 'docx'].includes(format) || (format === 'docx' && kind !== 'cover_letter')) {
     throw Object.assign(new Error(kind === 'cover_letter'
@@ -677,7 +674,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   let blocks = null;
   let canonical = null;
   const body = kind === 'cover_letter'
-    ? coverLetterCopy(profile, job, selectedProofs)
+    ? coverLetterCopy(profile, job, selectedProofs, { date, contactEmail })
     : (() => {
       const material = buildResumeMaterial(
         profile,
@@ -915,8 +912,72 @@ export function listResumeDesignVariants(store, { profileId, variantGroupId }) {
     selectedDesign: variants.find(item => item.designSelection)?.designSelection || null };
 }
 
-export function draftCoverLetter(store, { jobId, profileId, format = 'markdown', dataDir }) {
-  return buildMaterialDraft(store, { jobId, profileId, kind: 'cover_letter', format, dataDir });
+export function draftCoverLetter(store, { jobId, profileId, format = 'markdown', dataDir, date, contactEmail }) {
+  return buildMaterialDraft(store, { jobId, profileId, kind: 'cover_letter', format, dataDir, date, contactEmail });
+}
+
+/** Keep editorial changes as a new local revision, without granting approval. */
+export function reviseCoverLetter(store, { profileId, jobId, artifactId, expectedContentHash, content, proofPointIds, format, dataDir }) {
+  requireProfile(store, profileId);
+  requireJobOwned(store, jobId, profileId);
+  const original = store.artifacts?.[String(artifactId || '')];
+  if (!original || original.profileId !== profileId || original.jobId !== jobId || original.kind !== 'cover_letter_draft' || original.retiredAt) {
+    throw Object.assign(new Error('A current profile-owned cover-letter draft is required.'), { code: 'cover_letter_artifact_not_found' });
+  }
+  if (!expectedContentHash || expectedContentHash !== original.contentHash) {
+    throw Object.assign(new Error('The original draft changed; read its content hash before revising.'), { code: 'stale_artifact' });
+  }
+  const body = typeof content === 'string' ? content.replace(/\r\n?/g, '\n').trim() + '\n' : '';
+  if (!body.trim() || Buffer.byteLength(body, 'utf8') > 50_000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(body)) {
+    throw Object.assign(new Error('Supply nonempty cover-letter text of at most 50 KB without control characters.'), { code: 'invalid_cover_letter_content' });
+  }
+  if (!Array.isArray(proofPointIds) || !proofPointIds.length) {
+    throw Object.assign(new Error('Explicit source proof IDs are required for an editorial revision.'), { code: 'missing_proof_ids' });
+  }
+  const ids = persistProofIds(store, profileId, proofPointIds, 'proofPointIds');
+  const active = new Set(proofPointsFor(store, profileId).map(proof => proof.id));
+  if (!ids.length || ids.some(proofId => !active.has(proofId))) {
+    throw Object.assign(new Error('Use only active proof points from this profile.'), { code: 'inactive_proof' });
+  }
+  const outputFormat = String(format ?? original.format ?? 'markdown').toLowerCase();
+  if (!['markdown', 'md', 'text', 'pdf', 'docx'].includes(outputFormat)) {
+    throw Object.assign(new Error('Supported cover-letter formats: markdown, text, pdf, docx.'), { code: 'unsupported_document_format' });
+  }
+  const contentHash = hashText(body);
+  const revisionId = id('artifact', `${profileId}:${jobId}:cover-letter-revision:${artifactId}:${outputFormat}:${contentHash}:${ids.join('|')}`);
+  const existing = store.artifacts[revisionId];
+  if (existing?.export?.path && !fs.existsSync(existing.export.path)) {
+    throw Object.assign(new Error('The stored revision export is missing.'), { code: 'document_export_missing' });
+  }
+  if (existing?.export?.path) {
+    const filePath = path.resolve(existing.export.path);
+    if (path.dirname(filePath) !== ensureDataDir(dataDir)) {
+      throw Object.assign(new Error('The stored export is outside this workspace.'), { code: 'unsafe_export_path' });
+    }
+    const stat = fs.lstatSync(filePath);
+    if (!stat.isFile() || stat.isSymbolicLink() || createHash('sha256').update(fs.readFileSync(filePath)).digest('hex') !== existing.export.sha256) {
+      throw Object.assign(new Error('The stored revision export changed; it cannot be reused.'), { code: 'document_export_changed' });
+    }
+  }
+  const exported = existing?.export || (outputFormat === 'pdf' ? exportPdf(dataDir, body, { kind: 'cover_letter' })
+    : outputFormat === 'docx' ? exportCoverLetterDocx(dataDir, body) : null);
+  const revised = existing || {
+    id: revisionId, profileId, jobId, kind: 'cover_letter_draft', title: original.title,
+    format: outputFormat, content: body, contentHash, proofPointIds: ids,
+    status: 'draft_needs_human_review', createdAt: now(), updatedAt: now(),
+    ...(exported ? { export: exported } : {}),
+    revisionOf: original.id,
+    provenance: { kind: 'editorial_revision', baseContentHash: original.contentHash, proofPointIds: ids },
+    reviewNote: 'Supplied prose and cited evidence need human verification; citations do not attest every sentence.',
+  };
+  ensure(store, 'artifacts')[revisionId] = revised;
+  if (!existing) {
+    store.audit = Array.isArray(store.audit) ? store.audit : [];
+    store.audit.push({ event: 'cover_letter_revised', profileId, jobId, artifactId: revisionId, revisionOf: original.id, createdAt: revised.createdAt });
+  }
+  return { ok: true, profileId, jobId, artifactId: revisionId, contentHash, artifact: revised,
+    document: { content: body, format: outputFormat, kind: 'cover_letter', ...(exported || {}), proofPointIds: ids },
+    message: 'Editorial revision saved separately from its source draft; human verification remains required.' };
 }
 
 export function createArtifact(store, { jobId, profileId, kind = 'note', title, content = '', proofPointIds = [], format = 'md' }) {

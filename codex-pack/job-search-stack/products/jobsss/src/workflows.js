@@ -1,3 +1,4 @@
+import { tailoringContext } from './tailoring-context.js';
 // Bundled JobSSS workflow helpers — standalone store-object functions.
 // Local pipeline, proof-grounded material drafting, and reusable answers.
 // Third-party provenance and notices are centralized in NOTICE and LICENSE.
@@ -674,7 +675,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   let blocks = null;
   let canonical = null;
   const body = kind === 'cover_letter'
-    ? coverLetterCopy(profile, job, selectedProofs, { date, contactEmail })
+    ? coverLetterCopy(profile, job, selectedProofs, { date, contactEmail, voice: tailoringContext(profile, job).voice })
     : (() => {
       const material = buildResumeMaterial(
         profile,
@@ -779,6 +780,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     ...(variantGroupId ? { variantGroupId, designId: styleId, design: exported?.design || design } : {}),
     ...(exported ? { export: exported } : {}),
     ...(canonical ? { resumeDocument: canonical } : {}),
+    conversationContext: tailoringContext(profile, job),
     reviewNote: 'human verification required',
     format,
     content: body,
@@ -966,6 +968,7 @@ export function reviseCoverLetter(store, { profileId, jobId, artifactId, expecte
     format: outputFormat, content: body, contentHash, proofPointIds: ids,
     status: 'draft_needs_human_review', createdAt: now(), updatedAt: now(),
     ...(exported ? { export: exported } : {}),
+    conversationContext: tailoringContext(requireProfile(store, profileId), requireJobOwned(store, jobId, profileId)),
     revisionOf: original.id,
     provenance: { kind: 'editorial_revision', baseContentHash: original.contentHash, proofPointIds: ids },
     reviewNote: 'Supplied prose and cited evidence need human verification; citations do not attest every sentence.',

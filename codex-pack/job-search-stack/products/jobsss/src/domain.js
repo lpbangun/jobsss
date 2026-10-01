@@ -1,3 +1,4 @@
+import { coverLetterDecision } from './cover-letter-policy.js';
 // Domain handlers for the standalone JobSSS workflow over the bundled JSON store.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,6 +32,8 @@ import { detectResumeRenderer, listResumeDesigns as resumeDesignCatalog } from '
 import { postingRequirements } from './resume-compiler.js';
 import { unansweredRequiredFor } from './checklist.js';
 import { buildCoverLetterBrief, isCoverLetterEvidence } from './cover-letter-brief.js';
+
+import { normalizeTailoringContext, tailoringContext } from './tailoring-context.js';
 
 export { unansweredRequiredFor };
 
@@ -1425,6 +1428,51 @@ export function inspectCoverLetterBrief(dataDir, args = {}) {
     research: Object.values(store.research || {}),
     artifacts: Object.values(store.artifacts || {}),
   });
+}
+
+export function recordTailoringContext(dataDir, args = {}) {
+  if (!Number.isInteger(args.expectedRevision)) throw error('expected_revision_required', 'The current store revision is required.');
+  const context = normalizeTailoringContext(args.context);
+  return mutate(dataDir, args, store => {
+    const profile = requireProfile(store, args.profileId);
+    const job = requireJobOwned(store, args.jobId, args.profileId);
+    const previous = job.tailoringContext || null;
+    job.tailoringContext = { ...context, updatedAt: now() };
+    job.tailoringContextHistory = [...(job.tailoringContextHistory || []), { previous, current: job.tailoringContext }];
+    return { ok: true, profileId: profile.id, jobId: job.id, context: tailoringContext(profile, job), reusablePreferencesChanged: false };
+  });
+}
+
+export function rememberRoleNarrative(dataDir, args = {}) {
+  if (args.confirmedByUser !== true) throw error('confirmation_required', 'Ask the user to explicitly confirm the exact role thesis and/or voice and role-family reuse scope first.');
+  if (!Number.isInteger(args.expectedRevision)) throw error('expected_revision_required', 'The current store revision is required to remember a role narrative.');
+  return mutate(dataDir, args, store => {
+    const profile = requireProfile(store, args.profileId);
+    const job = requireJobOwned(store, args.jobId, args.profileId);
+    const context = job.tailoringContext;
+    if (!context) throw error('tailoring_context_required', 'Record this job’s conversation first.');
+    const voice = args.voice === undefined ? undefined : normalizeCoverLetterVoice(args.voice);
+    if (!context.roleThesis && !voice) throw error('tailoring_context_required', 'A role thesis or voice is required.');
+    const key = `role:${context.roleFamily.toLowerCase()}`;
+    profile.roleNarratives ||= {};
+    const previous = profile.roleNarratives[key] || null;
+    const current = { ...(previous || {}), roleFamily: context.roleFamily,
+      ...(context.roleThesis ? { roleThesis: context.roleThesis } : {}), ...(voice ? { voice } : {}), updatedAt: now(), sourceJobId: job.id };
+    profile.roleNarratives[key] = current;
+    profile.roleNarrativeHistory = [...(profile.roleNarrativeHistory || []), { previous, current }];
+    return { ok: true, profileId: profile.id, roleNarrative: current, artifactApprovalGranted: false };
+  });
+}
+
+export function inspectTailoringBrief(dataDir, args = {}) {
+  const store = loadStore(dataDir);
+  const profile = requireProfile(store, args.profileId);
+  const job = requireJobOwned(store, args.jobId, args.profileId);
+  return { ...inspectCoverLetterBrief(dataDir, args), context: tailoringContext(profile, job),
+    resume: { text: profile.resumeText || '', identity: profile.resume?.identity || null },
+    reusableRoleNarratives: Object.values(profile.roleNarratives || {}),
+    questions: ['What is your point of view about this target role?', 'What are one or two things you like about this company?'],
+    materials: coverLetterDecision(job).draft ? ['resume', 'cover_letter'] : ['resume'], readOnly: true };
 }
 
 export function inspectResumeQa(dataDir, args = {}) {

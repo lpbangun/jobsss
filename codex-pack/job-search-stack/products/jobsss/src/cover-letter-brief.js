@@ -1,5 +1,7 @@
+import { coverLetterDecision } from './cover-letter-policy.js';
 // Read-only preparation data for host-authored, proof-grounded cover letters.
 // Voice examples are separated from factual evidence and never enter matching.
+import { tailoringContext } from './tailoring-context.js';
 import { postingRequirements } from './resume-compiler.js';
 
 const STOP_WORDS = new Set(`a an and are as at be by for from has have in into is it its of on or our the their this to we will with you your ability experience work role team strong using including`.split(' '));
@@ -158,6 +160,7 @@ export function buildCoverLetterBrief({ profile, job, proofPoints = [], research
 
   return {
     ok: true,
+    coverLetterDecision: coverLetterDecision(job),
     profileId: profile.id,
     jobId: job.id,
     job: {
@@ -172,7 +175,8 @@ export function buildCoverLetterBrief({ profile, job, proofPoints = [], research
     },
     requirements,
     activeProofPoints: proofPoints.map(publicProof),
-    coverLetterVoice: profile.preferences?.coverLetterVoice || { samples: [] },
+    conversationContext: tailoringContext(profile, job),
+    coverLetterVoice: tailoringContext(profile, job).voice,
     userAngle: publicUserAngle(profile.preferences || {}),
     employerResearch: ownedResearch,
     suggestedNarrative: suggestedNarrative(job, requirements, proofPoints),

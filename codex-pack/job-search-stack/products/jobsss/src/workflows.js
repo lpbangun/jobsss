@@ -1,3 +1,5 @@
+import { coverLetterDecision } from './cover-letter-policy.js';
+import { tailoringContext } from './tailoring-context.js';
 // Bundled JobSSS workflow helpers — standalone store-object functions.
 // Local pipeline, proof-grounded material drafting, and reusable answers.
 // Third-party provenance and notices are centralized in NOTICE and LICENSE.
@@ -180,6 +182,17 @@ export function syncTasksForApplication(store, { jobId, profileId, status }) {
     }
     return tasks;
   }
+  const job = store.jobs?.[jobId] || {};
+  const decision = coverLetterDecision(job, job.coverLetterDecision?.requestedByUser ?? undefined);
+  job.coverLetterDecision = decision;
+  const materialText = decision.draft ? 'resume and cover letter' : 'resume';
+  const legacyText = `Tailor resume and cover letter from stored proof candidates for ${String(jobId)}; human verification is still required.`;
+  for (const task of Object.values(tasks)) {
+    if (task.profileId === profileId && task.jobId === jobId && task.status === 'open' && ((task.text === legacyText && !decision.draft) || (task.text.startsWith('Tailor resume') && task.text.endsWith(`for ${String(jobId)}; human verification is still required.`) && task.text !== `Tailor ${materialText} from stored proof candidates for ${String(jobId)}; human verification is still required.`))) {
+      task.status = 'cancelled'; task.closedReason = 'cover_letter_policy_updated';
+      task.closedAt = now(); task.updatedAt = task.closedAt;
+    }
+  }
   const base = [
     {
       kind: 'action',
@@ -191,7 +204,7 @@ export function syncTasksForApplication(store, { jobId, profileId, status }) {
     },
     {
       kind: 'next',
-      text: `Tailor resume and cover letter from stored proof candidates for ${String(jobId)}; human verification is still required.`,
+      text: `Tailor ${materialText} from stored proof candidates for ${String(jobId)}; human verification is still required.`,
     },
   ];
   if (status === 'pursued') {
@@ -674,7 +687,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
   let blocks = null;
   let canonical = null;
   const body = kind === 'cover_letter'
-    ? coverLetterCopy(profile, job, selectedProofs, { date, contactEmail })
+    ? coverLetterCopy(profile, job, selectedProofs, { date, contactEmail, voice: tailoringContext(profile, job).voice })
     : (() => {
       const material = buildResumeMaterial(
         profile,
@@ -779,6 +792,7 @@ function buildMaterialDraft(store, { jobId, profileId, kind, format = 'markdown'
     ...(variantGroupId ? { variantGroupId, designId: styleId, design: exported?.design || design } : {}),
     ...(exported ? { export: exported } : {}),
     ...(canonical ? { resumeDocument: canonical } : {}),
+    conversationContext: tailoringContext(profile, job),
     reviewNote: 'human verification required',
     format,
     content: body,
@@ -912,8 +926,17 @@ export function listResumeDesignVariants(store, { profileId, variantGroupId }) {
     selectedDesign: variants.find(item => item.designSelection)?.designSelection || null };
 }
 
-export function draftCoverLetter(store, { jobId, profileId, format = 'markdown', dataDir, date, contactEmail }) {
-  return buildMaterialDraft(store, { jobId, profileId, kind: 'cover_letter', format, dataDir, date, contactEmail });
+export function draftCoverLetter(store, { jobId, profileId, format = 'markdown', dataDir, date, contactEmail, requestedByUser }) {
+  const job = requireJobOwned(store, jobId, profileId);
+  requireProfile(store, profileId);
+  const decision = coverLetterDecision(job, requestedByUser);
+  job.coverLetterDecision = decision;
+  syncTasksForApplication(store, { jobId, profileId, status: job.status || 'preparing' });
+  if (!decision.draft) return { ok: true, status: 'skipped', artifactId: null, decision,
+    reason: decision.reason, message: 'Cover letter skipped under the application requirements policy. Existing drafts are retained.' };
+  const result = buildMaterialDraft(store, { jobId, profileId, kind: 'cover_letter', format, dataDir, date, contactEmail });
+  store.artifacts[result.artifactId].coverLetterDecision = decision;
+  return { ...result, decision };
 }
 
 /** Keep editorial changes as a new local revision, without granting approval. */
@@ -966,6 +989,7 @@ export function reviseCoverLetter(store, { profileId, jobId, artifactId, expecte
     format: outputFormat, content: body, contentHash, proofPointIds: ids,
     status: 'draft_needs_human_review', createdAt: now(), updatedAt: now(),
     ...(exported ? { export: exported } : {}),
+    conversationContext: tailoringContext(requireProfile(store, profileId), requireJobOwned(store, jobId, profileId)),
     revisionOf: original.id,
     provenance: { kind: 'editorial_revision', baseContentHash: original.contentHash, proofPointIds: ids },
     reviewNote: 'Supplied prose and cited evidence need human verification; citations do not attest every sentence.',

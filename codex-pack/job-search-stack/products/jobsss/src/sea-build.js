@@ -56,6 +56,7 @@ export const SEA_BUILD_REL = path.join('.tmp', 'jobsss' + '-productization', 'se
 
 const MODULES = Object.freeze([
   'version.js',
+  'cover-letter-policy.js',
   // Pure dependency-free helpers first, then the modules that import them:
   // checklist.js is the shared readiness gate; projection.js renders the
   // deterministic Markdown workspace projection and is imported by store.js.
@@ -70,6 +71,7 @@ const MODULES = Object.freeze([
   'resume-ir-latex.js',
   'resume-browser.js',
   'cover-letter-layout.js',
+  'tailoring-context.js',
   'documents.js',
   'cover-letter-brief.js',
   'docx.js',

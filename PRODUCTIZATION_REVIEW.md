@@ -27,7 +27,7 @@ The 2026-09-30 release candidate is version 0.1.2. Issues #15 and #26–#30 are 
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `af8e4fe39a143c6ddf4a154179f4ee0cfb1569c4caa77e0e507edc855f7fa846`
+- SHA-256: `23d76cd67cb5eb105a9fa0879a6014ec532f91656e9ac54aa4df7c5502e66e16`
 - Exact reproduction command:
 
 ```bash

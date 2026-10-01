@@ -70,6 +70,7 @@ const MODULES = Object.freeze([
   'resume-ir-latex.js',
   'resume-browser.js',
   'cover-letter-layout.js',
+  'tailoring-context.js',
   'documents.js',
   'cover-letter-brief.js',
   'docx.js',

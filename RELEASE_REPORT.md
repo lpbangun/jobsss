@@ -25,7 +25,7 @@ Complete evidence is recorded once:
 The 2026-09-30 release candidate is version 0.1.2. It addresses issues #15 and #26–#30 and adds voice-guided cover-letter preparation, preserved editorial revisions, and ordinary Word/PDF letter layout. Two fresh processes with separate empty external caches reproduced the canonical native evidence byte for byte (B67). Official inputs, injector, and validators remain pinned; cross-built targets remain unverified at runtime.
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `af8e4fe39a143c6ddf4a154179f4ee0cfb1569c4caa77e0e507edc855f7fa846`
+- SHA-256: `23d76cd67cb5eb105a9fa0879a6014ec532f91656e9ac54aa4df7c5502e66e16`
 - Exact reproduction command:
 
 ```bash

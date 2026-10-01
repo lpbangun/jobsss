@@ -25,7 +25,7 @@ Complete evidence is recorded once:
 The 2026-09-30 release candidate is version 0.1.2. It addresses issues #15 and #26–#30 and adds voice-guided cover-letter preparation, preserved editorial revisions, and ordinary Word/PDF letter layout. Two fresh processes with separate empty external caches reproduced the canonical native evidence byte for byte (B67). Official inputs, injector, and validators remain pinned; cross-built targets remain unverified at runtime.
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `23d76cd67cb5eb105a9fa0879a6014ec532f91656e9ac54aa4df7c5502e66e16`
+- SHA-256: `ba5e69cd02c92c37e511e515224926b92e5d802a3df3581ebae315dcd629a5e1`
 - Exact reproduction command:
 
 ```bash
@@ -117,3 +117,5 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 ## Deferred/unverified capabilities
 
 Darwin x64, Darwin arm64, Windows x64, and Linux arm64 remain unverified as matching-host standalone-binary targets. Structural validation does not upgrade those labels. Windows standalone binaries require matching-host re-signing after unsigned staging; macOS requires matching-host signing/execution. The generated Codex aggregate pack is separately verified as a source/plugin installation on Windows; Pi and OMP remain unverified client integrations. Downloaded inputs, validator environments, caches, and release binaries are not committed.
+
+Cover-letter requirements policy refresh (2026-10-01): the shared decision policy is included in the standalone bundle. Two fresh evidence processes with separate empty external caches produced identical native-format evidence at SHA-256 `ba5e69cd02c92c37e511e515224926b92e5d802a3df3581ebae315dcd629a5e1`. This is structural build evidence; cross-built targets remain unverified on matching hosts. See docs/COVER_LETTER_POLICY.md for behavior and regression results.

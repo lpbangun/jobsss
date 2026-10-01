@@ -27,7 +27,7 @@ The 2026-09-30 release candidate is version 0.1.2. Issues #15 and #26–#30 are 
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `23d76cd67cb5eb105a9fa0879a6014ec532f91656e9ac54aa4df7c5502e66e16`
+- SHA-256: `ba5e69cd02c92c37e511e515224926b92e5d802a3df3581ebae315dcd629a5e1`
 - Exact reproduction command:
 
 ```bash
@@ -98,3 +98,5 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 ## Residual risks
 
 Matching-host runtime execution and re-signing remain deferred for Darwin and Windows. Linux arm64 remains unverified without a matching host. Downloaded official inputs, validator environments, cache content, and release binaries remain external and uncommitted.
+
+Cover-letter requirements policy refresh (2026-10-01): the shared decision policy is included in the standalone bundle. Two fresh evidence processes with separate empty external caches produced identical native-format evidence at SHA-256 `ba5e69cd02c92c37e511e515224926b92e5d802a3df3581ebae315dcd629a5e1`. This is structural build evidence; cross-built targets remain unverified on matching hosts. See docs/COVER_LETTER_POLICY.md for behavior and regression results.

@@ -1,3 +1,4 @@
+import { coverLetterDecision } from './cover-letter-policy.js';
 // Read-only preparation data for host-authored, proof-grounded cover letters.
 // Voice examples are separated from factual evidence and never enter matching.
 import { tailoringContext } from './tailoring-context.js';
@@ -159,6 +160,7 @@ export function buildCoverLetterBrief({ profile, job, proofPoints = [], research
 
   return {
     ok: true,
+    coverLetterDecision: coverLetterDecision(job),
     profileId: profile.id,
     jobId: job.id,
     job: {

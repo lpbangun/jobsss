@@ -34,10 +34,11 @@ test('conversation persists, is scoped by profile/job/role, and cannot silently 
   assert.equal(brief.context.roleThesis, 'Learning should reduce friction.');
   assert.deepEqual(brief.context.companyInterests, []);
   assert.equal(brief.context.voice.tone, 'warm');
-  assert.deepEqual(brief.materials, ['resume', 'cover_letter']);
+  assert.deepEqual(brief.materials, ['resume']);
+  assert.equal(brief.coverLetterDecision.state, 'unknown');
   const beforeProofs = JSON.stringify(loadStore(dir).proofPoints);
   const resumeDraft = domain.tailorResume(dir, { ...args, format: 'markdown' });
-  const letterDraft = domain.draftCoverLetter(dir, { ...args, format: 'markdown' });
+  const letterDraft = domain.draftCoverLetter(dir, { requestedByUser: true, ...args, format: 'markdown' });
   for (const draft of [resumeDraft, letterDraft]) {
     assert.equal(draft.artifact.status, 'draft_needs_human_review');
     assert.doesNotMatch(draft.document.content, /Learning should reduce friction|The mission interests me/);

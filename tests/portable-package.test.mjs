@@ -18,7 +18,17 @@ const PACKAGE_ROOTS = [
   { name: 'repository root', dir: REPO_ROOT, canonical: true },
   { name: 'agent-plugin', dir: path.join(REPO_ROOT, PACKAGE_DIRNAME), canonical: false }
 ];
-const EXPECTED_METADATA = { type: 'module', engines: { node: '>=22' } };
+const EXPECTED_METADATA = {
+  name: 'jobsss',
+  description: 'A local job-search workspace for your AI agent.',
+  license: 'MIT',
+  private: true,
+  type: 'module',
+  bin: { jobsss: 'bin/jobsss' },
+  files: ['bin/', 'src/', 'skills/', 'plugin.json', 'mcp.json', 'LICENSE', 'NOTICE'],
+  repository: { type: 'git', url: 'https://github.com/lpbangun/jobsss.git' },
+  engines: { node: '>=22' }
+};
 
 function packageFilesForCopy(source, destination, canonical) {
   if (!canonical) {
@@ -41,10 +51,12 @@ function copyBeneathForeignPackage(source, canonical) {
   return { scratch, foreignAncestor, packageRoot };
 }
 
-test('root and install package declare only the required Node metadata', () => {
+test('root and install package declare portable Node metadata and the workspace CLI', () => {
   for (const { name, dir } of PACKAGE_ROOTS) {
     const metadata = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
-    assert.deepEqual(metadata, EXPECTED_METADATA, `${name} package.json must stay minimal and match the portable runtime`);
+    const { version, ...metadataWithoutVersion } = metadata;
+    assert.match(version, /^\d+\.\d+\.\d+$/, `${name} must declare a release version`);
+    assert.deepEqual(metadataWithoutVersion, EXPECTED_METADATA, `${name} must expose only the portable workspace CLI metadata, without dependencies or lifecycle scripts`);
   }
   assert.equal(packageDrift(REPO_ROOT).ok, true, 'agent-plugin must mirror package.json from the canonical root');
 });
@@ -67,8 +79,10 @@ test('both package roots resolve ESM beneath an unrelated ancestor package.json'
   }
 });
 
-test('INSTALL documents deferred Hermes activation and the Node PATH diagnosis', () => {
-  const install = readFileSync(path.join(REPO_ROOT, 'INSTALL.md'), 'utf8');
+test('installation docs cover deferred Hermes activation and the Node PATH diagnosis', () => {
+  const entrypoint = readFileSync(path.join(REPO_ROOT, 'INSTALL.md'), 'utf8');
+  assert.ok(entrypoint.includes('TECHNICAL.md#install-surface-implementation-notes'), 'INSTALL must link the detailed host diagnostics');
+  const install = `${entrypoint}\n${readFileSync(path.join(REPO_ROOT, 'TECHNICAL.md'), 'utf8')}`;
   for (const phrase of [
     'mcp.reload',
     'hermes mcp list',
@@ -87,7 +101,7 @@ test('INSTALL documents deferred Hermes activation and the Node PATH diagnosis',
     'do not guarantee that an installer enforces',
     'Node-free startup'
   ]) {
-    assert.ok(install.includes(phrase), `INSTALL.md must document: ${phrase}`);
+    assert.ok(install.includes(phrase), `installation docs must document: ${phrase}`);
   }
 });
 

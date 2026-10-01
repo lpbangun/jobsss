@@ -6,7 +6,7 @@
       "name": "jobsss",
       "repo": "lpbangun/jobsss",
       "subdir": "agent-plugin",
-      "ref": "fcb31a92fe271df8fef00aab53a1aff8ba32bcc6"
+      "ref": "e04104ee7dd6a802cd2670f70fa8076a0b40e443"
     },
     {
       "name": "people-finder",
@@ -24,10 +24,10 @@
     "businessLogic": false,
     "sourceSha256": "0fa3bea1b1cd20c86c1cc2f9b5515a09b4b16d9f054f16ef019315e35dc9331b",
     "pythonResolution": "PATH first; Codex bundled dependency fallback on Windows",
-    "cachebuster": "2c82c3621a76"
+    "cachebuster": "7d7760c0846e"
   },
   "files": {
-    ".codex-plugin/plugin.json": "553fc7a6faf8fd9863890abbdeef8ac677190cad8f7e74227ebaf0fcf24acf12",
+    ".codex-plugin/plugin.json": "dfb5b5b8de94e0fe4efd062ee949ce03336203569914a742a7166d5d8a16061f",
     ".mcp.json": "e6e527f94cf4a7afd9eff17c6c87d716ad8eaf15bccfafacd2c71c2b395fc3e5",
     "products/jobsss/LICENSE": "2a8310b77c5e7e334f45a9dfc10b7c1e5580b5ef416a8237f3af8fb29428a8d9",
     "products/jobsss/NOTICE": "1f34b2b99cea1ee03611af82b33fa6bb2eb8ab5c9f579ac35f33b84b224ee018",
@@ -35,7 +35,7 @@
     "products/jobsss/plugin.json": "18f6776b9ad1b19f2574387b70b345dd0a9619b4068872409223310de2cbfd71",
     "products/jobsss/src/authority.js": "236457a65985c7c5400ba5952c49435bd52c2dc244b09717c1db804868814732",
     "products/jobsss/src/checklist.js": "03412611b7e8ef22dcec3d6b8499147f96957b9f2e21fd552f9dcba7a9aaa1e6",
-    "products/jobsss/src/cli.js": "933d67efcd737ac323b775f8a7250bf7a944136e5ed20ae539495f99ed3fac3e",
+    "products/jobsss/src/cli.js": "64c0c880e355003e19dcb7a45facde70d855d56de9504dc300636da78c1b0ae7",
     "products/jobsss/src/compat-probe.js": "941bd851462fd800e17134edfe715f257549e388ba7f8ec05dee72bfb5262f79",
     "products/jobsss/src/compensation.js": "9060c69ac1a83865192a5120c84e2bc7dc90fde6ee7328cdf176a5d6b437898f",
     "products/jobsss/src/composition.js": "96cbb83a118e62f61eae96ea77f3446835a23646df9d8fce55761eed557f4aad",
@@ -60,11 +60,12 @@
     "products/jobsss/src/resume-ir-latex.js": "bd2f85a0aba6b1463059ed85d4c2ace2543cdb553fd3c6f6718ef0c72f47a071",
     "products/jobsss/src/resume-latex.js": "f8fb545db95f0a8cb49cf0cf03dd5fdd0ac8ab51e03daf54be3b6624a5dddfe9",
     "products/jobsss/src/scoring.js": "165cf905835d78e2c42c63fda0071cc03cc62b18a33ad919ed4ccf88be1b8551",
-    "products/jobsss/src/sea-build.js": "4ba2770a2665310b7aa7802a210176e9805df0f15e94c71ded7243a3bbd1f5c7",
+    "products/jobsss/src/sea-build.js": "027edd61643faf9f8e6264437da8f618717d0a73334096c95fb32d13cbf8e8db",
     "products/jobsss/src/store.js": "ef2040ffbcec599ae653345ad2eaeb4504111aad31facb5792e2ec9ecd0cb399",
     "products/jobsss/src/tailoring-context.js": "a61dd6a097348ae90b5de75d1e85a317187b70a1f77c59268dfe7c553e296e62",
     "products/jobsss/src/version.js": "c7d77ee896db48db6e939d768ec3ef02fa8c2ca5fb05ee231d19a7c7f325fad4",
     "products/jobsss/src/workflows.js": "3cd3af4b05a7579c677299052db1136dc8d442dddf5fb3ca1e4a9c1230b18081",
+    "products/jobsss/src/workspace.js": "95d5ea686644f2d55aa845958218317377f7e3fbbe0537f8e0392f0af8ed0011",
     "products/people-finder/bin/people-finder": "4640a00a9d46c5f89e306446acc4dfeea5a10ef6e18b8891f99959c0021287ed",
     "products/people-finder/src/people_finder/__init__.py": "0ef8e7dfca5dc71570388d7dc4fa7eac4c8de4725435072ef1958c79760c2770",
     "products/people-finder/src/people_finder/anchors.py": "5bf915110b55b3a263b9a9b87e3ff087b4d891cdac2ac4e4905b85eb2a5ffd5e",

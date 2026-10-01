@@ -1,3 +1,4 @@
+import { coverLetterDecision } from './cover-letter-policy.js';
 // Domain handlers for the standalone JobSSS workflow over the bundled JSON store.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -1471,7 +1472,7 @@ export function inspectTailoringBrief(dataDir, args = {}) {
     resume: { text: profile.resumeText || '', identity: profile.resume?.identity || null },
     reusableRoleNarratives: Object.values(profile.roleNarratives || {}),
     questions: ['What is your point of view about this target role?', 'What are one or two things you like about this company?'],
-    materials: ['resume', 'cover_letter'], readOnly: true };
+    materials: coverLetterDecision(job).draft ? ['resume', 'cover_letter'] : ['resume'], readOnly: true };
 }
 
 export function inspectResumeQa(dataDir, args = {}) {

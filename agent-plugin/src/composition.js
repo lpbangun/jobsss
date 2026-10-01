@@ -1,3 +1,4 @@
+import { coverLetterDecision } from './cover-letter-policy.js';
 // Host composition for autonomous multi-job application preparation.
 //
 // Purpose: let one host request ("select the best five eligible jobs and complete
@@ -408,15 +409,7 @@ export function recordContactDiscovery(dataDir, args = {}) {
 // Multi-job preparation batch
 // ---------------------------------------------------------------------------
 
-function coverLetterDecision(store, job, profileId, request) {
-  if (request === false) return { draft: false, reason: 'not_requested' };
-  if (request === true) return { draft: true, reason: 'requested' };
-  const posting = String(job.description || job.postingText || '');
-  const proofs = Object.values(store.proofPoints || {}).filter(proof => proof && proof.profileId === profileId && !proof.retiredAt);
-  if (!proofs.length) return { draft: false, reason: 'no_profile_proof' };
-  if (posting.trim().length < 120) return { draft: false, reason: 'posting_text_too_thin_to_address' };
-  return { draft: true, reason: 'auto_justified' };
-}
+
 
 function existingOutreachFor(store, profileId, jobId) {
   const plans = Object.values(store.outreachPlans || {})
@@ -559,18 +552,19 @@ export function prepareApplicationsBatch(dataDir, args = {}) {
       };
       // 4. cover letter only when the job justifies one
       const beforeCover = loadStore(dataDir);
-      const cover = coverLetterDecision(beforeCover, (beforeCover.jobs || {})[jobId] || {}, profileId, args.coverLetter);
+      const cover = coverLetterDecision((beforeCover.jobs || {})[jobId] || {}, args.coverLetter);
+      const letter = draftCoverLetter(dataDir, { jobId, profileId, format: coverLetterFormat, requestedByUser: args.coverLetter });
       if (cover.draft) {
-        const letter = draftCoverLetter(dataDir, { jobId, profileId, format: coverLetterFormat });
         item.artifacts.coverLetter = {
           artifactId: letter.artifactId,
           reason: cover.reason,
+          decision: cover,
           format: letter.format || coverLetterFormat,
           path: letter.document?.path || null,
           coverageGaps: (letter.gaps || []).map(gap => field(gap.requirementId, 'requirement')),
         };
       } else {
-        item.artifacts.coverLetter = { artifactId: null, reason: cover.reason };
+        item.artifacts.coverLetter = { artifactId: null, reason: cover.reason, decision: cover };
       }
       // 5. host-supplied people evidence (bounded, labelled, non-fatal)
       for (const supplied of (suppliedContacts.get(jobId) || [])) {

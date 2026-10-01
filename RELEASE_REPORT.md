@@ -29,7 +29,7 @@ Complete evidence is recorded once:
 The 2026-09-30 release candidate is version 0.1.2. It addresses issues #15 and #26–#30 and adds voice-guided cover-letter preparation, preserved editorial revisions, and ordinary Word/PDF letter layout. Two fresh processes with separate empty external caches reproduced the canonical native evidence byte for byte (B67). Official inputs, injector, and validators remain pinned; cross-built targets remain unverified at runtime.
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `4994d2252df48ffb1f644a6ff39c5bc54f6a8d148302ecaedb48bf57397e2fbd`
+- SHA-256: `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`
 - Exact reproduction command:
 
 ```bash
@@ -123,4 +123,6 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 Darwin x64, Darwin arm64, Windows x64, and Linux arm64 remain unverified as matching-host standalone-binary targets. Structural validation does not upgrade those labels. Windows standalone binaries require matching-host re-signing after unsigned staging; macOS requires matching-host signing/execution. The generated Codex aggregate pack is separately verified as a source/plugin installation on Windows; Pi and OMP remain unverified client integrations. Downloaded inputs, validator environments, caches, and release binaries are not committed.
 
 
-Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `4994d2252df48ffb1f644a6ff39c5bc54f6a8d148302ecaedb48bf57397e2fbd`. Official Node inputs, injector, and independent validator pins are unchanged. This is local structural evidence, not a new host integration verdict.
+Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`. Official Node inputs, injector, and independent validator pins are unchanged. This is local structural evidence, not a new host integration verdict.
+
+Cover-letter requirements policy refresh (2026-10-01): structural native-format evidence was regenerated after integrating the policy with the workspace setup runtime. The current SHA-256 is `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`. Cross-built targets remain unverified on matching hosts. Behavior and regression results are recorded in docs/COVER_LETTER_POLICY.md.

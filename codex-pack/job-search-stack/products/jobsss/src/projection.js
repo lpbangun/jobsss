@@ -1,3 +1,4 @@
+import { coverLetterDecision } from './cover-letter-policy.js';
 // Deterministic human-readable workspace projection for the bundled JobSSS
 // runtime.
 //
@@ -426,7 +427,13 @@ export function applicationMarkdown(store, jobId, profileId) {
     '',
   ];
   lines.push(...materialSection(store, profileId, jobId, 'resume_draft', 'Tailored resume'));
-  lines.push(...materialSection(store, profileId, jobId, 'cover_letter_draft', 'Cover letter (only when the job justifies one)'));
+  const coverDecision = coverLetterDecision(job, job.coverLetterDecision?.requestedByUser ?? undefined);
+  if (!coverDecision.draft && !artifactsFor(store, profileId, jobId, 'cover_letter_draft').length) {
+    lines.push('### Cover letter', '', `- Skipped: ${coverDecision.reason}; requirement state: ${coverDecision.state}. This is not a missing draft.`, '');
+  } else {
+    lines.push(...materialSection(store, profileId, jobId, 'cover_letter_draft', 'Cover letter'));
+    lines.push(`- Requirement state: ${coverDecision.state}; decision: ${coverDecision.reason}. Existing draft history is retained.`, '');
+  }
   lines.push('### Application checklist / review-gap truth', '');
   if (unanswered === null) {
     lines.push('- No linked ask list is available for this job; required questions and documents are unknown, not assumed.', '');

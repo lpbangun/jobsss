@@ -13,7 +13,7 @@ function setup(t, outputMode = 'full') {
   domain.start(dataDir, { outputMode });
   const { profileId } = domain.createProfile(dataDir, { name: 'Casey Rivera', resumeText: 'Name: Casey Rivera\nEmail: casey@example.com\n2022-01 through 2025-12: Analyst, Cedar Research.\nBuilt SQL reporting tables for weekly inventory analysis.\nSkills: SQL, Python.\nEducation: BS in Information Systems.' });
   const { jobId } = domain.importJob(dataDir, { profileId, text: 'Title: Data Analyst\nCompany: Bay Software\nRequired: SQL reporting and Python analysis.' });
-  const draft = domain.draftCoverLetter(dataDir, { profileId, jobId, format: 'text' });
+  const draft = domain.draftCoverLetter(dataDir, { requestedByUser: true, profileId, jobId, format: 'text' });
   const proofPointIds = Object.values(loadStore(dataDir).proofPoints).filter(proof => proof.profileId === profileId).map(proof => proof.id);
   const args = { profileId, jobId, artifactId: draft.artifactId, expectedContentHash: draft.contentHash,
     content: 'Dear Hiring Team,\n\nI built SQL reporting tables for weekly inventory analysis. I would like to discuss your reporting work.\n\nCasey Rivera\n', proofPointIds, format: 'text' };
@@ -34,7 +34,7 @@ test('an editorial revision preserves original approval and requires its own rev
   assert.equal(revised.artifact.approvedAt, undefined);
   assert.deepEqual(loadStore(dataDir).artifacts[draft.artifactId], original);
   domain.start(dataDir);
-  domain.draftCoverLetter(dataDir, { profileId: args.profileId, jobId: args.jobId, format: 'text' });
+  domain.draftCoverLetter(dataDir, { requestedByUser: true, profileId: args.profileId, jobId: args.jobId, format: 'text' });
   assert.equal(loadStore(dataDir).artifacts[revised.artifactId].content, args.content);
   const repeated = domain.reviseCoverLetter(dataDir, args);
   assert.equal(repeated.artifactId, revised.artifactId);
@@ -82,7 +82,7 @@ test('DOCX revision reuse accepts a symlinked PLUGIN_DATA alias', t => {
     resumeText: 'Name: Casey Rivera\nEmail: casey@example.com\n2022-01 through 2025-12: Analyst, Cedar Research.\nBuilt SQL reporting tables for weekly inventory analysis.\nSkills: SQL, Python.\nEducation: BS in Information Systems.',
   });
   const { jobId } = domain.importJob(dataDirAlias, { profileId, text: 'Title: Data Analyst\nCompany: Bay Software\nRequired: SQL reporting and Python analysis.' });
-  const draft = domain.draftCoverLetter(dataDirAlias, { profileId, jobId, format: 'text' });
+  const draft = domain.draftCoverLetter(dataDirAlias, { requestedByUser: true, profileId, jobId, format: 'text' });
   const proofPointIds = Object.values(loadStore(dataDirAlias).proofPoints)
     .filter(proof => proof.profileId === profileId).map(proof => proof.id);
   const args = {

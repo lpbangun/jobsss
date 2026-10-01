@@ -31,7 +31,7 @@ The 2026-09-30 release candidate is version 0.1.2. Issues #15 and #26–#30 are 
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `4994d2252df48ffb1f644a6ff39c5bc54f6a8d148302ecaedb48bf57397e2fbd`
+- SHA-256: `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`
 - Exact reproduction command:
 
 ```bash
@@ -104,4 +104,6 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 Matching-host runtime execution and re-signing remain deferred for Darwin and Windows. Linux arm64 remains unverified without a matching host. Downloaded official inputs, validator environments, cache content, and release binaries remain external and uncommitted.
 
 
-Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `4994d2252df48ffb1f644a6ff39c5bc54f6a8d148302ecaedb48bf57397e2fbd`. Official Node inputs, injector, and independent validator pins are unchanged. This is local structural evidence, not a new host integration verdict.
+Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`. Official Node inputs, injector, and independent validator pins are unchanged. This is local structural evidence, not a new host integration verdict.
+
+Cover-letter requirements policy refresh (2026-10-01): structural native-format evidence was regenerated after integrating the policy with the workspace setup runtime. The current SHA-256 is `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`. Cross-built targets remain unverified on matching hosts. Behavior and regression results are recorded in docs/COVER_LETTER_POLICY.md.

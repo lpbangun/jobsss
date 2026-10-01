@@ -1,6 +1,12 @@
 {
+  "name": "jobsss",
+  "version": "0.1.0",
+  "description": "A local job-search workspace for your AI agent.",
+  "license": "MIT",
+  "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22"
-  }
+  "bin": { "jobsss": "bin/jobsss" },
+  "files": ["bin/", "src/", "skills/", "plugin.json", "mcp.json", "LICENSE", "NOTICE"],
+  "repository": { "type": "git", "url": "https://github.com/lpbangun/jobsss.git" },
+  "engines": { "node": ">=22" }
 }

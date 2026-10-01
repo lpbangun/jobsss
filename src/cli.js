@@ -11,6 +11,7 @@ import { runCompatProbe } from './compat-probe.js';
 import { decideCommand, decidePrintHelp } from './authority.js';
 import { PRODUCT_VERSION } from './version.js';
 import { evidenceCommand } from './evidence.js';
+import { initWorkspace } from './workspace.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -24,6 +25,7 @@ const IS_STANDALONE =
 function printHelp() {
   console.log(`jobsss bundled runtime v${PRODUCT_VERSION}
 Usage:
+  jobsss init [folder]      Create a dedicated job-search workspace
   jobsss mcp --data <dir>     Start MCP stdio server with PLUGIN_DATA
   jobsss doctor --data <dir> [--scan <root> ...]
                               Diagnose the selected store; optional scans inspect
@@ -66,6 +68,11 @@ export function runCli(argv = process.argv.slice(2)) {
       console.error(`missing bundled runtime: ${srcMcp}`);
       process.exit(1);
     }
+  }
+  if (cmd === 'init') {
+    try { initWorkspace(argv.slice(1), { repoRoot: ROOT, standalone: IS_STANDALONE }); }
+    catch (error) { console.error(error.message); process.exitCode = 1; }
+    return;
   }
   if (cmd === 'mcp') {
     runFromArgv(argv.slice(1));

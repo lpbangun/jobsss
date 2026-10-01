@@ -89,6 +89,7 @@ const MODULES = Object.freeze([
   'release.js',
   'compat-probe.js',
   'evidence.js',
+  'workspace.js',
   'cli.js',
 ]);
 

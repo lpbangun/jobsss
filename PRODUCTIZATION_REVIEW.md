@@ -12,7 +12,11 @@ Current native artifact refresh (2026-09-07, separately authorized closure round
 
 ## B1–B41
 
-Current validation (2026-09-30): **161/161** required acceptance and relevant regression tests passed, including two fresh-cache native-evidence reproductions. Generated packages match canonical source. The Windows Codex pack runtime smoke test passed with Contact-Brief's declared dependency supplied in a temporary test directory. Two captured resume formats rendered through actual Windows Chrome to one searchable page and were visually inspected. Word and native cover-letter page checks also passed.
+PR validation (2026-09-30, conversational tailoring): the required eleven-file suite, native evidence/remediation, conversational tailoring, cover-letter and portable-package tests completed with **88/89 passing**. The sole failure is the previously documented B52 assertion rejecting the metadata-only `package.json` already on the base. Install-surface and installed Codex-pack checks passed **5/5**. B67 reproduced the current evidence in two fresh processes with separate empty caches. JobSSS install pins and generated packages now include the conversational tailoring product commit.
+
+An independent temporary `hermes -p job-strategist` run exercised real portable-plugin MCP generation and preserved two authored letters through regeneration. Both native PDFs were visually inspected and searchable; DOCX paragraph/spacing XML and all six export hashes were checked. Hermes required its optional MCP SDK in the isolated runtime. Inline raw HTML passed to `import_job` remained unnormalized; structured text was used for the letter flow. This differs from the repaired `import_job_url` HTML extraction route. A remembered role thesis currently cannot be explicitly cleared for one matching job; host-level confirmation and job feedback remain important. All temporary Hermes state and outputs were removed.
+
+Earlier rollup validation (2026-09-30): **161/161** required acceptance and relevant regression tests passed, including two fresh-cache native-evidence reproductions. Generated packages match canonical source. The Windows Codex pack runtime smoke test passed with Contact-Brief's declared dependency supplied in a temporary test directory. Two captured resume formats rendered through actual Windows Chrome to one searchable page and were visually inspected. Word and native cover-letter page checks also passed.
 
 This does not claim a green repository-wide sweep: eighteen audit/closure/composition failures reproduce on the unchanged `c160555` base; the B52 package-metadata assertion conflicts with that base's existing dependency-free manifest, and three Linux PDF checks lack a local Linux browser. Historical acceptance below remains separate from these current results.
 
@@ -27,7 +31,7 @@ The 2026-09-30 release candidate is version 0.1.2. Issues #15 and #26–#30 are 
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `ba5e69cd02c92c37e511e515224926b92e5d802a3df3581ebae315dcd629a5e1`
+- SHA-256: `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`
 - Exact reproduction command:
 
 ```bash
@@ -99,4 +103,7 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 
 Matching-host runtime execution and re-signing remain deferred for Darwin and Windows. Linux arm64 remains unverified without a matching host. Downloaded official inputs, validator environments, cache content, and release binaries remain external and uncommitted.
 
-Cover-letter requirements policy refresh (2026-10-01): the shared decision policy is included in the standalone bundle. Two fresh evidence processes with separate empty external caches produced identical native-format evidence at SHA-256 `ba5e69cd02c92c37e511e515224926b92e5d802a3df3581ebae315dcd629a5e1`. This is structural build evidence; cross-built targets remain unverified on matching hosts. See docs/COVER_LETTER_POLICY.md for behavior and regression results.
+
+Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`. Official Node inputs, injector, and independent validator pins are unchanged. This is local structural evidence, not a new host integration verdict.
+
+Cover-letter requirements policy refresh (2026-10-01): structural native-format evidence was regenerated after integrating the policy with the workspace setup runtime. The current SHA-256 is `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`. Cross-built targets remain unverified on matching hosts. Behavior and regression results are recorded in docs/COVER_LETTER_POLICY.md.

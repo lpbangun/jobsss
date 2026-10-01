@@ -31,7 +31,7 @@ The 2026-09-30 release candidate is version 0.1.2. Issues #15 and #26–#30 are 
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `23d76cd67cb5eb105a9fa0879a6014ec532f91656e9ac54aa4df7c5502e66e16`
+- SHA-256: `4994d2252df48ffb1f644a6ff39c5bc54f6a8d148302ecaedb48bf57397e2fbd`
 - Exact reproduction command:
 
 ```bash
@@ -102,3 +102,6 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 ## Residual risks
 
 Matching-host runtime execution and re-signing remain deferred for Darwin and Windows. Linux arm64 remains unverified without a matching host. Downloaded official inputs, validator environments, cache content, and release binaries remain external and uncommitted.
+
+
+Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `4994d2252df48ffb1f644a6ff39c5bc54f6a8d148302ecaedb48bf57397e2fbd`. Official Node inputs, injector, and independent validator pins are unchanged. This is local structural evidence, not a new host integration verdict.

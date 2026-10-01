@@ -2,659 +2,154 @@
 
 # JobSSS
 
-**An independent Agent Plugin that gives your agent a local, evidence-grounded job-search workspace.**
+**Job Search Shape Send**
 
-`Agent Plugins 1.0.0` · `v0.1.1` · `MIT` · `Node 22+` · `zero npm dependencies` · `zero API keys`
+Your job search, organized with your AI agent.
+
+Find roles that fit, prepare applications from your real experience,
+and keep track of what comes next — in a workspace on your machine.
+
+[Get started](#get-started) · [What you get](#what-you-get) · [How it works](#how-it-works) · [Architecture](#architecture)
 
 </div>
 
----
+## What you get
 
-> **JobSSS is a standalone Agent Plugin — not a component of another product,
-> and it has no sibling requirement.** It ships one skill and one bundled MCP
-> runtime, and at runtime it resolves, imports, and spawns nothing outside
-> itself: no other plugin installation, no API key, no account. The portable
-> launcher needs Node 22+ from the agent host service's `PATH` or the
-> `JOBSSS_NODE` override (see [INSTALL.md](INSTALL.md)). Node-free startup is
-> not yet provided. The network is optional and used only for public job intake.
-> Portions of the design
-> derive from an earlier MIT-licensed project and are attributed in
-> [NOTICE](NOTICE); attribution is provenance, not a dependency.
+| In your search | JobSSS helps you |
+| --- | --- |
+| **Know your strengths** | Build a profile from your resume and collect experience to support your applications. |
+| **Choose where to apply** | Import job descriptions or public job links, compare fit, and see the reasons behind each score. |
+| **Prepare your application** | Draft tailored resumes, cover letters, and answers using your own experience. |
+| **Keep things moving** | Organize roles, application preparation, tasks, and your review queue in one place. |
+| **Plan your outreach** | Map your contacts and draft messages for you to review and send. |
+| **Get ready for interviews** | Prepare STAR stories, practice questions, and identify gaps. |
 
-## What it is
+JobSSS is a plugin for an AI agent. Your agent handles the conversation;
+JobSSS keeps the job-search records and documents. The core workflow needs no
+API key. Your agent host has its own model and account requirements.
 
-JobSSS is a job-search **workspace for agents**: the host agent gets 57 local MCP
-tools for the whole search loop, and every result lands as durable, inspectable
-state under one host-provided data directory (`PLUGIN_DATA`).
+## Get started
 
-Concretely, JobSSS will:
+You need **Node.js 22 or newer** and an agent host. Run these commands in the
+terminal where you use that host; if you use it in WSL, use your WSL terminal.
 
-- **Build a profile from a resume** (inline text or a staged file) and extract
-  proof-point *candidates* that a human verifies — never auto-verified.
-- **Take jobs in** from pasted text, a staged file, a public job URL, or a public
-  ATS board (Greenhouse board tokens), then **deduplicate** identical postings to
-  one job id.
-- **Score fit deterministically** across seven weighted dimensions with explicit
-  evidence, reasons, and fail-closed eligibility — no model call, no provider.
-- **Run the local pipeline**: pursue, readiness plans, tasks, save/skip/archive,
-  review queue.
-- **Write applicant materials** — source-linked tailored resumes, cover letters,
-  and reusable answers under `PLUGIN_DATA`. Resume PDFs use a declared local
-  Chrome/Edge print adapter; other material PDFs retain the native renderer.
-- **Map your network locally**, plan outreach, and draft outreach as **UNSENT**.
-- **Prepare interviews**: STAR story drafts, question coverage, gaps, and a
-  non-attesting debrief handoff.
-- **Hand decisions to a human** on a trusted local CLI, with exact id, revision,
-  and content hash.
-
-And it will never: send an email, submit an application, attest `applied`, approve
-an artifact, verify an interview story, schedule anything, or drive a browser.
-Those actions are either blocked or completed by a human on the trusted local
-surface. JobSSS does not fabricate jobs, scores, proofs, or success.
-
-## Install
-
-Three ways in: install the verified Codex pack, hand the repository to another
-agent host, or install JobSSS alone.
-
-### Codex: install the complete job-search stack
-
-The generated Codex pack contains JobSSS, people-finder, and contact-brief at the
-reviewed commits recorded in `compat/install-pins.json`. Install from a clean
-checkout of the release:
+### Run with npx
 
 ```bash
-git clone --depth 1 --branch v0.1.1 https://github.com/lpbangun/jobsss.git
+npx --package=github:lpbangun/jobsss jobsss init
+```
+
+### Or install the CLI globally
+
+```bash
+npm install -g github:lpbangun/jobsss
+jobsss init
+```
+
+These commands fetch the CLI from GitHub and need Git as well as Node.js.
+`init` creates `jobsss-workspace/` in your current folder, including a local
+runtime, personal data folder, and project configuration for Codex and Claude
+Code. Choose a custom folder with `jobsss init my-job-search`. You can use a
+new folder or an existing empty folder; its personal data stays inside
+`.jobsss/data/` within that workspace.
+
+```bash
+cd jobsss-workspace
+node jobsss.mjs doctor
+codex  # or claude
+```
+
+Review your agent's trust prompts and start a fresh chat. This workspace includes
+the core JobSSS plugin. For the optional companion stack, use the separate
+installation below; its host-managed data folder is separate from this workspace.
+
+### Codex: load the job-search stack
+
+```bash
+git clone https://github.com/lpbangun/jobsss.git
 cd jobsss
 codex plugin marketplace add .
 codex plugin add job-search-stack@jobsss-local
 ```
 
-Then start a **new Codex task** so the installed skills and MCP servers are loaded.
-The pack has been verified on Windows with both explicit skill invocation and
-natural-language activation, including MCP initialize, profile creation, job
-discovery, tailored searchable-PDF resume generation, and contact-brief import.
+Start a **new Codex chat** after installation so the plugin loads. The included
+stack contains JobSSS, people-finder, and contact-brief. JobSSS works on its own;
+the companions add candidate-lead discovery and contact briefs.
 
-Prefer a browser download? Use the
-[v0.1.1 source ZIP](https://github.com/lpbangun/jobsss/archive/refs/tags/v0.1.1.zip),
-extract it, open a terminal in the extracted `jobsss-0.1.1` directory, and run
-the same two `codex plugin` commands.
+This integration has been verified on Windows. See the
+[installation guide](INSTALL.md) for other hosts, activation checks, and source
+setup, including local source installation.
 
-JobSSS itself needs no API key. Live Exa Connect/Fiber contact lookup is optional,
-can incur provider charges, and requires an explicitly authorized `EXA_API_KEY`
-in the host environment. Provider-reported contact data is never upgraded to
-source-supported or mailbox-verified evidence, and the pack never sends outreach.
+### Start with one job
 
-### Point your agent at this repository
+Give your agent your resume and a job description, then try:
 
-Any agent that can read a URL and run commands — Hermes, Claude Code, Codex, or
-another host — can install from one prompt:
+> Use JobSSS to create my profile from this resume. Compare this job with my
+> experience and preferences, explain the fit, and suggest what I should do next.
 
-> Read `https://raw.githubusercontent.com/lpbangun/jobsss/main/INSTALL.md` and
-> install JobSSS for this host. Pick the surface that matches you, show me every
-> confirmation the host asks for before answering it, and report exactly what
-> installed, including any per-plugin failure. If your host has no verified
-> surface, stop and tell me instead of improvising.
+Then continue with:
 
-[INSTALL.md](INSTALL.md) is the table the agent follows: surface, one action,
-status, and the rule that the human confirms every install.
+- “Prepare a tailored resume and cover letter for this role.”
+- “Show my pipeline and the tasks I should work on next.”
+- “Draft an outreach message for me to review.”
+- “Help me prepare interview stories for this role.”
 
-### The whole family in one action (Hermes)
+Review the drafts before using them. Resume PDF export needs a local Chrome or
+Edge browser available to the runtime; the installation guide covers setup.
 
-JobSSS composes with [people-finder](https://github.com/lpbangun/people-finder)
-and [contact-brief](https://github.com/lpbangun/contact-brief). A generated pack
-installs all three, pinned to a reviewed trio of exact commits:
-
-```bash
-hermes plugins pack install https://raw.githubusercontent.com/lpbangun/jobsss/main/compat/hermes/find-people.pack.yaml
-```
-
-The pack is metadata, not a bundle: three pinned entries, three ordinary installs,
-per-plugin capability consent preserved, and each product stays removable on its
-own.
-
-### As an Agent Plugin (JobSSS alone)
-
-The repository root **is** the canonical plugin: `plugin.json` + `mcp.json` +
-`skills/jobsss/` + `bin/jobsss`, and the installing agent expands
-`${PLUGIN_DATA}` to a writable directory.
-
-### Thin install surface (`agent-plugin/`)
-
-The root also carries reviewer-owned benchmark evidence (`BENCHMARK.md`, `docs/`,
-`evaluation/`, `tests/`), so hosts that scan the tree they install — for example
-Hermes' install-time plugin guard — must be pointed at the generated package
-subdirectory instead of the repository root:
-
-```bash
-node scripts/build-agent-plugin.mjs              # regenerate the package from the root
-node scripts/build-agent-plugin.mjs --check      # fail on any drift
-hermes plugins install lpbangun/jobsss/agent-plugin
-```
-
-`agent-plugin/` is a byte-for-byte mirror of `package.json`, `plugin.json`,
-`mcp.json`, `bin/`, `src/`, and `skills/` — never a second source of truth;
-`tests/agent-plugin-parity.test.mjs`
-fails on any missing, extra, or changed byte. Install identifier:
-`lpbangun/jobsss/agent-plugin` (equivalently `https://github.com/lpbangun/jobsss.git#agent-plugin`).
-
-```jsonc
-// mcp.json — the only runtime entry point
-{
-  "mcpServers": {
-    "jobsss": {
-      "type": "stdio",
-      "command": "./bin/jobsss",
-      "args": ["mcp", "--data", "${PLUGIN_DATA}"]
-    }
-  }
-}
-```
-
-### From a source checkout (JobSSS alone; needs Node 22+ on `PATH`)
-
-```bash
-git clone https://github.com/lpbangun/jobsss.git && cd jobsss
-./bin/jobsss --help          # bundled runtime usage
-./bin/jobsss doctor --data /path/to/data
-./bin/jobsss start  --data /path/to/data
-```
-
-### As a prebuilt standalone binary (no Node, no dependencies)
-
-```bash
-./bin/jobsss release --out /abs/out --target current-host
-```
-
-See [Standalone releases](#standalone-releases) for targets, determinism, and
-platform truth labels.
-
-### Thin client adapters
-
-`compat/` holds thin pointer adapters (Hermes, Codex, Claude) that reference the
-canonical skill and runtime and contain **no** duplicated policy or business
-logic. Probe a client in isolated temporary configuration:
-
-```bash
-./bin/jobsss compat-probe --client hermes --config-dir /tmp/cfg --plugin-root .
-```
-
-## Architecture
-
-<p align="center">
-  <img src="docs/jobsss-architecture.svg" alt="JobSSS architecture: an agent host loads the jobsss skill and calls the bundled 47-tool MCP server over stdio; the plugin's domain layer persists versioned state under PLUGIN_DATA; a trusted local CLI completes human-only decisions; and two optional companion plugins (people-finder and contact-brief), installed from the same pack, are drawn as separate components" width="100%" />
-</p>
-
-Diagram source: [`docs/jobsss-architecture.mmd`](docs/jobsss-architecture.mmd),
-rendered with `npx @mermaid-js/mermaid-cli` (dark theme, `#0f172a` background).
-The two companion plugins are drawn as separate, optional components the host may
-install alongside JobSSS.
-
-Six boundaries carry the whole design:
-
-1. **The host never touches state.** It reads the skill and calls tools; the MCP
-   layer validates JSON-RPC envelopes before dispatch, so the agent cannot reach
-   past the tool contract.
-2. **The plugin is self-contained.** One launcher, one MCP server, one domain
-   layer. It resolves nothing from outside itself — no other project, no service.
-3. **`PLUGIN_DATA` is the only state root.** Durable state, exports, and the audit
-   trail live there; the plugin directory stays read-only and portable.
-4. **Network access is one narrow pipe.** Bounded, public-address-only intake of
-   job pages and public ATS boards. Everything else is blocked.
-5. **Human authority never travels through MCP.** `list_decision_handoffs` and
-   `create_decision_handoff` create non-authoritative markers only; a human
-   completes the decision on `./bin/jobsss decide`.
-6. **Companions are separate plugins, not internals.** [people-finder](https://github.com/lpbangun/people-finder)
-   and [contact-brief](https://github.com/lpbangun/contact-brief) are optional
-   plugins installed from the same pack. They own candidate discovery and contact
-   evidence; their output reaches JobSSS only as host-supplied input to
-   `record_contact_discovery` / `prepare_applications_batch`. The dependency never
-   runs the other way, neither companion can write JobSSS state, and removing them
-   leaves the core journey intact.
-
-### What it does, end to end
+## How it works
 
 ```mermaid
 flowchart LR
-  P["Profile + resume<br/>proof candidates"] --> I["Job intake<br/>text · file · URL · ATS board"]
-  I --> S["Fit score<br/>7 weighted dimensions<br/>+ eligibility"]
-  S --> U["Pursue<br/>pipeline · tasks"]
-  U --> M["Materials<br/>resume · cover letter · answers<br/>(local browser resume PDF; native other PDF)"]
-  M --> N["Network<br/>research · map · outreach drafts<br/>(unsent)"]
-  N --> V["Interview prep<br/>stories · coverage · gaps"]
-  V --> R["Review queue<br/>+ decision handoffs"]
-  R --> H["Human decision<br/>bin/jobsss decide"]
+  P["Your resume<br/>and preferences"] --> J["Jobs you<br/>want to explore"]
+  J --> F["Fit comparison<br/>and next steps"]
+  F --> A["Application drafts<br/>and tasks"]
+  A --> N["Outreach drafts<br/>and interview prep"]
+  N --> R["Your review<br/>and decisions"]
 ```
 
-## Features
+Your profile, jobs, documents, and tasks stay in the plugin's local data
+folder and remain available when you restart. Optional public job intake uses
+the network. Information shared in chat follows your agent host's and model
+provider's data policies.
 
-### Local-first core
+JobSSS drafts materials and messages. **You review, send, and submit.**
+Resume proof points and interview stories need your verification. Local
+review decisions use the trusted human CLI described in the
+[technical reference](TECHNICAL.md#human-only-authority).
 
-| Feature | What you get |
+## Architecture
+
+The full architecture flow is preserved below, including the agent host,
+bundled runtime, local storage, human decisions, and optional companions.
+
+<p align="center">
+  <img src="docs/jobsss-architecture.svg" alt="JobSSS architecture: the agent host loads the skill and calls the bundled MCP runtime; local state lives under PLUGIN_DATA; a trusted local CLI records human decisions; people-finder and contact-brief are separate optional plugins." width="100%" />
+</p>
+
+The agent calls JobSSS tools; the bundled runtime manages the local workspace.
+The host provides the data folder (`PLUGIN_DATA`), and human decisions stay on a
+separate local CLI. Companions pass results through the host and cannot write
+JobSSS state directly.
+
+[Architecture details](TECHNICAL.md#architecture) ·
+[Diagram source](docs/jobsss-architecture.mmd) ·
+[Tool reference](TECHNICAL.md#mcp-tool-reference-57-tools)
+
+## Learn more
+
+| Guide | What's inside |
 | --- | --- |
-| **Zero npm runtime dependencies** | Node 22+ standard library only. Core offline operations need no browser or system converter. Resume PDF export has a declared local Chrome/Edge prerequisite; other PDF output uses the native renderer. |
-| **Offline by default** | The entire core journey (doctor → start → profile → intake → score → pursue → pipeline → review) runs with no network, no API key, and no provider. Network is used only for optional public intake. |
-| **One data root** | All durable state lives under `PLUGIN_DATA`. Nothing is written into the plugin directory, and no user state leaks into the repository. |
-| **Restart-safe** | Versioned store with lossless migration from the legacy `store.json`, plus read-only restart readbacks (`get_resume`, `get_score`, `get_interview_prep`). |
-| **Readable state** | Canonical `store.json` plus JSON and Markdown mirrors in the default full mode. A new workspace can opt into compact mode to keep only canonical state and requested document exports; tool readbacks still work. |
-
-### Profile, resume and proof
-
-| Feature | What you get |
-| --- | --- |
-| **Profile creation + import** | `create_profile` takes a name plus inline resume text or a staged file under `PLUGIN_DATA`. |
-| **Proof-point extraction** | Resume imports extract proof *candidates* with metrics, always flagged for human verification. Retrying an identical proof keeps the original record and its verification; changed summary/skills/metrics create a separate unverified proof while preserving prior evidence. |
-| **Structured resume revisions** | Versioned resume revisions per profile, inspectable via `list_resumes`, read back in full via `get_resume`. |
-| **Preference control** | `update_profile` changes preferences (target role families, skills, compensation floor, location/work model, mission) — a real preference revision flows into tailored output instead of being a formatting no-op. |
-| **Identity safety** | Reimports resolve a unique exact current name (including after rename); conflicting renames and ambiguous imports are rejected rather than merged. |
-
-### Job intake and discovery
-
-| Feature | What you get |
-| --- | --- |
-| **Three intake paths** | Inline `text`/`content`, a staged path under `PLUGIN_DATA`, or a public `http(s)` URL. Arbitrary absolute filesystem paths are rejected (`unsafe_intake_path`). |
-| **Public URL hardening** | `import_job_url` rejects `file:`, credentialed URLs, private/loopback/link-local hosts, single-label names, unsafe redirects, oversized and failed responses with typed errors. |
-| **Public ATS intake** | Greenhouse boards by `boardToken`: listing + detail payloads, application questions with option sets, required document kinds, and raw provenance. |
-| **Offline discovery path** | Staged search fixtures under `PLUGIN_DATA` run the same discovery flow with no network, so discovery is testable and reproducible. |
-| **Deduplication** | Re-importing the same posting deduplicates to a single job id; saved searches dedupe on effective identity (including the real `minFit` floor). |
-| **Triage** | `save_job`, `skip_job`, `archive_job`, `list_jobs`. Unsaved discoveries stay database-only and create no application folder. |
-| **Fault isolation** | `daily_discovery` runs each saved search independently and reports per-search errors instead of aborting the whole run. |
-
-### Fit scoring (deterministic, no model)
-
-`score_job` implements the stable `jobsss.fit-score.v1` contract with all seven
-weighted dimensions, evidence references, reasons, contradiction handling, and
-fail-closed eligibility:
-
-| Dimension | Weight |
-| --- | --- |
-| `roleFit` | 28 |
-| `domainFit` | 18 |
-| `seniority` | 14 |
-| `missionInterest` | 14 |
-| `locationWorkModel` | 12 |
-| `compensation` | 8 |
-| `networkAccess` | 6 |
-
-Rules that matter when you shortlist: a dimension with missing evidence reports
-`unknown` rather than a guessed score; hard eligibility failures are disclosed, so
-an excluded role is never presented as an actionable high-fit recommendation;
-missing pay or authorization evidence is not permission to assume eligibility;
-and no exchange rate, bonus, or equity is ever invented to satisfy a base-pay
-floor.
-
-### Materials and answers
-
-| Feature | What you get |
-| --- | --- |
-| **Tailored resume** | `tailor_resume` routes normalized, labelled, and ordinary Markdown profiles through one canonical document. `revise_resume` takes explicit claim IDs to suppress or prefer source-backed bullets and creates a separate draft. Legacy sources are migrated to a source-linked draft; the original resume stays in `PLUGIN_DATA`, and inferred original-line matches are marked as legacy projections for human review. Candidate identity, role/project ownership, selected achievements, and direct/adjacent/unsupported/unknown requirement coverage are inspectable. `contactEmail` chooses the application address; `locationNote` adds an explicitly verified relocation phrase. |
-| **Cover letter** | `inspect_cover_letter_brief` gathers active proof, job requirements, recorded employer context, and candidate voice preferences. `draft_cover_letter` uses a natural first-person voice tailored to the role and employer, separates established accomplishments from a clearly framed future contribution, and never turns requirements into claimed experience. Optional voice samples guide style only, never facts. Export as editable DOCX or PDF. `revise_cover_letter` saves reviewed edits as separate revisions, preserved when materials are regenerated. |
-| **Resume PDF export and designs** | `list_resume_designs` exposes Navy Professional, Editorial Serif, and Quick Scan. Choose `style: "navy"`, `"editorial"`, or `"scan"` with `render_resume` or `tailor_resume`; `compare_resume_designs` generates all three from one canonical content revision, `list_resume_design_variants` reads them back, and `select_resume_design` stores the user's local preference. Selection does not attest that a resume was used or submitted. Each design has a separate PDF artifact and visual review. An installed Chrome or Edge prints local HTML; `doctor.resumeRenderer` reports detection, and a missing browser fails with `resume_renderer_unavailable`. Browser layout is measured at Letter printable width before printing; the PDF must be one searchable Letter page. `inspect_resume_qa` reads the stored result. Trusted visual review and content approval are separate decisions; approval blocks missing PDF QA or unverified cited proof points. No employer site is opened. |
-| **Other PDF export** | Cover letters and other materials retain the dependency-free native PDF renderer. Its Letter pages use 44pt margins and paginate long sources. |
-| **Reusable answers** | `save_answer` stores drafts from exact proof wording with explicit `sensitivity` (`public \| personal \| sensitive \| restricted`) and `reuseScope` (`global \| employer_specific \| never_auto_fill`). Invalid values are rejected with typed errors. No auto-fill, no send. |
-| **Grounding, always** | Canonical claims carry source quotes, owner IDs, and original line pointers. Imported proof IDs and verification status are attached where available; inferred legacy pointers are explicitly marked for review. Successive truthful revisions are kept separately. |
-
-### Pipeline, network, interviews
-
-| Feature | What you get |
-| --- | --- |
-| **Pursuit and readiness** | `pursue_job`, `applications_plan`, persistent tasks (`list_tasks`, `update_task`), and a draft readiness artifact for review. |
-| **Submission is not attestable** | `update_application_status` rejects `applied`/`submitted` — MCP cannot attest submission. |
-| **Contacts and research** | `import_contact` accepts a plain contact card/text or the documented `contact-brief.v1` JSON (subject identity plus the attribution-labelled provider-reported address) from inline input or a `PLUGIN_DATA`-staged path; records stay `humanApproved: false` with the mailbox `not_checked`, and a repeat or address-less re-import reconciles onto the existing logical contact instead of duplicating it; an address-bearing re-import also reconciles the leftover address-less machine duplicate an older release could leave beside it, keeping that record's id and source metadata in the survivor's history. `record_research`, `list_contacts`, `list_research` preserve relationship and source notes. Same-name people at different companies are never merged; human-approved, suppressed, do-not-use and conflicting-address records are never collapsed; a profile URL is not treated as a messaging channel. |
-| **Network mapping** | `map_reachable_network` distinguishes cold professional email access, weak acquaintance, and channel-pending stakeholders. |
-| **Outreach drafts** | `plan_outreach`, `draft_outreach`, `list_outreach`. Every draft is `delivered: false`; recipient-facing subject/body stay separate from internal notes. |
-| **Interview prep** | `draft_interview_story`, `list_interview_stories`, `interview_prep`, `get_interview_prep`, `interview_debrief_handoff`. Stories stay `draft_needs_verification`; the debrief handoff attests nothing. |
-| **Freshness, not approval** | Stored prep readbacks, drafts, and handoffs carry computed `freshness: {status: current\|stale, reasons: []}` — evidence currency only. Nothing is deleted or auto-regenerated. |
-| **Sync preview** | `preview_sync` produces a secret-safe dry-run export preview and transmits nothing. |
-
-### Authority and safety
-
-| Feature | What you get |
-| --- | --- |
-| **Human-only decisions** | 12 decision actions complete **only** on the trusted local CLI `./bin/jobsss decide`, bound to exact `id` + `revision` + `contentHash`. Stale bindings persist nothing. |
-| **Non-authoritative handoffs** | MCP can only `list_decision_handoffs` and `create_decision_handoff` — a request marker that grants no authority. |
-| **Frozen blocked catalog** | A 25-name human-only catalog (`approve_artifact`, `mark_outreach_sent`, `attest_application_submitted`, `submit_application_form`, `assist_application_form`, …) must never appear on `tools/list`. Verified absent. |
-| **Honest transport** | JSON-RPC 2.0 envelopes are validated before notification classification; omitted arguments default to `{}`; explicit `null` rejects with `-32602`; invalid envelopes return `-32600`; business failures stay tool results with `isError: true`. |
-| **Portable contracts** | `contracts/` defines host-neutral packet, outcome, and bulk-input schemas with stable error codes (`fabricated_readiness`, `remote_attestation`, `non_public_host`, `secret_like_field`, …). Validation is pure and offline; it grants no authority. |
-
-## The journey
-
-| Route | MCP tool | Result |
-| --- | --- | --- |
-| `/jobsss doctor` | `doctor` | Diagnose the launcher and `PLUGIN_DATA` readability/writability. |
-| `/jobsss start` | `start` | Initialize (or migrate) durable state under `PLUGIN_DATA`. |
-| `/jobsss profile` | `create_profile` | Create or import a profile, extract proof candidates. |
-| `/jobsss find` | `import_job`, `list_jobs` | Import and list jobs (deduplicated). |
-| `/jobsss score` | `score_job` | Deterministic seven-dimension fit + eligibility. |
-| `/jobsss pursue` | `pursue_job` | Record pursuit, prepare review-ready artifacts. |
-| `/jobsss pipeline` | `applications_plan` | Local pipeline/readiness and next actions. |
-| `/jobsss review` | `review_queue`, `list_decision_handoffs` | Review state + pending human decisions, then hand off to `./bin/jobsss decide`. |
-
-## MCP tool reference (57 tools)
-
-<details open>
-<summary><b>Diagnostics and state</b> (2)</summary>
-
-`doctor`, `start`
-</details>
-
-<details>
-<summary><b>Profile, resume and proof</b> (8)</summary>
-
-`create_profile`, `list_profiles`, `update_profile`, `archive_profile`,
-`restore_profile`, `add_proof_point`,
-`list_resumes`, `get_resume`
-</details>
-
-<details>
-<summary><b>Job intake</b> (3)</summary>
-
-`import_job`, `import_job_url`, `list_jobs`
-</details>
-
-<details>
-<summary><b>Discovery and triage</b> (7)</summary>
-
-`create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`,
-`save_job`, `skip_job`, `archive_job`
-</details>
-
-<details>
-<summary><b>Scoring</b> (2)</summary>
-
-`score_job`, `get_score`
-</details>
-
-<details>
-<summary><b>Lifecycle and tasks</b> (5)</summary>
-
-`pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`,
-`update_task`
-</details>
-
-<details>
-<summary><b>Materials and answers</b> (15)</summary>
-
-`inspect_resume_requirements`, `tailor_resume`, `revise_resume`, `render_resume`,
-`inspect_resume_qa`, `list_resume_designs`, `compare_resume_designs`,
-`list_resume_design_variants`, `select_resume_design`,
-`inspect_cover_letter_brief`, `draft_cover_letter`, `revise_cover_letter`,
-`save_answer`, `list_answers`, `match_answers`
-</details>
-
-<details>
-<summary><b>Review and handoffs</b> (3)</summary>
-
-`review_queue`, `list_decision_handoffs`, `create_decision_handoff`
-</details>
-
-<details>
-<summary><b>Contacts, research and network</b> (8)</summary>
-
-`import_contact`, `list_contacts`, `record_research`, `list_research`,
-`map_reachable_network`, `plan_outreach`, `draft_outreach`, `list_outreach`
-</details>
-
-<details>
-<summary><b>Interview prep</b> (5)</summary>
-
-`draft_interview_story`, `list_interview_stories`, `interview_prep`,
-`get_interview_prep`, `interview_debrief_handoff`
-</details>
-
-<details>
-<summary><b>Export</b> (1)</summary>
-
-`preview_sync`
-</details>
-
-<details>
-<summary><b>Bounded preparation and contact evidence</b> (4)</summary>
-
-`prepare_applications_batch`, `record_contact_discovery`,
-`list_preparation_batches`, `list_contact_discoveries`
-</details>
-
-`53` is the entire advertised surface: `tools/list` is audited to contain no
-hidden or extra names, and no blocked name may appear there.
-
-## Human-only authority
-
-```bash
-./bin/jobsss decide --data "$PLUGIN_DATA" --list
-./bin/jobsss decide --data "$PLUGIN_DATA" \
-  --action artifact.review_visual --id <id> --revision <n> --content-hash <sha256>
-./bin/jobsss decide --data "$PLUGIN_DATA" --list
-./bin/jobsss decide --data "$PLUGIN_DATA" \
-  --action artifact.approve --id <id> --revision <n> --content-hash <sha256>
-```
-
-Thirteen actions exist, and only a human on this CLI can complete them:
-
-`proof.verify` · `artifact.review_visual` · `artifact.approve` · `artifact.reject` · `contact.approve` ·
-`contact.suppress` · `story.verify` · `story.retire` · `debrief.record` ·
-`debrief.correct` · `outreach.sent` · `outreach.outcome` ·
-`application.observe_status`
-
-An externally observed application status is a **human observation** recorded
-here and attributed to the human — never to JobSSS.
-
-## Local data
-
-`PLUGIN_DATA` after `start`:
-
-```text
-PLUGIN_DATA/
-├── store.json                      canonical, versioned state (schemaVersion 2)
-├── projections/
-│   ├── profiles.json   proof-points.json   jobs.json   searches.json
-│   ├── applications.json   review.json   tasks.json   contacts.json
-│   ├── network.json   interviews.json   state.json
-│   └── audit.md                    human/agent-readable audit trail
-└── … job, document and profile payloads (including exported PDFs)
-```
-
-This is the default **full** mode. To choose a smaller layout for a new data
-directory, run `./bin/jobsss start --data <dir> --compact` or call the MCP
-`start` tool with `{ "outputMode": "compact" }`. Compact mode automatically
-writes only `store.json` until a document is explicitly exported. User-staged
-intake files, if any, remain the user's files. It keeps profiles, jobs,
-searches, evidence, decisions, and audit history in that canonical store; the
-normal readback tools remain available. It omits automatic JSON and Markdown
-mirrors, including `application.md` packet links in batch results. Text and
-Markdown drafts remain available as tool responses when no resume PDF renderer
-is installed. A compact workspace retains its mode on restart; changing the
-mode of an existing workspace requires a separate migration.
-
-Cover letters default to editable DOCX in compact mode; full mode keeps its
-Markdown default. `draft_cover_letter` also accepts `format: "docx"` explicitly,
-and Markdown, text, and PDF formats remain available. Exported
-DOCX files, like PDFs, use content-addressed names so a reviewed version is
-not silently overwritten.
-
-- Durable state is created and migrated on `start`; a legacy `store.json`
-  migrates losslessly with ids preserved and an audit trail.
-- Projections are read-only mirrors — the store stays canonical.
-- Secrets are never required for the core journey and sync preview is
-  secret-safe by design.
-- Removing `PLUGIN_DATA` removes the workspace; nothing exists outside it.
-
-## Standalone releases
-
-```bash
-./bin/jobsss release --out /abs/out --target current-host
-```
-
-The release bundles the runtime into a single native executable with the pinned
-Node SEA injector (`postject`, exact version/URL/SHA-256 in
-`src/packaging.lock.json`), so **no Node and no other runtime need to exist on
-`PATH` at runtime**. Repeated clean builds for a target are byte-identical.
-
-| Target | Status | Meaning |
-| --- | --- | --- |
-| `linux-x64` | **verified** | Built from the checksum-pinned official Node v22.22.3 executable and exercised through stdio MCP under a restricted `PATH`. |
-| `current-host` | **built** | Built and exercised on the build host. |
-| `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win-x64` | **unverified** | Structural validation over genuine official inputs only; unproven until exercised on a real matching host. |
-
-Honesty rules baked into the pipeline: only the checksum-pinned official Node
-executable is accepted as an input (`--node-binary`); a target is labeled
-`verified` **only** after real execution on a matching host; cross-built artifacts
-stay `unverified` forever until proven. Signed `node.exe` is staged unsigned (the
-Security certificate directory is zeroed in a private copy), so the Windows
-artifact must be re-signed on a matching Windows host. Full evidence lives in
-`evidence/native-validation.json` and is reproduced with:
-
-```bash
-JOBSSS_NATIVE_CACHE="$(mktemp -d)" ./bin/jobsss evidence --out "$(pwd)/evidence/native-validation.json"
-```
-
-## Client compatibility
-
-| Client | Plugin/MCP loading | Status |
-| --- | --- | --- |
-| Hermes | native stdio MCP | **verified** (isolated temporary `HERMES_HOME` launch discovered the tools) |
-| Claude Code | native stdio MCP | **verified** (isolated `CLAUDE_CONFIG_DIR` launch reported the server `Connected`) |
-| Codex | generated aggregate plugin (`codex-pack/job-search-stack`) | **verified** on Windows (fresh install, explicit and natural activation, MCP initialize, and state-changing workflow) |
-| Pi | native skills | unverified |
-| Oh My Pi (`omp`) | — | unverified |
-
-Client version strings in `compat/matrix.json` are availability observations, not
-integration proof. MCP registration alone never counts as verified: only a real
-isolated launch that loaded the skill and exchanged a state-changing call does.
-See [compat/README.md](compat/README.md).
-
-## Verification and acceptance
-
-`BENCHMARK.md` is the **frozen pass bar** and is reviewer-owned. Verdict is
-`pass` or `fail`: no score, no partial credit, and a check may never be deleted,
-rewritten, or weakened to look green. It defines gates `B1`–`B70` across the
-standalone launch contract, live journey proofs, productization/determinism,
-cross-platform remediation, native packaging safety, provenance, and release
-evidence.
-
-```bash
-node --test --test-concurrency=1 tests/jobsss-gate0.test.mjs \
-  tests/jobsss-mcp-compat.test.mjs tests/jobsss-journey.test.mjs \
-  tests/jobsss-persistence.test.mjs tests/jobsss-discovery.test.mjs \
-  tests/jobsss-workflows.test.mjs tests/jobsss-integrity.test.mjs \
-  tests/jobsss-release.test.mjs tests/jobsss-adapters.test.mjs \
-  tests/jobsss-authority.test.mjs tests/jobsss-cross-platform.test.mjs
-```
-
-Scoped regression files (`tests/*-regression.test.mjs`) pin each repaired defect
-class: intake identity, resume roles, scoring pay evidence, profile proofs,
-discovery robustness, consistency, Greenhouse promotion, and P3 contracts.
-
-**How to read a red run.** The release and native-evidence gates need the
-checksum-pinned official Node v22.22.3 executable plus `python3`. On a machine
-whose `node` is not that exact binary, `release`/`evidence` fail **closed** with
-`refusing to build from an unpinned base` (gates `B30`, `B31`, `B32`, `B54`,
-`B65`) — failing closed is the design: the pipeline will not emit an artifact it
-cannot verify. Gate `B67` additionally requires
-`evidence/native-validation.json` to be regenerated with
-
-```bash
-JOBSSS_NATIVE_CACHE="$(mktemp -d)" ./bin/jobsss evidence --out "$(pwd)/evidence/native-validation.json"
-```
-
-whenever runtime bytes change; a stale artifact fails the byte-identity check
-rather than being silently accepted. Run the suite on a host carrying the pinned
-input for a full green bar.
-
-**Verification history.** A local, independently blind-judged evaluation of three
-end-to-end journey lanes (PM, SWE, ML profiles, synthetic data) against commit
-`546913c` returned `PASS` on all seven judging criteria per lane — journey
-completion with zero host rescues, artifact-set parity, PDF text-layer integrity,
-grounding (zero untraced claims), networking honesty, interview prep, and scoring
-honesty. The lane artifacts and judge verdict live under the gitignored `.tmp/`
-tree, so they are reproducibility notes rather than committed evidence. The
-committed evidence is the frozen pass bar plus the acceptance suite.
-
-## Design invariants
-
-1. **Standalone.** One skill, one MCP server, one bundled runtime. Nothing is
-   resolved from, imported from, or spawned out of another project.
-2. **State isolation.** Durable state lives only under `PLUGIN_DATA`; the plugin
-   directory stays read-only and portable.
-3. **No fabricated success.** Never claim a send, submission, approval, applied
-   attestation, or deferred capability. Only report what actually happened.
-4. **Grounding.** Generated claims trace to owned proof or cited public sources.
-   Nothing is invented, and metrics are never embellished.
-5. **Human authority stays human.** Approval, verification, sending, and observed
-   external status are completed by a human on the trusted CLI and attributed to
-   the human.
-6. **Thin hosts.** Client adapters are pointers, never a second source of truth.
-7. **Labeled truth.** Verified means proven by real execution; everything else is
-   labeled `unverified`, and weak checks are never weakened to pass.
-
-## Repository layout
-
-```text
-plugin.json              Agent Plugins 1.0.0 manifest (name, version, license)
-mcp.json                 stdio MCP server declaration (single runtime entry)
-skills/jobsss/           the skill: SKILL.md + references/
-  references/standalone-journey.md    journey, argument shapes, blocked catalog
-  references/human-only-handoffs.md   frozen human-only decision catalog
-  references/client-compatibility.md  per-client loading and verification rules
-bin/jobsss               bundled launcher (source + release builds)
-src/                     bundled runtime (mcp, domain, workflows, scoring, …)
-contracts/               portable packet / outcome / bulk-input schemas + examples
-compat/                  thin client adapters and the compatibility matrix
-docs/                    architecture diagram (.mmd source + rendered .svg)
-tests/                   reviewer-owned acceptance suite + synthetic fixtures
-synthetic fixture data     synthetic postings, resumes, boards, contact cards
-BENCHMARK.md             frozen pass bar (B1–B70)
-evidence/                canonical native-format validation evidence
-AGENTS.md                contributor invariants and commands
-```
-
-## Cite JobSSS
-
-When you reference JobSSS, cite the **version and the commit** you actually ran —
-the safety contract and tool surface are versioned artifacts, and behavior is
-reproducible per commit.
-
-```bibtex
-@software{jobsss,
-  title        = {JobSSS: a standalone Agent Plugin for local, evidence-grounded job-search workflows},
-  author       = {{JobSSS contributors}},
-  year         = {2026},
-  version      = {0.1.1},
-  license      = {MIT},
-  url          = {https://github.com/lpbangun/jobsss},
-  note         = {Agent Plugins 1.0.0; 57 local MCP tools; frozen pass bar B1-B70; release v0.1.1}
-}
-```
-
-Plain text:
-
-> JobSSS contributors. *JobSSS: a standalone Agent Plugin for local,
-> evidence-grounded job-search workflows.* v0.1.1, MIT, 2026.
-> Agent Plugins 1.0.0. Release `v0.1.1`.
-
-Reproducing a claim: quote the commit, the tool name, the arguments, and the
-persisted readback (tool output or a file under `PLUGIN_DATA`). Anything a human
-completed belongs to the human and is recorded with `actor: trusted_local`.
-
-## Status and limitations
-
-- Pre-release `0.1.1`. The deterministic offline core, discovery/intake, scoring,
-  browser-rendered resume PDFs and native other-material PDFs, networking drafts, interview prep, review/authority
-  split, persistence, and packaging are implemented and under a frozen,
-  reviewer-owned acceptance bar.
-- `linux-x64` standalone is verified; `linux-arm64`, `darwin-x64`,
-  `darwin-arm64`, and `win-x64` are structurally validated but unverified until
-  executed on matching hosts. Windows additionally needs re-signing on a Windows
-  host.
-- Hermes, Claude Code, and the generated Codex aggregate pack are verified on
-  their recorded hosts; Pi and `omp` remain unverified.
-- Searchable single-column PDF text is an ATS-readability proxy, not a
-  proprietary ATS score or a guarantee.
-- Public URL and ATS intake depend on third-party page/API shapes and can break
-  independently; JobSSS reports those failures instead of pretending success.
-  Users are responsible for complying with third-party platform terms.
+| [Installation](INSTALL.md) | Host setup, requirements, and activation checks. |
+| [Technical reference](TECHNICAL.md) | Detailed features, tool contracts, local data, architecture boundaries, and release evidence. |
+| [Client compatibility](compat/README.md) | Integration status and host-specific details. |
+| [Contributing](AGENTS.md) | Repository conventions and required checks. |
+
+JobSSS is an early release (`0.1.0`). Core job-search workflows are implemented;
+host and standalone-platform verification varies. See
+[status and limitations](TECHNICAL.md#status-and-limitations) before choosing a
+setup.
 
 ## License
 
-[MIT](LICENSE) © 2026 JobSSS contributors. Portions of the design derive from an
-earlier MIT-licensed project; the attribution lives in [NOTICE](NOTICE).
+[MIT](LICENSE). Design attribution is in [NOTICE](NOTICE).

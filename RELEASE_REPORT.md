@@ -10,7 +10,15 @@ Current native artifact refresh (2026-09-07, separately authorized closure round
 
 ## Release summary
 
-JobSSS remains one portable Agent Plugin, one canonical skill, and one bundled MCP runtime. Authoritative product version **0.1.1** comes from `plugin.json` and agrees across real CLI help/version, doctor, MCP initialize/doctor, and generated `release-manifest.json`, including SEA execution.
+PR validation (2026-09-30, conversational tailoring): the required eleven-file suite, native evidence/remediation, conversational tailoring, cover-letter and portable-package tests completed with **88/89 passing**. The sole failure is the previously documented B52 assertion rejecting the metadata-only `package.json` already on the base. Install-surface and installed Codex-pack checks passed **5/5**. B67 reproduced the current evidence in two fresh processes with separate empty caches. JobSSS install pins and generated packages now include the conversational tailoring product commit.
+
+An independent temporary `hermes -p job-strategist` run exercised real portable-plugin MCP generation and preserved two authored letters through regeneration. Both native PDFs were visually inspected and searchable; DOCX paragraph/spacing XML and all six export hashes were checked. Hermes required its optional MCP SDK in the isolated runtime. Inline raw HTML passed to `import_job` remained unnormalized; structured text was used for the letter flow. This differs from the repaired `import_job_url` HTML extraction route. A remembered role thesis currently cannot be explicitly cleared for one matching job; host-level confirmation and job feedback remain important. All temporary Hermes state and outputs were removed.
+
+Earlier rollup validation (2026-09-30): the required eleven-file command and the native-evidence, packaging, identity, intake, resume, and cover-letter regressions passed together: **161/161**. Generated Agent Plugin and Codex pack checks passed, and the shipped Codex pack's MCP/contact-brief smoke test passed on Windows with its declared Python dependency in a temporary test directory. These are runtime/package checks, not a new authenticated agent-host journey.
+
+The broader sweep is not green. Eighteen audit/closure/composition failures reproduce on the unchanged `c160555` base; B52 rejects the metadata-only `package.json` already present on that base, and three captured-MCP PDF tests require a Linux browser absent on this host. Actual Chrome on Windows rendered both captured resume formats to one searchable page, and both PDFs were visually inspected. No identity, evidence, approval, or renderer gate was relaxed to mask these remaining checks.
+
+JobSSS remains one portable Agent Plugin, one canonical skill, and one bundled MCP runtime. Current authoritative product version **0.1.2** comes from `plugin.json` and agrees across real CLI help/version, doctor, MCP initialize/doctor, and generated `release-manifest.json`, including SEA execution.
 
 The release pipeline still uses the sole native implementation in `src/packaging.js` and checksum-pinned postject 1.0.0-alpha.6. No release was published and no custom injector was added.
 
@@ -18,8 +26,10 @@ The release pipeline still uses the sole native implementation in `src/packaging
 
 Complete evidence is recorded once:
 
+The 2026-09-30 release candidate is version 0.1.2. It addresses issues #15 and #26–#30 and adds voice-guided cover-letter preparation, preserved editorial revisions, and ordinary Word/PDF letter layout. Two fresh processes with separate empty external caches reproduced the canonical native evidence byte for byte (B67). Official inputs, injector, and validators remain pinned; cross-built targets remain unverified at runtime.
+
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `0b279b1d33dba5614f6be68988e2427932a4901190bedeedcbd14bdbcc7b4a47`
+- SHA-256: `23d76cd67cb5eb105a9fa0879a6014ec532f91656e9ac54aa4df7c5502e66e16`
 - Exact reproduction command:
 
 ```bash
@@ -68,7 +78,7 @@ Exact PE resource preservation result: 9 original type/name/language/size/SHA-25
 
 ## Generic restricted-PATH MCP evidence
 
-The current-host standalone release is built and exercised with Node and JobOS absent from PATH. Generic stdio MCP initialize, tools/list, doctor/start, journey behavior, and restart persistence pass. The generated manifest reports version 0.1.1.
+The current-host standalone release is built and exercised without Node or an external product runtime on PATH. Generic stdio MCP initialize, tools/list, doctor/start, journey behavior, and restart persistence pass.
 
 ## Client compatibility matrix
 
@@ -77,10 +87,10 @@ The current-host standalone release is built and exercised with Node and JobOS a
 | Pi | unverified |
 | OMP | unverified |
 | Codex aggregate pack | verified on Windows (fresh marketplace install, skill activation, MCP handshake and state-changing workflow) |
-| Hermes | verified |
-| Claude | verified |
+| Hermes | unverified (2026-09-30 isolated connectivity probe timed out) |
+| Claude | unverified (executable absent on this host) |
 
-Adapters remain thin and canonical assets remain authoritative. These retained Hermes/Claude labels describe historical MCP connectivity probes only, not canonical skill loading, a state-changing agent-host journey, or native Agent Plugins package loading. Current version availability observations are recorded separately in `compat/matrix.json` and do not upgrade verification.
+Adapters remain thin and canonical assets remain authoritative. Historical Hermes/Claude connectivity and Windows Codex marketplace results do not verify this changed runtime. Current observations are recorded separately in `compat/matrix.json`; pack installation and live connectivity are separate checks.
 
 ## Human-authority behavior
 

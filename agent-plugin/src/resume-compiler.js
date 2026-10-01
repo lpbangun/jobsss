@@ -7,9 +7,9 @@ import { createHash } from 'node:crypto';
 
 const MONTH = '(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
 const ROLE_DATE_RE = new RegExp(`^${MONTH}\\.?\\s+\\d{4}\\s*[–—-]\\s*(?:${MONTH}\\.?\\s+\\d{4}|Present)$`, 'i');
+const MONTH_DATE = new RegExp(`\\b${MONTH}\\.?\\s+\\d{4}\\b`, 'i');
 const GENERIC_JOB_TITLE_RE = /^(?:Imported role|Unknown role)$/i;
 const OUTCOME_RE = /\b(?:fell|dropped|reduced|improved|climbed|cut|grew|increased|closed|adopted|reached|eliminated)\b/i;
-const PROJECT_SUBSTANTIVE_RE = /\b(?:fell|dropped|reduced|improved|climbed|cut|grew|increased|closed|adopted|reached|eliminated|built|created|designed|shipped|launched|delivered|automated|migrated|used by|adopted by)\b/i;
 const WEAK_REQUIREMENT_TOKENS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'for', 'from', 'have', 'in',
   'into', 'is', 'of', 'on', 'or', 'our', 'the', 'to', 'with', 'across',
@@ -51,8 +51,71 @@ function cleanLine(value) {
   return String(value ?? '').replace(/\r$/, '').trim();
 }
 
+function normalizedSectionHeading(value) {
+  const heading = cleanLine(value)
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^\*\*(.*?)\*\*$/, '$1')
+    .replace(/\s*\[[A-Z][A-Z0-9_-]*(?:[\s,–—-]+[A-Z0-9_-]+)*\]\s*$/, '')
+    .trim()
+    .toUpperCase();
+  if (/^(?:(?:KEY|SELECTED)\s+)?PROJECTS(?:\s+(?:AND|&)\s+PORTFOLIO)?$/.test(heading)
+      || /^PROJECT PORTFOLIO$/.test(heading)) return 'PROJECTS';
+  return heading;
+}
+
+function isPreferenceClaim(value) {
+  const text = cleanLine(value).replace(/^[-*•]\s*/, '').replace(/^\[[A-Z][A-Z0-9_-]*\]\s*/i, '').trim();
+  return /^(?:travel|travel preference|hybrid|hybrid preference|remote|remote only|onsite|on-site|work model|work arrangement|office attendance|schedule|availability|location preference)\s*:/i.test(text)
+    || /^(?:willing|available|open) to travel\b/i.test(text)
+    || /^hybrid(?: work| schedule)?\s+(?:preferred|preference|only|available)\b/i.test(text);
+}
+
+function cleanProjectTitle(value) {
+  return cleanLine(value).replace(/^#{3,6}\s*/, '').replace(/^\*\*(.*?)\*\*$/, '$1').replace(/\*+/g, '').trim();
+}
+
+function parseProjectHeading(value) {
+  const text = cleanProjectTitle(value);
+  const parts = text.split('|').map(part => part.trim()).filter(Boolean);
+  if (parts.length > 1 && (/\b(?:19|20)\d{2}\b/.test(text) || /\b(?:sole builder|builder|coursework|personal project)\b/i.test(parts.slice(1).join(' ')))) {
+    return { title: parts[0], details: parts.slice(1) };
+  }
+  return { title: text, details: [] };
+}
+
+function isProjectMetadata(value) {
+  const raw = cleanLine(value);
+  const text = raw.replace(/^\*\*(.*?)\*\*$/, '$1').replace(/\*+/g, '').trim();
+  return /^\*\*.+\*\*$/.test(raw)
+    || (/\|/.test(text) && (MONTH_DATE.test(text) || /\b(?:19|20)\d{2}\b|present/i.test(text)))
+    || (/^(?:sole builder|builder)\b/i.test(text) && /\|/.test(text));
+}
+
+function looksLikeProjectHeading(raw, nextLine = '') {
+  if (/^#{3,6}\s/.test(raw)) return true;
+  if (isProjectMetadata(raw) || /^[-*•]\s/.test(raw)) return false;
+  const text = cleanProjectTitle(raw);
+  if (!text || /[.!?]$/.test(text)) return false;
+  if (nextLine && isProjectMetadata(nextLine)) return true;
+  return text.length <= 96 && text.split(/\s+/).length <= 9 && !/\b(?:built|created|designed|delivered|managed|led|improved|reduced|increased|supported|developed|launched|implemented|coordinated|conducted|wrote|helped)\b/i.test(text);
+}
+
 function sourceQuote(value) {
   return String(value ?? '').trim();
+}
+
+function supportedAchievement(value) {
+  return cleanLine(value)
+    .replace(/^[-*•]\s*/, '')
+    .replace(/\s*\[[A-Z][A-Z0-9_-]*(?:[\s,–—-]+[A-Z0-9_-]+)*\]/g, '')
+    .replace(/\s*\(fictional[^)]*\)/gi, '')
+    .replace(/\s+(?:Do not claim|Do not describe|No GPA|No other language|No unlisted|No employment after)[\s\S]*$/i, '')
+    .replace(/\s*This (?:is|was) [^.]*, not (?:proof|a claim) [^.]*\.?/gi, '')
+    .replace(/\s*Observed before\/after association, not proof of sole causation\.?/gi, '')
+    .replace(/;\s*(?:measured by|comparison used)[^.]*\.?/gi, '.')
+    .replace(/\s*Missing:[^.\n]*\.?/gi, '')
+    .replace(/[.]{2,}$/, '.')
+    .trim();
 }
 
 function metricAtoms(value) {
@@ -80,7 +143,7 @@ function contentTokens(value) {
 }
 
 function projectItemHasSubstantiveEvidence(item) {
-  return metricAtoms(item.text).length > 0 || PROJECT_SUBSTANTIVE_RE.test(item.text);
+  return contentTokens(item.text).length >= 4;
 }
 
 function selectProjects(projects, experience) {
@@ -97,7 +160,6 @@ function selectProjects(projects, experience) {
       && (titlePhrase && normalizedExperience.includes(titlePhrase)
         || titleTokens.filter(token => experienceTokens.has(token)).length / titleTokens.length >= 0.75);
     if (!titleOverlapsExperience) return project.items.length ? project : null;
-
     const uniqueSubstantiveItems = project.items.filter(item => {
       if (!projectItemHasSubstantiveEvidence(item)) return false;
       const itemTokens = contentTokens(item.text);
@@ -139,8 +201,9 @@ function isPrivateHeading(line) {
 }
 
 function sectionEnd(lines, start, names) {
+  const normalizedNames = new Set([...names].map(normalizedSectionHeading));
   for (let index = start + 1; index < lines.length; index += 1) {
-    if (isPrivateHeading(lines[index]) || names.has(cleanLine(lines[index]).toUpperCase())) return index;
+    if (isPrivateHeading(lines[index]) || normalizedNames.has(normalizedSectionHeading(lines[index]))) return index;
   }
   return lines.length;
 }
@@ -148,7 +211,7 @@ function sectionEnd(lines, start, names) {
 function parseSections(lines) {
   const headings = new Map();
   for (let index = 0; index < lines.length; index += 1) {
-    const heading = cleanLine(lines[index]).toUpperCase();
+    const heading = normalizedSectionHeading(lines[index]);
     if (['SUMMARY', 'PROFILE', 'EXPERIENCE', 'EMPLOYMENT', 'PROJECTS', 'CERTIFICATIONS', 'EDUCATION', 'SKILLS'].includes(heading)) {
       headings.set(heading, index);
     }
@@ -181,7 +244,7 @@ function parseProfile(sourceText, fallbackName = '', sourceFormat = 'normalized'
       || /@|https?:\/\/|\|/.test(name) || name.split(/\s+/).length < 2) {
     throw Object.assign(new Error('A candidate name must be supplied in the profile header.'), { code: 'resume_identity_missing' });
   }
-  const firstSection = lines.findIndex(line => /^(?:SUMMARY|PROFILE|EXPERIENCE|EMPLOYMENT|PROJECTS|CERTIFICATIONS|EDUCATION|SKILLS)$/i.test(cleanLine(line)) || isPrivateHeading(line));
+  const firstSection = lines.findIndex(line => ['SUMMARY', 'PROFILE', 'EXPERIENCE', 'EMPLOYMENT', 'PROJECTS', 'CERTIFICATIONS', 'EDUCATION', 'SKILLS'].includes(normalizedSectionHeading(line)) || isPrivateHeading(line));
   const headerLines = lines.slice(0, firstSection < 0 ? lines.length : firstSection).map(cleanLine).filter(Boolean);
   const contact = headerLines.find(line => line !== name && (line.includes('|') || /@|linkedin\.com|https?:\/\//i.test(line))) || '';
   if (!/@[^\s|]+\.[^\s|]+/.test(contact)) {
@@ -229,7 +292,8 @@ function parseProfile(sourceText, fallbackName = '', sourceFormat = 'normalized'
         continue;
       }
       if (current && line.startsWith('- ')) {
-        current.bullets.push({ text: line.slice(2).trim(), sourceQuote: sourceQuote(line.slice(2)) });
+        const claim = line.slice(2).trim();
+        if (!isPreferenceClaim(claim)) current.bullets.push({ text: supportedAchievement(claim), sourceQuote: sourceQuote(claim) });
       }
     }
     if (current) experience.push(current);
@@ -238,16 +302,27 @@ function parseProfile(sourceText, fallbackName = '', sourceFormat = 'normalized'
   const projects = [];
   const projectStart = headings.get('PROJECTS');
   if (projectStart !== undefined) {
-    const end = sectionEnd(lines, projectStart, new Set(['CERTIFICATIONS', 'EDUCATION', 'SKILLS']));
+  const end = sectionEnd(lines, projectStart, new Set(['CERTIFICATIONS', 'EDUCATION', 'SKILLS', 'EXPERIENCE', 'EMPLOYMENT']));
     let current = null;
     for (let index = projectStart + 1; index < end; index += 1) {
       const line = cleanLine(lines[index]);
       if (!line) continue;
       if (line.startsWith('- ')) {
-        if (current) current.items.push({ text: line.slice(2).trim(), sourceQuote: sourceQuote(line.slice(2)) });
-      } else {
+        const quote = line.slice(2).trim();
+        const text = supportedAchievement(quote);
+        if (current && text && !isPreferenceClaim(quote)) current.items.push({ text, sourceQuote: sourceQuote(quote) });
+      } else if (looksLikeProjectHeading(line, cleanLine(lines[index + 1] || '')) || !current) {
         if (current) projects.push(current);
-        current = { title: line, sourceQuote: sourceQuote(line), items: [] };
+        const { title, details } = parseProjectHeading(line);
+        if (!title) { current = null; continue; }
+        current = { title, sourceQuote: sourceQuote(line), items: [], details };
+      } else if (isProjectMetadata(line)) {
+        // Project metadata (such as ownership, dates, or a public URL) belongs
+        // with the project heading. It is source context, not an editable claim.
+        current.details.push(cleanProjectTitle(line));
+      } else {
+        const text = supportedAchievement(line);
+        if (text && !isPreferenceClaim(line)) current.items.push({ text, sourceQuote: sourceQuote(line) });
       }
     }
     if (current) projects.push(current);
@@ -338,7 +413,7 @@ function semanticCoverage(claim, requirement) {
   const analogues = [
     [/interview|recruit|candidate|hiring/, /screen|interview|recruit|candidate/],
     [/scheduling|coordination|calendar/, /stakeholder|client|follow-through|coordination/],
-    [/customer education|academy|enablement/, /onboard|training|tutorial|documentation/],
+    [/onboarding|customer education|academy|enablement/, /onboard|training|tutorial|documentation|new users/],
     [/instructional|learning|curriculum/, /learning|instruction|training|education/],
     [/many moving pieces|stay calm|shifting priorities/, /shifting priorities|managed client engagements/],
     [/inefficien|improv.*operate/, /product improvements|AI-enabled workflows|operating documentation/],
@@ -522,39 +597,18 @@ function buildSummary(profile, claims, target) {
   const firstRole = profile.experience.map(role => role.title).find(Boolean) || 'Experience';
   const firstSkills = profile.skills.flatMap(group => group.items).slice(0, 2).join(', ');
   const lead = sourceSummary.split(/(?<=[.!?])\s+/)[0]
-    || (firstSkills ? `${firstRole} with experience in ${firstSkills}` : `${firstRole} experience`);
-  const headline = /recruit|people|talent/i.test(target.title) ? 'Recruiting and People Operations'
-    : /education|learning|training/i.test(target.title) ? 'Customer Education and Learning Design'
-    : target.title;
-
+    || (firstSkills ? firstRole + ' with experience in ' + firstSkills : firstRole + ' experience');
   const skillQuotes = new Set(profile.skills.map(group => sourceQuote(group.sourceLine)));
   const preferredClaims = claims.filter(claim => claim.status === 'active'
     && (skillQuotes.has(claim.sourceQuote) || (sourceSummary && claim.sourceQuote === sourceSummary)));
   const fallbackClaims = claims.filter(claim => claim.status === 'active' && !preferredClaims.includes(claim));
   const summaryClaims = [...preferredClaims, ...fallbackClaims].slice(0, Math.max(2, preferredClaims.length));
-  const find = pattern => claims.find(claim => claim.status === 'active' && pattern.test(claim.sourceQuote));
-  if (/recruit|people|talent/i.test(target.title)) {
-    const recruiting = find(/candidate screening.*job interviews.*skills assessment/i);
-    const founder = find(/Founded and operated.*venture/i);
-    const coordination = find(/stakeholder follow-through|client engagements/i);
-    const harvard = find(/Harvard Graduate School of Education/i);
-    const toronto = find(/Industrial Relations\s*\/\s*Human Resources/i);
-    const writing = find(/written documentation|operating documentation/i);
-    if (recruiting && founder && coordination && harvard && toronto && writing) return {
-      text: 'Recruiting Coordinator | People Operations | Harvard GSE graduate with Industrial Relations/HR training, Indofood recruiting support, and founder-level experience coordinating clients and operating details. Brings candidate screening and skills assessment, written documentation, and follow-through.',
-      claimIds: unique([recruiting, founder, coordination, harvard, toronto, writing].map(claim => claim.claimId)),
-    };
-  }
-  if (/education|learning|training/i.test(target.title)) {
-    const onboarding = find(/designed and delivered client onboarding and training/i);
-    const instruction = find(/designed instructional content and learning materials/i);
-    const project = find(/workplace-learning and onboarding MVP/i);
-    if (onboarding && instruction && project) return {
-      text: 'Customer Education and Learning Design | Client onboarding and training delivery, instructional content, and learning-product prototyping.',
-      claimIds: unique([onboarding.claimId, instruction.claimId, project.claimId]),
-    };
-  }
-  return { text: `${headline} | ${sentence(lead)}`, claimIds: summaryClaims.map(claim => claim.claimId) };
+  const headlineTitle = GENERIC_JOB_TITLE_RE.test(String(target.title || ''))
+    || /^Target role$/i.test(String(target.title || '')) ? firstRole : String(target.title).trim();
+  const headline = target.company && target.company !== 'Target company'
+    ? `Target: ${headlineTitle} at ${target.company}`
+    : headlineTitle;
+  return { text: headline + ' | ' + sentence(lead), claimIds: summaryClaims.map(claim => claim.claimId) };
 }
 
 function node(nodes, input) {
@@ -692,44 +746,17 @@ export function compileResumeDocument({ profileText, originalSourceText = null, 
   };
   const selectedByRole = new Map();
   for (const role of profile.experience) {
-    const learningMiddle = role.index === 1 && /education|learning|training/i.test(target.title);
     const allowedBullets = role.bullets.filter(bullet => factory.byQuote.get(`employment-${role.index}|${sourceQuote(bullet.sourceQuote)}`)?.status === 'active');
-    const rank = bullet => relevance(bullet.text) + (preferred.has(factory.byQuote.get(`employment-${role.index}|${sourceQuote(bullet.sourceQuote)}`)?.claimId) ? 100 : 0);
-    const chosen = [...allowedBullets].sort((a, b) => rank(b) - rank(a)
-      || role.bullets.indexOf(a) - role.bullets.indexOf(b)).slice(0, role.index === 0 || learningMiddle ? 3 : 2);
-    if (role.index === 0 && /education|learning|training/i.test(target.title)) {
-      const documentation = allowedBullets.find(bullet => /walkthrough|tutorial|written documentation/i.test(bullet.text));
-      if (documentation && !chosen.includes(documentation)) chosen[chosen.length - 1] = documentation;
-    }
-    if (/recruit|people|talent|education|learning|training/i.test(target.title) && /Musim Mas/i.test(role.employer)) {
-      const fieldTraining = allowedBullets.find(bullet => /200\+ participants/i.test(bullet.text));
-      const leaders = allowedBullets.find(bullet => /12\+ community leaders/i.test(bullet.text));
-      if (fieldTraining && leaders) chosen.splice(0, chosen.length, fieldTraining, leaders);
-    }
-    selectedByRole.set(role, chosen);
-  }
-  const selectedCount = () => [...selectedByRole.values()].reduce((total, items) => total + items.length, 0);
-  if (selectedCount() < 8) {
-    for (const role of profile.experience) {
-      for (const bullet of role.bullets.filter(item => factory.byQuote.get(`employment-${role.index}|${sourceQuote(item.sourceQuote)}`)?.status === 'active')) {
-        const chosen = selectedByRole.get(role);
-        if (chosen.includes(bullet)) continue;
-        chosen.push(bullet);
-        if (selectedCount() >= 8) break;
-      }
-      if (selectedCount() >= 8) break;
-    }
+    // Keep source order for every claim that fits; relevance only decides what
+    // yields when a source document exceeds the one-page renderer's capacity.
+    selectedByRole.set(role, [...allowedBullets]);
   }
   const projectRelevance = project => {
-    const title = normalize(project.title);
-    const role = normalize(target.title);
-    const laneBoost = /recruit|people|talent/.test(role)
-      ? (/bukti/.test(title) ? 9 : /jobos|jobsss/.test(title) ? 4 : 0)
-      : /education|learning|training/.test(role)
-        ? (/probixio/.test(title) ? 10 : /evolveed/.test(title) ? 8 : 0)
-        : 0;
     const preferredItem = project.items.some(item => preferred.has(factory.byQuote.get(`project-${sha256(project.title).slice(0, 12)}|${sourceQuote(item.sourceQuote)}`)?.claimId));
-    return laneBoost + relevance(`${project.title} ${project.items.map(item => item.text).join(' ')}`) + (preferredItem ? 100 : 0);
+    const coversNeed = project.items.some(item => target.requirements.some(requirement =>
+      semanticCoverage({ sourceQuote: item.sourceQuote }, requirement) !== 'unknown'));
+    return relevance([project.title, ...(project.details || []), ...project.items.map(item => item.text)].join(' '))
+      + (coversNeed ? 6 : 0) + (preferredItem ? 100 : 0);
   };
   const activeExperience = profile.experience.map(role => ({ ...role,
     bullets: role.bullets.filter(item => factory.byQuote.get(`employment-${role.index}|${sourceQuote(item.sourceQuote)}`)?.status === 'active'),
@@ -738,8 +765,82 @@ export function compileResumeDocument({ profileText, originalSourceText = null, 
     items: project.items.filter(item => factory.byQuote.get(`project-${sha256(project.title).slice(0, 12)}|${sourceQuote(item.sourceQuote)}`)?.status === 'active'),
   })).filter(project => project.items.length);
   const selectedProjects = selectProjects(activeProjects, activeExperience)
-    .sort((a, b) => projectRelevance(b) - projectRelevance(a))
-    .slice(0, /recruit|people|talent/i.test(target.title) ? 1 : 2);
+    .sort((a, b) => projectRelevance(b) - projectRelevance(a));
+  if (target.requirements.length) {
+    // When the posting supplies explicit requirements, keep a project in the
+    // initial one-page candidate set only if its source text matches one of
+    // those job terms. Explicitly preferred projects still win.
+    for (let index = selectedProjects.length - 1; index >= 0; index -= 1) {
+      const project = selectedProjects[index];
+      const preferredProject = project.items.some(item => preferred.has(factory.byQuote.get(
+        `project-${sha256(project.title).slice(0, 12)}|${sourceQuote(item.sourceQuote)}`)?.claimId));
+      if (!preferredProject && projectRelevance(project) <= 0) selectedProjects.splice(index, 1);
+    }
+  }
+  const selectedSkillGroups = [...profile.skills]
+    .sort((a, b) => relevance([b.group, ...b.items].join(' ')) - relevance([a.group, ...a.items].join(' ')))
+    .map(group => ({ ...group, items: [...group.items] }));
+  const wrappedLines = value => String(value || '').split(/\r?\n/)
+    .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / 108)), 0);
+  const blockUnits = value => wrappedLines(value) + 0.3;
+  const roleHeadingText = role => [
+    [role.employer, role.location].filter(Boolean).join(' - '),
+    role.title,
+    role.dates,
+  ].filter(Boolean).join('\n');
+  const estimateLayoutUnits = () => {
+    const sections = 2 + Number(selectedProjects.length > 0) + Number(profile.education.length > 0) + Number(selectedSkillGroups.length > 0);
+    return 5 + wrappedLines(profile.name) + wrappedLines(profile.contact) + wrappedLines(summary.text)
+      + sections * 1.45
+      + activeExperience.reduce((sum, role) => sum + wrappedLines(roleHeadingText(role)) + 0.5, 0)
+      + [...selectedByRole.values()].flat().reduce((sum, bullet) => sum + blockUnits(bullet.text), 0)
+      + selectedProjects.reduce((sum, project) => sum + blockUnits([project.title, ...(project.details || [])].join(' | '))
+        + project.items.reduce((subtotal, item) => subtotal + blockUnits(item.text), 0), 0)
+      + profile.education.reduce((sum, item) => sum + blockUnits(item.sourceQuote), 0)
+      + selectedSkillGroups.reduce((sum, group) => sum + blockUnits(group.group + ': ' + group.items.join(', ')), 0);
+  };
+  // Estimate the print footprint before building the IR. When a large source
+  // exceeds the available page, lower-relevance material yields first; user
+  // preferred claims and dated-role coverage stay intact. Browser QA still
+  // verifies actual one-page fit after font metrics and line wrapping.
+  const PAGE_LAYOUT_BUDGET = 58;
+  while (estimateLayoutUnits() > PAGE_LAYOUT_BUDGET) {
+    const removable = [];
+    for (const role of activeExperience) {
+      const bullets = selectedByRole.get(role) || [];
+      if (bullets.length <= 1) continue;
+      for (const bullet of bullets) {
+        const id = factory.byQuote.get('employment-' + role.index + '|' + sourceQuote(bullet.sourceQuote))?.claimId;
+        if (!preferred.has(id)) removable.push({ kind: 'experience', role, bullet, rank: relevance(bullet.text) });
+      }
+    }
+    for (const project of selectedProjects) {
+      const ownerId = 'project-' + sha256(project.title).slice(0, 12);
+      const preferredProject = project.items.some(item => preferred.has(factory.byQuote.get(
+        ownerId + '|' + sourceQuote(item.sourceQuote))?.claimId));
+      if (project.items.length <= 1) {
+        if (selectedProjects.length > 1 && !preferredProject) removable.push({ kind: 'project_group', project, rank: projectRelevance(project) });
+        continue;
+      }
+      for (const item of project.items) {
+        const id = factory.byQuote.get(ownerId + '|' + sourceQuote(item.sourceQuote))?.claimId;
+        if (!preferred.has(id)) removable.push({ kind: 'project', project, item, rank: relevance(item.text) });
+      }
+    }
+    for (const group of selectedSkillGroups) {
+      if (group.items.length <= 1) continue;
+      for (const item of group.items) removable.push({ kind: 'skill', group, item, rank: relevance(item) });
+    }
+    if (!removable.length) break;
+    removable.sort((a, b) => a.rank - b.rank);
+    const item = removable[0];
+    if (item.kind === 'experience') selectedByRole.get(item.role).splice(selectedByRole.get(item.role).indexOf(item.bullet), 1);
+    else if (item.kind === 'project') {
+      item.project.items.splice(item.project.items.indexOf(item.item), 1);
+      if (!item.project.items.length) selectedProjects.splice(selectedProjects.indexOf(item.project), 1);
+    } else if (item.kind === 'project_group') selectedProjects.splice(selectedProjects.indexOf(item.project), 1);
+    else item.group.items.splice(item.group.items.indexOf(item.item), 1);
+  }
   const nodes = [];
   node(nodes, { type: 'name', text: profile.name, structuralReason: 'Candidate identity copied from the source profile header.' });
   node(nodes, { type: 'contact', text: profile.contact, structuralReason: sourceContact === profile.contact
@@ -768,32 +869,15 @@ export function compileResumeDocument({ profileText, originalSourceText = null, 
     node(nodes, { type: 'section_heading', text: 'PROJECTS', structuralReason: 'Source projects section heading.' });
     for (const project of selectedProjects) {
       const ownerId = `project-${sha256(project.title).slice(0, 12)}`;
-      node(nodes, { type: 'project', text: project.title, claimIds: claimIdsFor(factory, project.sourceQuote, null, ownerId), ownerId, structuralReason: null });
+      node(nodes, { type: 'project', text: [project.title, ...(project.details || [])].join(' | '), claimIds: claimIdsFor(factory, project.sourceQuote, null, ownerId), ownerId, structuralReason: null });
       for (const item of project.items) node(nodes, { type: 'project_item', text: item.text, claimIds: claimIdsFor(factory, item.sourceQuote, null, ownerId), ownerId, structuralReason: null });
     }
   }
   node(nodes, { type: 'section_heading', text: 'EDUCATION', structuralReason: 'Required resume section heading.' });
   for (const item of profile.education) node(nodes, { type: 'education', text: item.sourceQuote, claimIds: claimIdsFor(factory, item.sourceQuote), structuralReason: null });
   node(nodes, { type: 'section_heading', text: 'SKILLS', structuralReason: 'Required resume section heading.' });
-  const peopleSkills = /recruit|people|talent/i.test(target.title) ? [
-    ['candidate screening', /candidate screening/i],
-    ['interview participation', /job interviews/i],
-    ['skills assessment', /skills assessment/i],
-    ['stakeholder coordination', /stakeholder follow-through|stakeholder coordination/i],
-    ['written documentation', /written documentation/i],
-    ['operating follow-through', /stakeholder follow-through|shifting priorities and follow-through/i],
-    ['distributed-team collaboration', /remote collaborators across Indonesia and distributed teams/i],
-    ['AI-enabled workflows', /AI-enabled workflows/i],
-  ].map(([text, pattern]) => ({ text, claim: factory.claims.find(claim => claim.status === 'active' && pattern.test(claim.sourceQuote)) }))
-    .filter(item => item.claim) : [];
-  const skillGroupRelevance = group => relevance(`${group.group} ${group.items.join(' ')}`)
-    + (/education|learning|training/i.test(target.title) && /product|AI/i.test(group.group) ? 5 : 0);
-  const rankedSkillGroups = [...profile.skills].sort((a, b) => skillGroupRelevance(b) - skillGroupRelevance(a));
-  if (peopleSkills.length >= 6) {
-    node(nodes, { type: 'skills_group', text: 'Recruiting and operations', items: peopleSkills.map(item => item.text), structuralReason: 'Skills selected from source-linked recruiting and operating evidence.' });
-    for (const item of peopleSkills) node(nodes, { type: 'skill', text: item.text, claimIds: [item.claim.claimId] });
-  } else for (const group of rankedSkillGroups.slice(0, 2)) {
-    const chosen = [...group.items].sort((a, b) => relevance(b) - relevance(a)).slice(0, 7);
+  for (const group of selectedSkillGroups) {
+    const chosen = [...group.items].sort((a, b) => relevance(b) - relevance(a));
     node(nodes, { type: 'skills_group', text: group.group, items: chosen, structuralReason: 'Grouped skills copied from a source skills line.' });
     for (const item of chosen) node(nodes, { type: 'skill', text: item, claimIds: claimIdsFor(factory, group.sourceLine), structuralReason: null });
   }

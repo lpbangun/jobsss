@@ -1,6 +1,4 @@
 // Bundled JobSSS MCP server — stdio JSON-RPC.
-// Framing/lifecycle concepts are attributed to JobOS src/mcp.js and are
-// reimplemented here for the standalone PLUGIN_DATA runtime.
 import * as domain from './domain.js';
 import * as composition from './composition.js';
 import { ensureDataDir, redactSecrets } from './store.js';
@@ -14,13 +12,17 @@ const jobProfile = { jobId: string, profileId: string, expectedRevision: { type:
 const tool = (name, description, inputSchema = schema()) => ({ name, description, inputSchema });
 
 const TOOLS = [
-  tool('doctor', 'Diagnose the bundled runtime and isolated PLUGIN_DATA; JobOS is not required.'),
-  tool('start', 'Initialize or migrate versioned durable state under PLUGIN_DATA. For a new workspace, outputMode compact keeps only canonical state and requested document exports; existing workspaces retain their selected mode.', schema({ expectedRevision: { type: 'integer' }, outputMode: { type: 'string', enum: ['full', 'compact'] } })),
+  tool('doctor', 'Read-only diagnostics for the selected PLUGIN_DATA store, including its stable store ID. Optional scanRoots inspect only explicit caller-selected directories; low-certainty unused initial stores are reported for manual review and never deleted.', schema({ scanRoots: { type: 'array', items: string, maxItems: 8 } })),
+  tool('start', 'Initialize or migrate versioned durable state under PLUGIN_DATA and return its persistent store ID, creation time, and revision. For a new workspace, outputMode compact keeps only canonical state and requested document exports; existing workspaces retain their selected mode.', schema({ expectedRevision: { type: 'integer' }, outputMode: { type: 'string', enum: ['full', 'compact'] } })),
   tool('create_profile', 'Create a profile or reimport into an explicit profileId or its former name. Resume email collisions are reported as identityCollisionProfileIds; no other profile is overwritten. Correct extracted identity later with update_profile.resumeIdentity.', schema({ ...profile, name: string, resumeText: string, text: string, content: string, resumePath: string, path: string, filePath: string, resumeIdentity: { type: 'object', properties: { name: string, email: string } }, preferences: { type: 'object' }, expectedRevision: { type: 'integer' } })),
   tool('list_profiles', 'Read one profile-owned profile without raw resume text. Archived profiles require includeArchived:true to inspect.', schema({ ...profile, includeArchived: { type: 'boolean' } }, ['profileId'])),
   tool('list_resumes', 'List structured resume revisions and verification state for a profile.', schema(profile, ['profileId'])),
   tool('get_resume', 'Read the full current resume text and identity for a profile; read-only restart readback.', schema(profile, ['profileId'])),
   tool('inspect_resume_requirements', 'Read exact archived job requirements with source lines and required/preferred/contextual priority before tailoring.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('inspect_cover_letter_brief', 'Read profile-owned job requirements, active proof IDs, bounded voice preferences, recorded employer research, and a deterministic evidence-grounded narrative suggestion before authoring a cover letter. Voice samples guide style only; this tool is read-only and never drafts or saves text.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('inspect_tailoring_brief', 'Read current resume, posting requirements, active proof, scoped user viewpoint and company interests for BOTH resume and cover-letter drafting. Conversation is guidance, never evidence.', schema(jobProfile, ['profileId', 'jobId'])),
+  tool('record_tailoring_context', 'Store editable per-job roleFamily, roleThesis, up to two companyInterests and feedback. Never learns reusable preferences or approves artifacts.', schema({ ...jobProfile, context: { type: 'object' } }, ['profileId', 'jobId', 'context', 'expectedRevision'])),
+  tool('remember_role_narrative', 'After explicit user confirmation of exact text and role-family scope, remember this job’s role thesis and optional bounded voice for that role family only. Company interests and feedback remain job-local; no artifact approval.', schema({ ...jobProfile, confirmedByUser: { type: 'boolean' }, voice: { type: 'object' } }, ['profileId', 'jobId', 'confirmedByUser', 'expectedRevision'])),
   tool('inspect_resume_qa', 'Read renderer, page, layout, and review-gate status for one profile-owned resume draft.', schema({ ...profile, artifactId: string }, ['profileId', 'artifactId'])),
   tool('list_resume_designs', 'List the available resume PDF designs. Selecting a design records preference only; this release does not attribute later application outcomes to a design.'),
   tool('compare_resume_designs', 'Render the same canonical resume content in every available design as reviewable PDF variants. Returns paths, artifact IDs, and one shared content hash; no design is declared a winner.', schema({ ...jobProfile, label: string, contactEmail: string, locationNote: string, excludeClaimIds: { type: 'array', items: string }, preferClaimIds: { type: 'array', items: string } }, ['jobId', 'profileId'])),
@@ -38,7 +40,7 @@ const TOOLS = [
   tool('list_saved_searches', 'List profile-owned saved searches.', schema(profile, ['profileId'])),
   tool('search_jobs', 'Run one saved search and retain discoveries database-only.', schema({ ...profile, search: string, searchId: string, name: string, expectedRevision: { type: 'integer' } }, ['profileId'])),
   tool('daily_discovery', 'Run all profile public-ATS or staged searches; discoveries remain database-only until saved or pursued.', schema({ ...profile, expectedRevision: { type: 'integer' } }, ['profileId'])),
-  tool('score_job', 'Compute JobOS-compatible seven-dimension deterministic offline fit.', schema(jobProfile, ['jobId', 'profileId'])),
+  tool('score_job', 'Compute the seven-dimension deterministic offline fit score.', schema(jobProfile, ['jobId', 'profileId'])),
   tool('save_job', 'Save a job locally and create next-action state; performs no external action.', schema(jobProfile, ['jobId', 'profileId'])),
   tool('skip_job', 'Skip a job locally.', schema(jobProfile, ['jobId', 'profileId'])),
   tool('archive_job', 'Archive a job locally.', schema(jobProfile, ['jobId', 'profileId'])),
@@ -50,7 +52,8 @@ const TOOLS = [
   tool('tailor_resume', 'Create a source-linked canonical resume draft. style selects navy, editorial, or scan; format pdf requires local Chrome or Edge for searchable Letter PDF export under PLUGIN_DATA. contactEmail selects the application address; locationNote accepts a verified Open to … relocation phrase.', schema({ ...jobProfile, format: string, style: string, contactEmail: string, locationNote: string }, ['jobId', 'profileId'])),
   tool('revise_resume', 'Create a new source-backed resume draft by suppressing or preferring explicit claim IDs from the inspectable ledger; preserves prior drafts, supports style selection, and never accepts free-form unsupported claims.', schema({ ...jobProfile, format: string, style: string, contactEmail: string, locationNote: string, excludeClaimIds: { type: 'array', items: string }, preferClaimIds: { type: 'array', items: string } }, ['jobId', 'profileId'])),
   tool('render_resume', 'Regenerate and render a canonical resume draft through local Chrome/Edge, then return PDF QA; no native resume fallback.', schema({ ...jobProfile, style: string, contactEmail: string, locationNote: string }, ['jobId', 'profileId'])),
-  tool('draft_cover_letter', 'Create a short supported cover letter with separate review metadata. Compact workspaces default to editable DOCX; full workspaces retain Markdown by default. pdf and text remain available.', schema({ ...jobProfile, format: string }, ['jobId', 'profileId'])),
+  tool('draft_cover_letter', 'Create a supported business letter with sender contact, recipient and natural paragraph spacing. date supplies an explicit letter date; contactEmail selects the application address. Compact workspaces default to editable DOCX; full workspaces retain Markdown by default. pdf and text remain available.', schema({ ...jobProfile, format: string, date: string, contactEmail: string }, ['jobId', 'profileId'])),
+  tool('revise_cover_letter', 'Save user-supplied editorial cover-letter text as a separate draft revision with explicit active proof IDs. Citations do not attest every sentence; human verification remains required and approval is not inherited.', schema({ ...jobProfile, artifactId: string, expectedContentHash: string, content: string, proofPointIds: { type: 'array', items: string }, format: string }, ['profileId', 'jobId', 'artifactId', 'expectedContentHash', 'content', 'proofPointIds'])),
   tool('save_answer', 'Generate or store a reusable answer from exact selected proof summaries; never auto-fills or sends.', schema({ ...profile, question: string, answer: string, category: string, sensitivity: string, reuseScope: string, proofPointIds: { type: 'array' }, expectedRevision: { type: 'integer' } }, ['profileId', 'question', 'proofPointIds'])),
   tool('list_answers', 'List profile-owned reusable answer drafts.', schema(profile, ['profileId'])),
   tool('match_answers', 'Match stored answer drafts to questions for human review.', schema({ ...profile, questions: { type: 'array' }, employer: string, jobId: string }, ['profileId'])),
@@ -81,6 +84,9 @@ const HANDLERS = Object.freeze({
   doctor: domain.doctor, start: domain.start, create_profile: domain.createProfile,
   list_profiles: domain.listProfiles, list_resumes: domain.listResumes,
   get_resume: domain.getResume, inspect_resume_requirements: domain.inspectResumeRequirements,
+  inspect_cover_letter_brief: domain.inspectCoverLetterBrief,
+  inspect_tailoring_brief: domain.inspectTailoringBrief, record_tailoring_context: domain.recordTailoringContext,
+  remember_role_narrative: domain.rememberRoleNarrative,
   inspect_resume_qa: domain.inspectResumeQa, list_resume_designs: domain.listResumeDesigns,
   compare_resume_designs: domain.compareResumeDesigns,
   list_resume_design_variants: domain.listResumeDesignVariants,
@@ -97,6 +103,7 @@ const HANDLERS = Object.freeze({
   revise_resume: domain.tailorResume,
   render_resume: (dataDir, args) => domain.tailorResume(dataDir, { ...args, format: 'pdf' }),
   draft_cover_letter: domain.draftCoverLetter,
+  revise_cover_letter: domain.reviseCoverLetter,
   save_answer: domain.saveAnswer, list_answers: domain.answersList, match_answers: domain.answersMatch,
   review_queue: domain.reviewQueue, import_contact: domain.importContact, list_contacts: domain.listContacts,
   record_research: domain.recordResearch, list_research: domain.listResearch,

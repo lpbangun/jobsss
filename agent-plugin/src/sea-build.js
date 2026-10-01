@@ -1,7 +1,7 @@
 // Standalone release builder for the bundled JobSSS runtime.
 //
 // Produces a genuinely standalone current-host `bin/jobsss` executable that
-// runs the full bundled runtime without requiring `node` (or `jobos`) on
+// runs the full bundled runtime without requiring external executables on
 // PATH. It uses Node's Single Executable Application (SEA) mechanism:
 //
 //  1. A deterministic CommonJS bundle of the ESM runtime (`src/*.js`) is
@@ -61,6 +61,7 @@ const MODULES = Object.freeze([
   // deterministic Markdown workspace projection and is imported by store.js.
   'checklist.js',
   'projection.js',
+  'identity-migrations.js',
   'store.js',
   'compensation.js',
   'resume-document.js',
@@ -68,7 +69,10 @@ const MODULES = Object.freeze([
   'resume-latex.js',
   'resume-ir-latex.js',
   'resume-browser.js',
+  'cover-letter-layout.js',
+  'tailoring-context.js',
   'documents.js',
+  'cover-letter-brief.js',
   'docx.js',
   'scoring.js',
   'workflows.js',

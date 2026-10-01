@@ -14,9 +14,10 @@
 > and it has no sibling requirement.** It ships one skill and one bundled MCP
 > runtime, and at runtime it resolves, imports, and spawns nothing outside
 > itself: no other plugin installation, no API key, no account. The portable
-> launcher requires Node 22+ on the agent host service's `PATH` (see
-> [INSTALL.md](INSTALL.md)). The
-> network is optional and used only for public job intake. Portions of the design
+> launcher needs Node 22+ from the agent host service's `PATH` or the
+> `JOBSSS_NODE` override (see [INSTALL.md](INSTALL.md)). Node-free startup is
+> not yet provided. The network is optional and used only for public job intake.
+> Portions of the design
 > derive from an earlier MIT-licensed project and are attributed in
 > [NOTICE](NOTICE); attribution is provenance, not a dependency.
 
@@ -261,7 +262,7 @@ flowchart LR
 
 ### Fit scoring (deterministic, no model)
 
-`score_job` implements the frozen `jobos.fit-score.v1` contract with all seven
+`score_job` implements the stable `jobsss.fit-score.v1` contract with all seven
 weighted dimensions, evidence references, reasons, contradiction handling, and
 fail-closed eligibility:
 
@@ -287,7 +288,7 @@ floor.
 | Feature | What you get |
 | --- | --- |
 | **Tailored resume** | `tailor_resume` routes normalized, labelled, and ordinary Markdown profiles through one canonical document. `revise_resume` takes explicit claim IDs to suppress or prefer source-backed bullets and creates a separate draft. Legacy sources are migrated to a source-linked draft; the original resume stays in `PLUGIN_DATA`, and inferred original-line matches are marked as legacy projections for human review. Candidate identity, role/project ownership, selected achievements, and direct/adjacent/unsupported/unknown requirement coverage are inspectable. `contactEmail` chooses the application address; `locationNote` adds an explicitly verified relocation phrase. |
-| **Cover letter** | Built from the *selected* proofs (never an unselected one), using supported contributions — not copied posting requirements dressed up as candidate claims. Export as editable DOCX or PDF, or read the text through the tool. |
+| **Cover letter** | `inspect_cover_letter_brief` gathers active proof, job requirements, recorded employer context, and candidate voice preferences. `draft_cover_letter` uses a natural first-person voice tailored to the role and employer, separates established accomplishments from a clearly framed future contribution, and never turns requirements into claimed experience. Optional voice samples guide style only, never facts. Export as editable DOCX or PDF. `revise_cover_letter` saves reviewed edits as separate revisions, preserved when materials are regenerated. |
 | **Resume PDF export and designs** | `list_resume_designs` exposes Navy Professional, Editorial Serif, and Quick Scan. Choose `style: "navy"`, `"editorial"`, or `"scan"` with `render_resume` or `tailor_resume`; `compare_resume_designs` generates all three from one canonical content revision, `list_resume_design_variants` reads them back, and `select_resume_design` stores the user's local preference. Selection does not attest that a resume was used or submitted. Each design has a separate PDF artifact and visual review. An installed Chrome or Edge prints local HTML; `doctor.resumeRenderer` reports detection, and a missing browser fails with `resume_renderer_unavailable`. Browser layout is measured at Letter printable width before printing; the PDF must be one searchable Letter page. `inspect_resume_qa` reads the stored result. Trusted visual review and content approval are separate decisions; approval blocks missing PDF QA or unverified cited proof points. No employer site is opened. |
 | **Other PDF export** | Cover letters and other materials retain the dependency-free native PDF renderer. Its Letter pages use 44pt margins and paginate long sources. |
 | **Reusable answers** | `save_answer` stores drafts from exact proof wording with explicit `sensitivity` (`public \| personal \| sensitive \| restricted`) and `reuseScope` (`global \| employer_specific \| never_auto_fill`). Invalid values are rejected with typed errors. No auto-fill, no send. |
@@ -372,11 +373,12 @@ floor.
 </details>
 
 <details>
-<summary><b>Materials and answers</b> (13)</summary>
+<summary><b>Materials and answers</b> (15)</summary>
 
 `inspect_resume_requirements`, `tailor_resume`, `revise_resume`, `render_resume`,
 `inspect_resume_qa`, `list_resume_designs`, `compare_resume_designs`,
-`list_resume_design_variants`, `select_resume_design`, `draft_cover_letter`,
+`list_resume_design_variants`, `select_resume_design`,
+`inspect_cover_letter_brief`, `draft_cover_letter`, `revise_cover_letter`,
 `save_answer`, `list_answers`, `match_answers`
 </details>
 

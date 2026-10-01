@@ -343,7 +343,7 @@ test('B25 skill routes extended workflows without claiming send, submit, or JobO
   assert.ok(corpus.includes('./bin/jobsss'));
   assert.match(
     corpus,
-    /without JobOS|JobOS (?:is )?not (?:required|needed|used)|no JobOS/i
+    /without requiring external services|no external product (?:installation|runtime)|does not require external (?:services|products)/i
   );
   for (const topic of ['send', 'submit', 'approv']) {
     assert.match(

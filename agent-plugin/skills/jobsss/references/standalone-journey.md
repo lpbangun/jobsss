@@ -1,7 +1,7 @@
 # Standalone journey — doctor → review
 
 This reference documents the bundled standalone journey that works offline
-without JobOS, without API keys, and with `jobos` absent from `PATH`.
+without external services or API keys, and without an external executable on `PATH`.
 
 ## Launcher and state root
 
@@ -11,8 +11,8 @@ without JobOS, without API keys, and with `jobos` absent from `PATH`.
   under `PLUGIN_DATA` only. A restarted MCP process against the same directory
   must still list prior data. No state is written into the plugin directory
   itself.
-- The journey requires no JobOS CLI, files, or runtime at execution time. JobOS
-  is not required. Mention `PLUGIN_DATA` and `./bin/jobsss` in every
+- The journey has no legacy CLI, files, or runtime dependency.
+  Mention `PLUGIN_DATA` and `./bin/jobsss` in every
   diagnosis.
 
 ## Frozen MCP journey tools
@@ -34,7 +34,7 @@ All tools operate locally under `PLUGIN_DATA` via the bundled runtime.
 Re-importing the same job for one profile must deduplicate to the
 same job id.
 
-## Extended local workflows (offline, no JobOS, no API keys)
+## Extended local workflows (offline, no external services or API keys)
 
 All extended tools operate locally under `PLUGIN_DATA` via `./bin/jobsss`. They
 are routed by MCP tool name or natural language only — no stable slash
@@ -49,7 +49,7 @@ sub-intents for networking, interview planning, or scheduling.
 | Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `add_proof_point` | Profile preferences, structured resume revisions, and proof candidates remain profile-owned and need human verification. |
 | Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery` | Fetches public Greenhouse boards by `boardToken`, with staged offline search data under `PLUGIN_DATA` as the offline path; no keys. Discoveries stay database-only until saved/pursued. |
 | Save / skip / archive | `save_job`, `skip_job`, `archive_job`, `list_jobs` | Explicit local decisions; unsaved discoveries create no application folder. |
-| Scoring | `score_job` | Offline deterministic `jobos.fit-score.v1` with all seven weighted dimensions; `deterministic-degraded` mode; no provider. |
+| Scoring | `score_job` | Offline deterministic `jobsss.fit-score.v1` with all seven weighted dimensions; `deterministic-degraded` mode; no provider. |
 | Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` (cannot attest). |
 | Materials | `tailor_resume`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Tailoring extracts requirements, ranks/selects relevant owned proof, and reports coverage gaps. Answers require exact owned proof wording; no arbitrary claims, invented metrics, auto-fill, or send. |
 | Networking drafts | `record_research`, `list_research`, `map_reachable_network`, `plan_outreach`, `draft_outreach`, `list_outreach` | Local people/company research, maps, plans, follow-ups, and drafts only; never send (`mark_outreach_sent` is not MCP). |

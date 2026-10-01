@@ -12,16 +12,26 @@ Current native artifact refresh (2026-09-07, separately authorized closure round
 
 ## B1–B41
 
+PR validation (2026-09-30, conversational tailoring): the required eleven-file suite, native evidence/remediation, conversational tailoring, cover-letter and portable-package tests completed with **88/89 passing**. The sole failure is the previously documented B52 assertion rejecting the metadata-only `package.json` already on the base. Install-surface and installed Codex-pack checks passed **5/5**. B67 reproduced the current evidence in two fresh processes with separate empty caches. JobSSS install pins and generated packages now include the conversational tailoring product commit.
+
+An independent temporary `hermes -p job-strategist` run exercised real portable-plugin MCP generation and preserved two authored letters through regeneration. Both native PDFs were visually inspected and searchable; DOCX paragraph/spacing XML and all six export hashes were checked. Hermes required its optional MCP SDK in the isolated runtime. Inline raw HTML passed to `import_job` remained unnormalized; structured text was used for the letter flow. This differs from the repaired `import_job_url` HTML extraction route. A remembered role thesis currently cannot be explicitly cleared for one matching job; host-level confirmation and job feedback remain important. All temporary Hermes state and outputs were removed.
+
+Earlier rollup validation (2026-09-30): **161/161** required acceptance and relevant regression tests passed, including two fresh-cache native-evidence reproductions. Generated packages match canonical source. The Windows Codex pack runtime smoke test passed with Contact-Brief's declared dependency supplied in a temporary test directory. Two captured resume formats rendered through actual Windows Chrome to one searchable page and were visually inspected. Word and native cover-letter page checks also passed.
+
+This does not claim a green repository-wide sweep: eighteen audit/closure/composition failures reproduce on the unchanged `c160555` base; the B52 package-metadata assertion conflicts with that base's existing dependency-free manifest, and three Linux PDF checks lack a local Linux browser. Historical acceptance below remains separate from these current results.
+
 The frozen thirteen-file acceptance command preserves B1–B64 and adds B65–B70. Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`. Agent Plugin layout, the canonical skill and MCP tool surface, generic stdio transport, `${PLUGIN_DATA}` isolation, scoring, discovery, workflows, persistence, audit behavior, adapters, and the human authority boundary remain unchanged.
 
-The authoritative JobSSS product version is **0.1.1** from `plugin.json`. The real CLI help/version surface, doctor response, MCP initialize `serverInfo.version`, MCP doctor result, and generated `release-manifest.json` agree through `src/version.js`; the same module is included in the SEA bundle.
+The current authoritative JobSSS product version is **0.1.2** from `plugin.json`. The real CLI help/version surface, doctor response, MCP initialize `serverInfo.version`, MCP doctor result, and generated `release-manifest.json` agree through `src/version.js`; the same module is included in the SEA bundle.
 
 ## Cross-platform build definitions and canonical independent native evidence
+
+The 2026-09-30 release candidate is version 0.1.2. Issues #15 and #26–#30 are addressed in one worktree, alongside voice-guided cover-letter preparation and preserved editorial revisions. Short, normal-length, and multipage synthetic letters were visually checked in actual Word PDF exports and the native PDF renderer; oversized paragraphs preserve their final lines above the bottom margin. B67 reproduced the refreshed canonical evidence in two fresh processes with separate empty external caches. Cross-built targets still require matching-host verification.
 
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `0b279b1d33dba5614f6be68988e2427932a4901190bedeedcbd14bdbcc7b4a47`
+- SHA-256: `23d76cd67cb5eb105a9fa0879a6014ec532f91656e9ac54aa4df7c5502e66e16`
 - Exact reproduction command:
 
 ```bash
@@ -61,11 +71,11 @@ Darwin x64, Darwin arm64, and Windows x64 are **unverified** runtime targets on 
 
 ## Current-host restricted-PATH release evidence
 
-The frozen release checks build the current-host standalone, then exercise generic restricted-PATH MCP with Node and JobOS absent from PATH. Initialize, tools/list, doctor/start, persistence after restart, and product version succeed. Generated release metadata remains deterministic and path-free.
+The frozen release checks build the current-host standalone, then exercise generic restricted-PATH MCP without Node or an external product runtime on PATH. Initialize, tools/list, doctor/start, persistence after restart, and product version succeed. Generated release metadata remains deterministic and path-free.
 
 ## Adapter behavior
 
-Compatibility adapters remain thin references to canonical assets. Hermes and Claude retain historical MCP-connectivity-only verified labels; Pi and OMP remain unverified. The generated root-level Codex aggregate pack is verified separately on Windows through a fresh marketplace install, explicit and natural skill activation, MCP initialize, and a state-changing profile-to-contact workflow. The legacy `compat/codex/config.toml.template` remains only a thin metadata adapter and is not the verified aggregate. Current version availability observations are recorded separately in `compat/matrix.json` and do not upgrade unrelated clients.
+Compatibility adapters remain thin references to canonical assets. Hermes is currently unverified after its 2026-09-30 isolated connectivity probe timed out; Claude is unverified because its executable is absent. Pi and OMP remain unverified. Historical Windows Codex marketplace installation and profile-to-contact results do not verify this changed aggregate pack. The legacy `compat/codex/config.toml.template` remains only a thin metadata adapter. Current observations are recorded separately in `compat/matrix.json`.
 
 ## Human authority
 

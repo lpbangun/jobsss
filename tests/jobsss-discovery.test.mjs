@@ -163,7 +163,7 @@ test('B19 real discovery, dedup, and offline multidimensional scoring without AP
   ]);
   const score = requireOk(scored, 2, 'score_job');
   const fit = score.fit && score.fit.dimensions ? score.fit : score;
-  assert.equal(fit.contract, 'jobos.fit-score.v1');
+  assert.equal(fit.contract, 'jobsss.fit-score.v1');
   assert.equal(fit.mode, 'deterministic-degraded');
   assert.equal(fit.provider, null);
   const dimensions = fit.dimensions || {};

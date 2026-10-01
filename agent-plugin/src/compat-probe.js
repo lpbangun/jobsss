@@ -29,8 +29,9 @@ import path from 'node:path';
 
 export const COMPAT_CLIENTS = Object.freeze(['pi', 'omp', 'codex', 'hermes', 'claude']);
 
-const PROBE_TIMEOUT_MS = 45_000;
-const VERSION_TIMEOUT_MS = 15_000;
+const PROBE_TIMEOUT_MS = 20_000;
+const VERSION_TIMEOUT_MS = 5_000;
+const CLIENT_PROBE_BUDGET_MS = 30_000;
 
 // ---------------------------------------------------------------------------
 // Client discovery and process capture.
@@ -86,35 +87,82 @@ function findClient(name) {
   return null;
 }
 
-function runCapture(bin, args, env, timeoutMs = PROBE_TIMEOUT_MS) {
+function terminateProcessTree(child) {
+  if (!child?.pid) return;
+  if (process.platform === 'win32') {
+    try {
+      const windowsRoot = process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows';
+      const killerPath = path.join(windowsRoot, 'System32', 'taskkill.exe');
+      const killer = spawn(killerPath, ['/PID', String(child.pid), '/T', '/F'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      // An unavailable System32 helper is a best-effort failure, not an
+      // unhandled ChildProcess error after the probe has already timed out.
+      killer.on('error', () => {});
+      killer.unref();
+    } catch { /* taskkill may be unavailable; still terminate the direct child */ }
+    try { child.kill('SIGKILL'); } catch { /* already gone */ }
+    return;
+  }
+  try {
+    // POSIX clients start in their own process group, so their descendants are
+    // killed with the client if they inherited the captured output pipes.
+    process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    try { child.kill('SIGKILL'); } catch { /* already gone */ }
+  }
+}
+
+export function runCapture(bin, args, env, timeoutMs = PROBE_TIMEOUT_MS) {
   return new Promise(resolve => {
     let child;
     let timedOut = false;
     let settled = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try { child.kill('SIGKILL'); } catch { /* already gone */ }
-    }, timeoutMs);
-    child = spawn(bin, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
+    let timer;
+    const finish = code => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve({ code: code == null ? 1 : code, stdout, stderr, timedOut });
+    };
+    try {
+      child = spawn(bin, args, {
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
+        windowsHide: true,
+      });
+    } catch (error) {
+      resolve({ code: 1, stdout, stderr: String(error?.message || error), timedOut: false });
+      return;
+    }
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => { stdout += chunk; });
     child.stderr.on('data', chunk => { stderr += chunk; });
-    const finish = code => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ code: code == null ? 1 : code, stdout, stderr, timedOut });
-    };
-    child.on('error', () => finish(null));
+    child.on('error', error => {
+      if (!stderr) stderr = String(error?.message || error);
+      finish(null);
+    });
     child.on('close', code => finish(code));
+    timer = setTimeout(() => {
+      timedOut = true;
+      terminateProcessTree(child);
+      // Do not wait for `close`: a descendant may still hold the captured pipe
+      // open. The probe must respect its deadline even if a client misbehaves.
+      finish(null);
+    }, Math.max(1, Number(timeoutMs) || 1));
   });
 }
-
-async function versionOf(bin, environment) {
-  const res = await runCapture(bin, ['--version'], environment || process.env, VERSION_TIMEOUT_MS);
+function remainingProbeTimeout(ctx, perCommandLimitMs) {
+  if (!Number.isFinite(ctx?.deadlineAt)) return perCommandLimitMs;
+  return Math.max(1, Math.min(perCommandLimitMs, ctx.deadlineAt - Date.now()));
+}
+async function versionOf(bin, environment, timeoutMs = VERSION_TIMEOUT_MS) {
+  const res = await runCapture(bin, ['--version'], environment || process.env, timeoutMs);
   const text = (res.stdout || res.stderr || '').trim().split('\n')[0] || '';
   return text.slice(0, 80) || null;
 }
@@ -125,7 +173,7 @@ async function versionOf(bin, environment) {
 
 /**
  * Temporary sandbox for one client probe: fresh HOME, XDG roots, blank
- * provider keys, and a JobOS-neutral environment. Per-client home overrides
+ * provider keys, and a neutral external-product environment. Per-client home overrides
  * (CODEX_HOME, HERMES_HOME, CLAUDE_CONFIG_DIR, ...) are layered on top.
  */
 function probeEnv(configDir, dataDir, extra = {}) {
@@ -139,12 +187,6 @@ function probeEnv(configDir, dataDir, extra = {}) {
     XDG_CONFIG_HOME: xdgConfig,
     XDG_DATA_HOME: xdgData,
     PLUGIN_DATA: dataDir,
-    JOBOS_BIN: '',
-    JOBOS_HOME: path.join(configDir, 'jobos-home'),
-    JOBOS_WORKSPACE: '',
-    JOBOS_LLM_API_KEY: '',
-    JOBOS_LLM_PROVIDER: '',
-    JOBOS_LLM_MODEL: '',
     OPENAI_API_KEY: '',
     ANTHROPIC_API_KEY: '',
     NODE_PATH: '',
@@ -160,7 +202,7 @@ async function probePi(bin, ctx) {
   // Isolated env first so version detection and any client side effects stay
   // inside the temporary sandbox and never touch a real profile.
   const env = probeEnv(ctx.configDir, ctx.dataDir, { PI_CODING_AGENT_DIR: path.join(ctx.configDir, 'pi-agent') });
-  const version = await versionOf(bin, env);
+  const version = await versionOf(bin, env, remainingProbeTimeout(ctx, VERSION_TIMEOUT_MS));
   return {
     status: 'unverified',
     version,
@@ -173,7 +215,7 @@ async function probePi(bin, ctx) {
 
 async function probeOmp(bin, ctx) {
   const env = probeEnv(ctx.configDir, ctx.dataDir);
-  const version = await versionOf(bin, env);
+  const version = await versionOf(bin, env, remainingProbeTimeout(ctx, VERSION_TIMEOUT_MS));
   return {
     status: 'unverified',
     version,
@@ -195,8 +237,8 @@ async function probeCodex(bin, ctx) {
     `args = ["mcp", "--data", ${JSON.stringify(ctx.dataDir)}]\n`;
   fs.writeFileSync(path.join(codexHome, 'config.toml'), configToml, 'utf8');
   const env = probeEnv(ctx.configDir, ctx.dataDir, { CODEX_HOME: codexHome });
-  const version = await versionOf(bin, env);
-  const get = await runCapture(bin, ['mcp', 'get', 'jobsss'], env);
+  const version = await versionOf(bin, env, remainingProbeTimeout(ctx, VERSION_TIMEOUT_MS));
+  const get = await runCapture(bin, ['mcp', 'get', 'jobsss'], env, remainingProbeTimeout(ctx, PROBE_TIMEOUT_MS));
   const output = `${get.stdout}\n${get.stderr}`;
   const registered = get.code === 0 && /jobsss/i.test(output) && output.includes(ctx.launcher);
   return {
@@ -234,8 +276,8 @@ async function probeHermes(bin, ctx) {
     HERMES_ACCEPT_HOOKS: '1',
     HERMES_REVISION: '0000000000000000000000000000000000000000',
   });
-  const version = await versionOf(bin, env);
-  const res = await runCapture(bin, ['mcp', 'test', 'jobsss'], env);
+  const version = await versionOf(bin, env, remainingProbeTimeout(ctx, VERSION_TIMEOUT_MS));
+  const res = await runCapture(bin, ['mcp', 'test', 'jobsss'], env, remainingProbeTimeout(ctx, PROBE_TIMEOUT_MS));
   const output = `${res.stdout}\n${res.stderr}`;
   const connected = res.code === 0 && /connected/i.test(output) && /tools discovered/i.test(output) && /jobsss/i.test(output);
   const toolCount = (output.match(/tools discovered:\s*(\d+)/i) || [])[1] || null;
@@ -243,14 +285,18 @@ async function probeHermes(bin, ctx) {
     status: connected ? 'verified' : 'unverified',
     version,
     command: `${bin} mcp test jobsss`,
-    reason: connected ? undefined : '`hermes mcp test jobsss` did not report a clean connection',
+    reason: connected
+      ? undefined
+      : res.timedOut
+        ? 'Hermes connection test exceeded its bounded isolated probe window; the runtime remains unverified.'
+        : '`hermes mcp test jobsss` did not report a clean connection',
     evidence: connected
       ? [
           `hermes mcp test connected to the bundled runtime in a temporary HERMES_HOME${toolCount ? ` and discovered ${toolCount} tools` : ''}`,
           `launcher: ${ctx.launcher}`,
           `data dir: ${ctx.dataDir}`,
         ]
-      : ['connection test failed or timed out'],
+      : [res.timedOut ? 'connection test exceeded its time limit' : 'connection test failed'],
     notes: connected ? 'real isolated launch: the client spawned the JobSSS stdio MCP server and observed its tools' : undefined,
   };
 }
@@ -259,10 +305,10 @@ async function probeClaude(bin, ctx) {
   const claudeConfigDir = path.join(ctx.configDir, 'claude-config');
   fs.mkdirSync(claudeConfigDir, { recursive: true });
   const env = probeEnv(ctx.configDir, ctx.dataDir, { CLAUDE_CONFIG_DIR: claudeConfigDir });
-  const version = await versionOf(bin, env);
-  const add = await runCapture(bin, ['mcp', 'add', '--scope', 'user', 'jobsss', '--', ctx.launcher, 'mcp', '--data', ctx.dataDir], env);
-  const list = await runCapture(bin, ['mcp', 'list'], env);
-  const get = await runCapture(bin, ['mcp', 'get', 'jobsss'], env);
+  const version = await versionOf(bin, env, remainingProbeTimeout(ctx, VERSION_TIMEOUT_MS));
+  const add = await runCapture(bin, ['mcp', 'add', '--scope', 'user', 'jobsss', '--', ctx.launcher, 'mcp', '--data', ctx.dataDir], env, remainingProbeTimeout(ctx, PROBE_TIMEOUT_MS));
+  const list = await runCapture(bin, ['mcp', 'list'], env, remainingProbeTimeout(ctx, PROBE_TIMEOUT_MS));
+  const get = await runCapture(bin, ['mcp', 'get', 'jobsss'], env, remainingProbeTimeout(ctx, PROBE_TIMEOUT_MS));
   const listOut = `${list.stdout}\n${list.stderr}`;
   const getOut = `${get.stdout}\n${get.stderr}`;
   const connected =
@@ -289,6 +335,7 @@ async function probeClaude(bin, ctx) {
 }
 
 async function probeClient(client, bin, ctx) {
+  ctx.deadlineAt = Date.now() + CLIENT_PROBE_BUDGET_MS;
   switch (client) {
     case 'pi': return probePi(bin, ctx);
     case 'omp': return probeOmp(bin, ctx);

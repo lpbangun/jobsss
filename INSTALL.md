@@ -86,33 +86,34 @@ placeholders in `mcp.json`. The portable loader resolves these placeholders when
 loading the package and manages the plugin data location; a hand-wired duplicate
 can collide with the plugin's own server registration.
 
-### Runtime requirement: Node.js 22+ on the launcher's PATH
+### Runtime requirement: Node.js 22+ through PATH or `JOBSSS_NODE`
 
 Both portable package roots declare Node.js `>=22` in `package.json`. The
-launcher is a Node script (`#!/usr/bin/env node`), so the Hermes process itself
-must have Node.js 22 or newer on its `PATH`; an interactive shell's PATH change
-may not reach a desktop or service process. This metadata and guidance do not
-make the launcher Node-free and do not guarantee that an installer enforces the
-engine requirement.
+metadata declarations do not guarantee that an installer enforces this requirement.
+launcher needs a Node.js 22+ executable available to the Hermes service, either
+as `node` or `nodejs` on its `PATH`, or through `JOBSSS_NODE` set to the absolute
+path of a Node.js 22+ executable. An interactive shell's PATH change may not
+reach a desktop or service process. The override selects an installed Node
+runtime; it does not provide Node-free startup.
 
-If Node is missing from the service PATH, the launcher fails with this symptom
-(exit code 127, empty stdout):
+If neither source is available, the launcher reports:
 
 ```text
-/usr/bin/env: 'node': No such file or directory
+jobsss: Node.js 22 or newer is required, but this service could not find node or nodejs on PATH.
+jobsss: Set JOBSSS_NODE to an executable Node.js 22+ binary, or add node (or nodejs) to the service PATH.
 ```
 
-To diagnose the PATH inherited by a running Hermes service, inspect its
-`/proc/<pid>/environ` (substitute the Hermes serve-process PID):
+Set `JOBSSS_NODE` in the Hermes service environment or add `node`/`nodejs` to
+that service's PATH. To inspect the PATH inherited by a running Hermes service,
+read `/proc/<pid>/environ` (substitute the Hermes serve-process PID):
 
 ```bash
-tr '\0' '\n' < /proc/<pid>/environ | grep -E '^(PATH|HOME)='
+tr '\0' '\n' < /proc/<pid>/environ | grep -E '^(PATH|HOME|JOBSSS_NODE)='
 ```
 
-Make a Node.js 22+ executable available to that service PATH; configuring only
-an interactive terminal is insufficient. Node-free startup of the portable
-package, such as shipping verified per-platform SEA launchers, is a separate
-follow-up and is not provided by this metadata-and-documentation change.
+Node-free startup of the portable package, such as shipping verified
+per-platform SEA launchers, is a separate follow-up and is not provided by the
+current launcher metadata or `JOBSSS_NODE` override.
 
 ## How these surfaces stay honest
 

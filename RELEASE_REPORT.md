@@ -19,7 +19,7 @@ The release pipeline still uses the sole native implementation in `src/packaging
 Complete evidence is recorded once:
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `ea66757c542bcc929c8435d587684b7aa9b56982171ca904d51274a769801754`
+- SHA-256: `af593be8f1d0f7bd85ef5e52672705bfa0396230a24108a54637fb2a0c0ff6d9`
 - Exact reproduction command:
 
 ```bash
@@ -106,3 +106,6 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 ## Deferred/unverified capabilities
 
 Darwin x64, Darwin arm64, Windows x64, and Linux arm64 remain unverified as matching-host standalone-binary targets. Structural validation does not upgrade those labels. Windows standalone binaries require matching-host re-signing after unsigned staging; macOS requires matching-host signing/execution. The generated Codex aggregate pack is separately verified as a source/plugin installation on Windows; Pi and OMP remain unverified client integrations. Downloaded inputs, validator environments, caches, and release binaries are not committed.
+
+
+Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated user workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `af593be8f1d0f7bd85ef5e52672705bfa0396230a24108a54637fb2a0c0ff6d9`. Official Node inputs, injector, and independent validator pins are unchanged. This refresh records local structural build evidence; it does not establish a new host integration verdict or publish a release.

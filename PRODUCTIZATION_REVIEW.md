@@ -21,7 +21,7 @@ The authoritative JobSSS product version is **0.1.0** from `plugin.json`. The re
 `src/packaging.js` remains the single packaging implementation and uses checksum-pinned postject; no custom Mach-O or PE injector was added. Complete machine-verifiable evidence is stored once:
 
 - Path: `evidence/native-validation.json`
-- SHA-256: `ea66757c542bcc929c8435d587684b7aa9b56982171ca904d51274a769801754`
+- SHA-256: `af593be8f1d0f7bd85ef5e52672705bfa0396230a24108a54637fb2a0c0ff6d9`
 - Exact reproduction command:
 
 ```bash
@@ -87,3 +87,6 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 ## Residual risks
 
 Matching-host runtime execution and re-signing remain deferred for Darwin and Windows. Linux arm64 remains unverified without a matching host. Downloaded official inputs, validator environments, cache content, and release binaries remain external and uncommitted.
+
+
+Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated user workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `af593be8f1d0f7bd85ef5e52672705bfa0396230a24108a54637fb2a0c0ff6d9`. Official Node inputs, injector, and independent validator pins are unchanged. This refresh records local structural build evidence; it does not establish a new host integration verdict or publish a release.

@@ -4,18 +4,18 @@
   "products": [
     {
       "name": "jobsss",
-      "repo": "lpbangun/jobsss",
+      "repo": "OWNER/jobsss",
       "subdir": "agent-plugin",
       "ref": "0f3c452a0211b8b0ae8e41b935c647d187f475ad"
     },
     {
       "name": "people-finder",
-      "repo": "lpbangun/people-finder",
+      "repo": "OWNER/people-finder",
       "ref": "913fcb5dd771aa4cd5565f319b52e3f953685443"
     },
     {
       "name": "contact-brief",
-      "repo": "lpbangun/contact-brief",
+      "repo": "OWNER/contact-brief",
       "ref": "29ea479c26fa20ffbeebffc34fa9ce06a45495b0"
     }
   ],
@@ -23,16 +23,16 @@
     "purpose": "Codex Windows launch compatibility and three-product composition",
     "businessLogic": false,
     "pythonResolution": "PATH first; Codex bundled dependency fallback on Windows",
-    "cachebuster": "0198fefd1789"
+    "cachebuster": "bad4e9537126"
   },
   "files": {
-    ".codex-plugin/plugin.json": "92990c704e0a06d2b83c1b7b9ea949063fbf85ee57620f203df7ab50c0d5d9ca",
+    ".codex-plugin/plugin.json": "d37d6cac3c2c0432f7cf715f3de8c7a892e84e390a5579d7f00dd8933646bc46",
     ".mcp.json": "e6e527f94cf4a7afd9eff17c6c87d716ad8eaf15bccfafacd2c71c2b395fc3e5",
     "products/jobsss/bin/jobsss": "73a0e355cd5e5179a426a97b963b471bad15ed97b8390237be05e2ef9c2fd540",
     "products/jobsss/plugin.json": "e0db6074046e475ea3f29dfd48d51b884f4e0e48782ad058f3ee6790c0bcfd2f",
     "products/jobsss/src/authority.js": "e8dee9fd737f00545f52760d49e34f07daab462c6ad7b2f3f6a207754ba2b47d",
     "products/jobsss/src/checklist.js": "03412611b7e8ef22dcec3d6b8499147f96957b9f2e21fd552f9dcba7a9aaa1e6",
-    "products/jobsss/src/cli.js": "118ae3628d5a1b6c1fd31f4c6182d7c5d6e0b9d179bc827d0b4ff33bac24c462",
+    "products/jobsss/src/cli.js": "e87fdc073a053349b30afb24771cb43afa7423897fd5cae13a84c961e457075d",
     "products/jobsss/src/compat-probe.js": "4b3aa282975e6b6be24e20c877a09b57b1b11efa7833823cde7207031472f75b",
     "products/jobsss/src/compensation.js": "9060c69ac1a83865192a5120c84e2bc7dc90fde6ee7328cdf176a5d6b437898f",
     "products/jobsss/src/composition.js": "7abd60af80edaad6ac3da5bd390899b57e41595f5f22f53454c8e07a4647defe",
@@ -48,15 +48,16 @@
     "products/jobsss/src/relationships.js": "d941d89d4e6e48daddcadff37685a0e2a6303288f6da0e47483cd7ac2c0a98fa",
     "products/jobsss/src/release.js": "7d14ab865dfe81b9194aa9cf7afc6a85e8a8ead16b3ad82dc34d5c0114a58d23",
     "products/jobsss/src/resume-browser.js": "c30467cc3ec89b5efef91dd51331805ee35c44d96c101ae23702a574022eeac8",
-    "products/jobsss/src/resume-compiler.js": "5f8519b596672e99a287616d708e8cd1c56c5ee1ac173be1bf6943ac40919ad6",
+    "products/jobsss/src/resume-compiler.js": "add106f80467c54847406e81c8b027c1bc1437933402fd1f51146b99daddbe18",
     "products/jobsss/src/resume-document.js": "630e8967ab299de6ea37e0ecbf94461f5f72d83e1154741692fa81e6566df210",
     "products/jobsss/src/resume-ir-latex.js": "bd2f85a0aba6b1463059ed85d4c2ace2543cdb553fd3c6f6718ef0c72f47a071",
     "products/jobsss/src/resume-latex.js": "f8fb545db95f0a8cb49cf0cf03dd5fdd0ac8ab51e03daf54be3b6624a5dddfe9",
     "products/jobsss/src/scoring.js": "d7a829d4e2e3545f56d2971ff7a94db95ee63180747846ca392c091261b7ca60",
-    "products/jobsss/src/sea-build.js": "35b3a874b433e41d6a4dce7b1c1cc3d5377f1a764eaba046c1ecb44ae860ee1c",
+    "products/jobsss/src/sea-build.js": "bc71191a7be06a37358a31658ae009a2810d8fa4581121c454af198a0819d753",
     "products/jobsss/src/store.js": "b2b10081d1a51423193a6d2a59292f79b3aae5f7b59b963a2181a38a9e4f3556",
     "products/jobsss/src/version.js": "c7d77ee896db48db6e939d768ec3ef02fa8c2ca5fb05ee231d19a7c7f325fad4",
     "products/jobsss/src/workflows.js": "31eb728ee4bdd9bb624df681c914733f214a18d9c2f9d8bbc83bbdae2794e304",
+    "products/jobsss/src/workspace.js": "95d5ea686644f2d55aa845958218317377f7e3fbbe0537f8e0392f0af8ed0011",
     "products/people-finder/bin/people-finder": "4640a00a9d46c5f89e306446acc4dfeea5a10ef6e18b8891f99959c0021287ed",
     "products/people-finder/src/people_finder/__init__.py": "0ef8e7dfca5dc71570388d7dc4fa7eac4c8de4725435072ef1958c79760c2770",
     "products/people-finder/src/people_finder/anchors.py": "5bf915110b55b3a263b9a9b87e3ff087b4d891cdac2ac4e4905b85eb2a5ffd5e",

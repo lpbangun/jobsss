@@ -10,12 +10,12 @@ tests/quality-resume-rebuild-negatives.mjs
 tests/helpers/resume-rebuild-checks.mjs
 ```
 
-Candidate worktree: `/home/logani/projects/jobsss-worktrees/resume-parity/jobsss` (branch `feat/resume-parity`; frozen spec commit at authoring `3143a153a9f3a1a0666c3ceeef66caa30775fe52`).
+Candidate worktree: `<resume-parity-worktree>` (branch `feat/resume-parity`; frozen spec commit at authoring `3143a153a9f3a1a0666c3ceeef66caa30775fe52`).
 
 Default evidence root for this bar (override only when evaluating an equivalent copied bundle):
 
 ```text
-/home/logani/oprun-evidence/jobsss-fake-journey-2026-09-16/resume-rebuild
+<evidence-root>/resume-rebuild
 ```
 
 Environment override: `RESUME_REBUILD_EVIDENCE=/absolute/path`.
@@ -52,7 +52,7 @@ Correction policy:
 
 ## 1. Frozen corpus and inputs
 
-Two designs, two temporary synthetic candidate profiles, one synthetic target posting per profile. All inputs are wholly synthetic; no Logani identity, facts, wording, or master-resume content may appear anywhere (see RR-02). Profiles and postings are frozen as files under `<evidence-root>/resume-rebuild/inputs/` and must be used byte-for-byte.
+Two designs, two temporary synthetic candidate profiles, one synthetic target posting per profile. All inputs are wholly synthetic; no facts, wording, or source material from a real candidate may appear anywhere. Profiles and postings are frozen as files under `<evidence-root>/resume-rebuild/inputs/` and must be used byte-for-byte.
 
 - Design **A** ↔ label `A` ↔ profile A (`inputs/profile-a.md`) ↔ posting A (`inputs/posting-a.md`)
 - Design **B** ↔ label `B` ↔ profile B (`inputs/profile-b.md`) ↔ posting B (`inputs/posting-b.md`)
@@ -322,7 +322,7 @@ Each criterion is evaluated for artifact `A` and artifact `B`; a criterion print
 
 **RR-01 — Evidence provenance and claim integrity (machine + reviewer).** Every IR content node (`summary`, `achievement`, `skill`, `project_item`, `education`) carries ≥1 `claimId` resolving to `ledger.claims`; role/heading/contact nodes carry exact source fields or an explicit structural reason. Every claim carries an exact `sourceQuote` that is a byte-exact substring of the frozen profile text, an owner equal to the candidate name, a `transformation` in the closed set `{verbatim, shortened, compressed, reordered, grammar_only, punctuation_normalization}` and a `status` in `{active, insufficient_evidence, rejected, needs_human_review}` with non-empty reasons for non-active statuses; no rejected or insufficient claim's content is rendered. Node token rule (R2): every non-whitelist token of an `achievement`/`skill`/`project_item`/`education` node appears in the union of its claims' `sourceQuote` tokens; role nodes' employer/title/date tokens appear in the profile. Metric-atom rule: every metric atom in candidate-facing text (regex `[$]?\d[\d.,]*(?:ms|s|x|%|K|M|\+)?`, case-insensitive) appears in the profile's metric-atom set, and every claim's own atoms appear in its quote. Global grounding rule (R1): all candidate-facing tokens are in the profile token set, the frozen function-word whitelist, the frozen allowed-heading vocabulary, or page chrome. Reviewer re-derives two random rendered bullets to their source spans and confirms no invented employer, title, metric, technology, ownership verb, or outcome.
 
-**RR-02 — Candidate ownership and role compatibility (machine + reviewer).** Exactly one candidate identity per design bundle; artifact A contains only profile-A facts and artifact B only profile-B facts (cross-contamination scan both ways on names, employers, schools). Every rendered employer, title, school, and date matches a source record's owner. No title or specialty claim in the header/summary/positions exceeds the source (no promotion, no unsupported seniority or domain positioning). The frozen identity blocklist must not appear anywhere in the bundle, transcripts, renders, or stores: `Logani`, `loganibangun`, `gse.harvard.edu`, `Underscoring`, `Indofood`, `Musim Mas` (case-insensitive). Reviewer attests role compatibility explicitly (positioning supported by demonstrated work).
+**RR-02 — Candidate ownership and role compatibility (machine + reviewer).** Exactly one candidate identity per design bundle; artifact A contains only profile-A facts and artifact B only profile-B facts (cross-contamination scan both ways on names, employers, schools). Every rendered employer, title, school, and date matches a source record's owner. No title or specialty claim in the header/summary/positions exceeds the source (no promotion, no unsupported seniority or domain positioning). Reviewer attests role compatibility explicitly (positioning supported by demonstrated work).
 
 **RR-03 — Chronology and employer/title credibility (machine).** All three (A) / two (B) source roles are retained; role nodes are in source order; within a role the rendered employer precedes title precedes the date range (normalized index ordering on extracted text), and each role owns ≥1 achievement node whose claim's `roleIndex` matches. Date ranges are rendered as normalized source strings. Education renders the source school. No invented role boundaries, gaps, or overlaps; every rendered date token resolves to the profile. Reviewer spot-checks credibility (no title inflation, no misplaced achievements).
 
@@ -433,8 +433,8 @@ Preserve the raw response verbatim in `review/blind/response.raw.txt` with the r
 ## 9. Hash and freeze procedure (execute once, before product edits)
 
 ```sh
-ROOT=/home/logani/oprun-evidence/jobsss-fake-journey-2026-09-16/resume-rebuild
-REPO=/home/logani/projects/jobsss-worktrees/resume-parity/jobsss
+ROOT=<evidence-root>/resume-rebuild
+REPO=<resume-parity-worktree>
 mkdir -p "$ROOT"/{benchmark,inputs,design-a/renders,design-a/lane/plugin-data,design-b/renders,design-b/lane/plugin-data,review/blind,review/logs}
 
 # 1. Write the four fixtures (§1) and the reviewer-owned files (§7) into place.
@@ -482,12 +482,11 @@ Invalidation rules: any change to a hashed file invalidates the run until the re
 - No invented employers, schools, dates, achievements, metrics, technologies, titles, or outcomes; insufficient evidence must be reported honestly, never padded.
 - No target-company/title/requirements in candidate copy; no `Focus:` line in any render; no proof IDs or review notes in candidate copy.
 - No artificial `\vfill`, fixed whitespace bands, invisible/padding text, micro-type, or metadata that lies about fonts/margins/engine.
-- No JobOS resolution or spawn; standalone plugin only; all state under `PLUGIN_DATA`; synthetic inputs only; no Logani identity data anywhere.
+- No JobOS resolution or spawn; standalone plugin only; all state under `PLUGIN_DATA`; synthetic inputs only; no real candidate data anywhere.
 - No npm dependencies, no Chrome/Chromium, no vendored Tectonic, no browser renderer evidence, no network at runtime.
 - No push, merge, release, deploy, or external publication; no submission/send/apply behavior of any kind.
 - Do not weaken, rename, skip, or reinterpret any criterion, negative control, fixture, or expected exit code — including "temporary" local edits.
 
 ## Correction log
 
-- 2026-09-18 — Reviewer correction for RR-11, RR-N6, C12, and RR-13 after Codevisor audit `/home/logani/oprun-evidence/jobsss-fake-journey-2026-09-16/codevisor-freeze-audit.raw.md`. Cited contradiction: Poppler rows carry `nodeId:null` so orphan headings were inert; RR-N6 planted ASCII `ffi` instead of U+FB03; C12 recorded generated and supplied page-one hashes without comparing them or surfacing PDFTOPPM failure; RR-13 parsed font names without the `emb` column. Old -> new SHA-256: `tests/helpers/resume-rebuild-checks.mjs` `57ce6b8cd6a0f37dd76ce8ce0476dc1fc59e0f462aa57dd6a38fc3b4e3bc923a` -> `ed581f61da3033c4ab806e0002829e75c696c1eea7c19b995e83ff7c07c3c3f0`; `tests/quality-resume-rebuild-negatives.mjs` `b6c3271d801cc3e4d75be163c2c29469e4c4185e8a315e99027e098c049d82cf` -> `a62d4c85f092c9d4f0bf51cb5dff5c64f09ae6c4fb32f6690e8ff43fdb77e044`; `tests/quality-resume-rebuild-reviewer-corrections.mjs` absent -> `00eb81f40dee9b737ea830d8e7a97001483ab147bf2b38369831e581d8a55dae`. The repository and evidence benchmark copies are re-frozen together; product-only diff remains `80f145b05b1af9d76bb360e545b80ff14bef740292f1d251447c9aa02f9145a1`.
-
+- 2026-09-18 — Reviewer correction for RR-11, RR-N6, C12, and RR-13 after Codevisor audit `<evidence-root>/codevisor-freeze-audit.raw.md`. Cited contradiction: Poppler rows carry `nodeId:null` so orphan headings were inert; RR-N6 planted ASCII `ffi` instead of U+FB03; C12 recorded generated and supplied page-one hashes without comparing them or surfacing PDFTOPPM failure; RR-13 parsed font names without the `emb` column. Old -> new SHA-256: `tests/helpers/resume-rebuild-checks.mjs` `57ce6b8cd6a0f37dd76ce8ce0476dc1fc59e0f462aa57dd6a38fc3b4e3bc923a` -> `ed581f61da3033c4ab806e0002829e75c696c1eea7c19b995e83ff7c07c3c3f0`; `tests/quality-resume-rebuild-negatives.mjs` `b6c3271d801cc3e4d75be163c2c29469e4c4185e8a315e99027e098c049d82cf` -> `a62d4c85f092c9d4f0bf51cb5dff5c64f09ae6c4fb32f6690e8ff43fdb77e044`; `tests/quality-resume-rebuild-reviewer-corrections.mjs` absent -> `00eb81f40dee9b737ea830d8e7a97001483ab147bf2b38369831e581d8a55dae`. The repository and evidence benchmark copies are re-frozen together; product-only diff remains `80f145b05b1af9d76bb360e545b80ff14bef740292f1d251447c9aa02f9145a1`.

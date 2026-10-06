@@ -138,7 +138,6 @@ function build() {
     name: 'job-search-stack',
     version: `${pins.surfaceVersion}+codex.${cachebuster}`,
     description: 'Pinned Codex pack for JobSSS, people-finder, and contact-brief.',
-    author: { name: 'Logani Paguh Bangun' },
     license: 'MIT',
     skills: './skills/',
     mcpServers: './.mcp.json',
@@ -146,7 +145,6 @@ function build() {
       displayName: 'JobSSS Career Operations',
       shortDescription: 'Local-first job search, resume, and contact research workflows.',
       longDescription: 'A pinned portable pack for evidence-grounded job discovery, tailored resumes, people research, and contact briefs.',
-      developerName: 'Logani Paguh Bangun',
       category: 'Productivity',
       capabilities: ['Interactive', 'Write'],
       defaultPrompt: [

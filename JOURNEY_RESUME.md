@@ -4,7 +4,7 @@ Status: frozen acceptance bar.
 
 Candidate:
 
-- Repository: `/home/logani/projects/jobsss-worktrees/resume-parity/jobsss`
+- Repository: `<resume-parity-worktree>`
 - Branch: `feat/resume-parity`
 - Frozen starting commit: `bd8e801e1e54e7611673aabd2a8f993d58764831`
 - This is not the primary `main` checkout.
@@ -30,7 +30,7 @@ node --test --test-name-pattern='JR-J4 ' tests/quality-journey-resume.mjs
 The evidence root defaults to:
 
 ```text
-/home/logani/oprun-evidence/jobsss-fake-journey-2026-09-16
+<evidence-root>
 ```
 
 Override only when evaluating an equivalent copied evidence bundle:
@@ -207,16 +207,9 @@ All three transcripts have the exact required successful sequence. The saved sea
 
 Both PDFs for each person contain their legal name, city, email, and both source employers.
 
-Any case-insensitive occurrence of these source identities anywhere in the six PDFs, transcripts, stores, or manifest fails the complete criterion:
-
-```text
-Logani
-loganibangun
-gse.harvard.edu
-Underscoring
-Indofood
-Musim Mas
-```
+Each PDF, transcript, store, and manifest must contain facts only from its own
+synthetic source profile. Cross-profile identity or achievement contamination
+fails the criterion.
 
 ### JR-J3 — Chronology and ownership
 

@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-export const DEFAULT_EVIDENCE_ROOT = '/home/logani/oprun-evidence/jobsss-fake-journey-2026-09-16/resume-rebuild';
+export const DEFAULT_EVIDENCE_ROOT = path.join(tmpdir(), 'jobsss-fake-journey-2026-09-16', 'resume-rebuild');
 export const EVIDENCE_ROOT = path.resolve(process.env.RESUME_REBUILD_EVIDENCE || DEFAULT_EVIDENCE_ROOT);
 
 export const CRITERION_IDS = Object.freeze(Array.from({ length: 14 }, (_, index) => `RR-${String(index + 1).padStart(2, '0')}`));
@@ -62,7 +62,6 @@ export const REQUIRED_NODE_TYPES = new Set([
 export const HEADING_VOCABULARY = new Set(['SUMMARY', 'PROFILE', 'EXPERIENCE', 'EDUCATION', 'SKILLS', 'PROJECTS', 'CERTIFICATIONS']);
 export const SECTIONS = Object.freeze(['SUMMARY', 'EXPERIENCE', 'PROJECTS', 'CERTIFICATIONS', 'EDUCATION', 'SKILLS']);
 export const FUNCTION_WORDS = new Set(`a an and are as at be been being by can for from had has have he her his how i if in into is it its me more my no not of on or our she than that the their them then there these they this those to under was we were what when which who with without you your across after all also both but do does down during each few first four further here how however just less many may might most other over own same some such too very will would through within year years per used now present remote hybrid onsite`.split(/\s+/));
-export const FORBIDDEN_IDENTITY_RE = /Logani|loganibangun|gse\.harvard\.edu|Underscoring|Indofood|Musim Mas/i;
 export const FORBIDDEN_SURFACES = Object.freeze({
   A: Object.freeze([/\bhalcyon\b/i, /\bhalcyon grid\b/i, /\bprincipal platform engineer\b/i, /\bfedramp\b/i, /\bsoc[ -]?2\b/i]),
   B: Object.freeze([/\baurelia\b/i, /\baurelia health\b/i, /\bsenior product designer\b/i, /\bswift\b/i, /\bkotlin\b/i]),
@@ -70,10 +69,10 @@ export const FORBIDDEN_SURFACES = Object.freeze({
 export const GENERIC_METADATA_RE = /^\s*(?:Focus|Target|Tailored for|Prepared for)\b|insufficient evidence|human review|proof point|requirement id|coverage gap/i;
 
 const POPPLER_DEFAULTS = Object.freeze({
-  PDFTOTEXT: '/home/logani/.local/share/poppler-env/bin/pdftotext',
-  PDFINFO: '/home/logani/.local/share/poppler-env/bin/pdfinfo',
-  PDFTOPPM: '/home/logani/.local/share/poppler-env/bin/pdftoppm',
-  PDFFONTS: '/home/logani/.local/share/poppler-env/bin/pdffonts',
+  PDFTOTEXT: 'pdftotext',
+  PDFINFO: 'pdfinfo',
+  PDFTOPPM: 'pdftoppm',
+  PDFFONTS: 'pdffonts',
 });
 
 const KEYED_REQUIREMENTS = Object.freeze({
@@ -921,7 +920,6 @@ function checkRR02(artifact, aggregate) {
     if (!surface.includes(role.employer) || !surface.includes(role.title) || !surface.includes(role.dates)) problems.push(`missing source role ${role.employer}`);
   }
   for (const item of profile.education || []) if (!surface.includes(item.school)) problems.push(`missing source school ${item.school}`);
-  if (FORBIDDEN_IDENTITY_RE.test(allCandidateStrings(artifact).join('\n'))) problems.push('frozen identity blocklist leaked');
   if (aggregate?.artifacts) {
     for (const [otherLabel, other] of Object.entries(aggregate.artifacts)) {
       if (otherLabel === artifact.label || other.loadError) continue;

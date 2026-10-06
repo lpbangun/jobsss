@@ -86,8 +86,8 @@ export const FROZEN_FIXTURE_JOB = 'tests/fixtures/job-posting.md';
 
 const REAL_USER_STATE = [
   path.join(process.env.HOME || '', '.jobos'),
-  '/home/logani/projects/Job App/.jobos',
-  '/home/logani/projects/Job App/jobos-workspace'
+  '/tmp/job-app/.jobos',
+  '/tmp/job-app/jobos-workspace'
 ];
 
 export function frameJsonl(message) {

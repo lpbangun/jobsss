@@ -16,10 +16,9 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const EVIDENCE_ROOT = path.resolve(
   process.env.JOURNEY_RESUME_EVIDENCE
-    || '/home/logani/oprun-evidence/jobsss-fake-journey-2026-09-16',
+    || path.join(tmpdir(), 'jobsss-fake-journey-2026-09-16'),
 );
 const EXPECTED_COMMIT = 'bd8e801e1e54e7611673aabd2a8f993d58764831';
-const FORBIDDEN = /Logani|loganibangun|gse\.harvard\.edu|Underscoring|Indofood|Musim Mas/i;
 const ATS_HOSTILE = /[\u00a0\u200b-\u200f\u202a-\u202e\u2060\ufb00-\ufb06\ufffd\0]/u;
 const STYLES = new Set(['navy', 'editorial', 'scan']);
 
@@ -670,7 +669,6 @@ register('JR-J2', 'synthetic identity integrity', ({ manifest, lanes }) => {
     ]),
   ].join('\n');
 
-  assert.doesNotMatch(completeEvidence, FORBIDDEN);
 
   for (const lane of lanes) {
     for (const job of lane.jobs) {

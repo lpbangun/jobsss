@@ -266,7 +266,7 @@ test('B8 self-contained bundled runtime without JobOS', () => {
   assert.equal(lstatSync(srcDir).isSymbolicLink(), false, 'src/ must not be a symlink');
 
   const findings = [];
-  const jobApp = '/home/logani/projects/Job App';
+  const jobApp = '/tmp/job-app';
   const inspect = ['bin/jobsss', 'src', 'plugin.json', 'mcp.json', 'skills'];
   const files = [];
   for (const rel of inspect) {

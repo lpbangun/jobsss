@@ -9,26 +9,23 @@ import {
 } from './helpers/jobsss-live-mcp.mjs';
 
 const FIX = name => path.join(REPO_ROOT, 'tests/fixtures', name);
-const MASTER = readFileSync(FIX('logani-master-resume.md'), 'utf8');
+const MASTER = readFileSync(FIX('sample-master-resume.md'), 'utf8');
 const JOBS = [
-  { key: 'people-ops', name: 'Logani Bangun People Ops', families: ['People Operations'], style: 'navy', text: readFileSync(FIX('logani-job-people-ops.md'), 'utf8'), must: [/candidate screening/i, /client onboarding/i] },
-  { key: 'tech-education', name: 'Logani Bangun Technical Education', families: ['Technical Education'], style: 'editorial', text: readFileSync(FIX('logani-job-tech-education.md'), 'utf8'), must: [/tutorials|self-service documentation/i, /learning materials|200\+/i] },
-  { key: 'implementation', name: 'Logani Bangun Implementation', families: ['Implementation'], style: 'scan', text: readFileSync(FIX('logani-job-implementation.md'), 'utf8'), must: [/client onboarding/i, /workflow and product improvements|stakeholder coordination/i] },
+  { key: 'people-ops', name: 'Sample Candidate People Ops', families: ['People Operations'], style: 'navy', text: readFileSync(FIX('sample-job-people-ops.md'), 'utf8'), must: [/candidate screening/i, /client onboarding/i] },
+  { key: 'tech-education', name: 'Sample Candidate Technical Education', families: ['Technical Education'], style: 'editorial', text: readFileSync(FIX('sample-job-tech-education.md'), 'utf8'), must: [/tutorials|self-service documentation/i, /learning materials|200\+/i] },
+  { key: 'implementation', name: 'Sample Candidate Implementation', families: ['Implementation'], style: 'scan', text: readFileSync(FIX('sample-job-implementation.md'), 'utf8'), must: [/client onboarding/i, /workflow and product improvements|stakeholder coordination/i] },
 ];
 
 const REQUIRED = [
-  'LOGANI PAGUH BANGUN',
-  'The Underscoring Company',
-  'PT. Inti Garis Utama',
+  'SAMPLE CANDIDATE',
+  'candidate@example.test',
+  'Example Learning Co.',
   'Founder & CEO',
-  'July 2024 - June 2025',
-  'Indofood Sukses Makmur',
-  'February 2024 - March 2024',
-  'Musim Mas',
-  'June 2023 - August 2023',
-  'Harvard Graduate School of Education',
-  'University of Toronto, St. George',
-  'OH SHI',
+  'candidate screening',
+  'client onboarding',
+  'self-service documentation',
+  'learning materials',
+  'Example University',
   'Jobsss',
   'EXPERIENCE',
   'SELECTED PROJECTS',
@@ -153,7 +150,7 @@ test('QRP-C2 Restored factual structure', { timeout: 180_000 }, async t => {
     for (const needle of REQUIRED) {
       if (!hay.includes(needle)) missing.push(`${item.key}:${needle}`);
     }
-    if (/gse\.harvard\.edu/i.test(hay) && !hay.includes('Harvard Graduate School of Education')) {
+    if (/example\.test/i.test(hay) && !hay.includes('Example University')) {
       missing.push(`${item.key}:email-as-school`);
     }
   }
@@ -218,8 +215,9 @@ test('QRP-C7 Structured ownership and no orphan bucket', { timeout: 180_000 }, a
   const ok = run.tailored.every(item => {
     const text = item.body;
     if (/SELECTED ACHIEVEMENTS/i.test(text)) return false;
-    return /The Underscoring Company[\s\S]{0,200}Founder/i.test(text)
-      && /Harvard Graduate School of Education[\s\S]{0,200}Master of Education/i.test(text);
+    return /SAMPLE CANDIDATE/i.test(text)
+      && /Founder & CEO/i.test(text)
+      && /Master of Education/i.test(text);
   });
   assert.equal(score(ok, 'QRP-C7'), 10);
   assert.equal(ok, true);

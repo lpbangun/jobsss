@@ -1,10 +1,7 @@
 {
   "name": "job-search-stack",
-  "version": "1.0.0+codex.0198fefd1789",
+  "version": "1.0.0+codex.bad4e9537126",
   "description": "Pinned Codex pack for JobSSS, people-finder, and contact-brief.",
-  "author": {
-    "name": "Logani Paguh Bangun"
-  },
   "license": "MIT",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
@@ -12,7 +9,6 @@
     "displayName": "JobSSS Career Operations",
     "shortDescription": "Local-first job search, resume, and contact research workflows.",
     "longDescription": "A pinned portable pack for evidence-grounded job discovery, tailored resumes, people research, and contact briefs.",
-    "developerName": "Logani Paguh Bangun",
     "category": "Productivity",
     "capabilities": [
       "Interactive",

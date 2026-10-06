@@ -9,10 +9,10 @@ description: >-
   shared runtime.
 version: "1.0.0"
 plugins:
-  - repo: lpbangun/jobsss
+  - repo: OWNER/jobsss
     subdir: agent-plugin
     ref: "0f3c452a0211b8b0ae8e41b935c647d187f475ad"
-  - repo: lpbangun/people-finder
+  - repo: OWNER/people-finder
     ref: "913fcb5dd771aa4cd5565f319b52e3f953685443"
-  - repo: lpbangun/contact-brief
+  - repo: OWNER/contact-brief
     ref: "29ea479c26fa20ffbeebffc34fa9ce06a45495b0"

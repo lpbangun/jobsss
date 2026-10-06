@@ -22,8 +22,8 @@ const STANDALONE_ARGS = Object.freeze(['mcp', '--data', '${PLUGIN_DATA}']);
 const PROFILE_NAME = 'Gate Zero Profile';
 const REAL_USER_STATE = [
   path.join(process.env.HOME || '', '.jobos'),
-  '/home/logani/projects/Job App/.jobos',
-  '/home/logani/projects/Job App/jobos-workspace'
+  '/tmp/job-app/.jobos',
+  '/tmp/job-app/jobos-workspace'
 ];
 
 function frameJsonl(message) {

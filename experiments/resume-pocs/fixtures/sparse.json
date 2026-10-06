@@ -1,0 +1,17 @@
+{
+  "identity": {
+    "name": "Sam Example",
+    "email": "sam@example.test"
+  },
+  "projects": [
+    {
+      "title": "Coursework: Volunteer Event Plan",
+      "achievements": [
+        "Created a volunteer event checklist for a class project."
+      ]
+    }
+  ],
+  "education": [
+    "BA Communications, Example College | 2026"
+  ]
+}

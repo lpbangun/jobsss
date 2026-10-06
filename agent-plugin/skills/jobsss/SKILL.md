@@ -55,6 +55,10 @@ Required MCP tools for this journey (all operate under `PLUGIN_DATA` via
 for argument shapes and persistence details.
 
 For human-only operations, follow [Human-only handoffs](references/human-only-handoffs.md).
+If the candidate has no source resume, follow [Candidate setup](references/candidate-setup.md).
+A personal master resume is optional; use the bundled [resume quality reference](references/resume-quality/rubric.md)
+as presentation guidance, never as candidate evidence. The experimental agent-QA
+orchestrator is not yet a shipped MCP enforcement gate.
 Those tools are not available to MCP and must not be reported as done. Approval,
 send, submit, and packet-freeze language is handoff-only via trusted CLI/TUI.
 

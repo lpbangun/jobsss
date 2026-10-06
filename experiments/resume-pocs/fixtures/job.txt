@@ -1,0 +1,10 @@
+Company: Fictional Education Company
+Title: Recruiting Specialist
+Location: Sample City
+Responsibilities
+- Review candidate applications against defined screening criteria.
+- Coordinate recruiting programs and maintain accurate records.
+Requirements
+- Experience in recruiting support and candidate screening.
+- Strong written communication and stakeholder coordination.
+- Interest in education and technology.

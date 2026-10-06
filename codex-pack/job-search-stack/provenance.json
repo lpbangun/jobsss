@@ -23,10 +23,10 @@
     "purpose": "Codex Windows launch compatibility and three-product composition",
     "businessLogic": false,
     "pythonResolution": "PATH first; Codex bundled dependency fallback on Windows",
-    "cachebuster": "bad4e9537126"
+    "cachebuster": "fe9f3c24630f"
   },
   "files": {
-    ".codex-plugin/plugin.json": "d37d6cac3c2c0432f7cf715f3de8c7a892e84e390a5579d7f00dd8933646bc46",
+    ".codex-plugin/plugin.json": "a70b360c7edbfdd66b73dd3d582b9285d5dfab06cfbd4581219905dcca93db69",
     ".mcp.json": "e6e527f94cf4a7afd9eff17c6c87d716ad8eaf15bccfafacd2c71c2b395fc3e5",
     "products/jobsss/bin/jobsss": "73a0e355cd5e5179a426a97b963b471bad15ed97b8390237be05e2ef9c2fd540",
     "products/jobsss/plugin.json": "e0db6074046e475ea3f29dfd48d51b884f4e0e48782ad058f3ee6790c0bcfd2f",
@@ -85,11 +85,17 @@
     "skills/contact-brief/scripts/contact_brief.py": "53f05db3fbf1b8d5a8bea26de034a6feac51d18699614c5f17562e14d1d2b58e",
     "skills/contact-brief/scripts/live_test.py": "71f4f4bc247300c446df89af2eb30f207a0d715873009eaecbb1c91ddb2108f7",
     "skills/contact-brief/SKILL.md": "ee0ec869c030305fe71c19807baff9e8df298d887bf141d5e8a5ad04c37ec505",
+    "skills/jobsss/references/candidate-setup.md": "842abd9d99beafbcc9572efd44f63b4b6469e780a1b22f2e89dd05b9194449f6",
     "skills/jobsss/references/client-compatibility.md": "1c5178c98a9c2ac483ba4e83bb8d9112f7f915caab0ebf57f2546513539722ae",
     "skills/jobsss/references/human-only-handoffs.md": "a13014e3fb78b7578bc21cc281cff8f7cfe7e3b2b69f26ab381fd344d68ceb64",
+    "skills/jobsss/references/resume-quality/examples/dense.md": "f9f57d4f5abfb9d6ab2af4384111f92d8ae1882479708ed054551a9420da7784",
+    "skills/jobsss/references/resume-quality/examples/sparse.md": "9a91511f09df5ba85c5e0b90fbe71df8d4f4ffd2d80a309a534fbf2e97fcc134",
+    "skills/jobsss/references/resume-quality/examples/typical.md": "60eb6dc071a60369195267b99a388d46b4a56172340d9814a5fffe72fcceaccc",
+    "skills/jobsss/references/resume-quality/rubric.json": "b2538e156f1b4b623c17689e5f420b9e73bbec109c292bb8c351e3d36a3aa87c",
+    "skills/jobsss/references/resume-quality/rubric.md": "ea4f7cb8b8d9730c871bbecbdbaecd9e5c0cbba8d8293d3bec57067147fce7fd",
     "skills/jobsss/references/resume-workflow.md": "4f50428af608041a77ee6c8abb27dcffaca32ace06181caae1f984c9271386ec",
     "skills/jobsss/references/standalone-journey.md": "1f3ee058b489052981df896b4633495cd3f61636c43bc688c56984ec3eed508d",
-    "skills/jobsss/SKILL.md": "a4e67b34899c176d89038d817313765dbf3c7223ca01445982a5376c3a626db7",
+    "skills/jobsss/SKILL.md": "8f35de42bba24f1273c605a89b0e806fb7978b1ce078faef4b588d09429ba6c2",
     "skills/people-finder/SKILL.md": "dfda9ca472d2c24ee087a08971fd7e6567468375544781d80d677faf7b3b355b"
   }
 }

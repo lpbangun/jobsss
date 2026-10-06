@@ -9,6 +9,7 @@ import { renderLatexPdf } from './resume-latex.js';
 import { compileResumeDocument, canonicalResumeSource } from './resume-compiler.js';
 import { renderResumeDocument } from './resume-ir-latex.js';
 import { renderResumeBrowser } from './resume-browser.js';
+import { COVER_LETTER_LAYOUT, classifyCoverLetterBlocks } from './cover-letter-layout.js';
 
 function clean(value) {
   return String(value || '').replace(/^#{1,6}\s*/, '').replace(/^[-*•]\s*/, '')
@@ -37,11 +38,11 @@ function contribution(value) {
 // inventories and audit caveats stay in source/metadata, never in copy.
 const INTERNAL_SECTION = /boundaries|preferences|audit|proof verification|internal|approval/i;
 const APPLICANT_NOISE = /proof verification|artifact approval|pending human-only|internal verification|human review|unverified approval/i;
-const PREFERENCE_LINE = /^\s*(remote only|hybrid\b|target\b|hard minimum\b|not seeking\b)|\bhard minimum\b|\bnot seeking\b|\bno required office attendance\b|annual guaranteed base salary/i;
+const PREFERENCE_LINE = /^\s*(?:travel(?: preference)?|hybrid(?: preference)?|remote(?: work)?|remote only|on[ -]?site|work model|work arrangement|schedule|availability|location preference)\s*:|^\s*(?:remote only|hybrid\b|target\b|hard minimum\b|not seeking\b)|\b(?:hard minimum|not seeking)\b|\bno required office attendance\b|annual guaranteed base salary/i;
 // Labeled preference/context lines must never be misread as contact or
 // achievement copy (work authorization, salary floor, target/role, schedule,
 // interest and search constraints stay source facts, not resume prose).
-const APPLICANT_PREFERENCE = /^\s*(?:work authorization|authorization|target\b|hard minimum|remote only|remote:|interest\b|available|availability|desired|not seeking|open to|no (?:relocation|required|office|permanent)|compensation|salary|annual|location|preferences|candidate preferences|looking for|i seek|i am available|my minimum|i value)/i;
+const APPLICANT_PREFERENCE = /^\s*(?:travel(?: preference)?\s*:|hybrid(?: preference)?\s*:|work model\s*:|work arrangement\s*:|remote(?: work)?\s*:|on[ -]?site\s*:|work authorization|authorization|target\b|hard minimum|remote only|remote:|interest\b|available|availability|desired|not seeking|open to|no (?:relocation|required|office|permanent)|compensation|salary|annual|location|preferences|candidate preferences|looking for|i seek|i am available|my minimum|i value)/i;
 const AUTHORIZATION_LINE = /\b(?:work authorization|authorization to work|authorized to work|right to work)\b|\bcitizen\b/i;
 // Chronology/scope guard sentences ("These continuous dates cover five years
 // inclusive.", "No direct reports, hiring authority, or staff-level ownership.")
@@ -61,7 +62,7 @@ const DATED_ROLE_LINE = /^(?:19|20)\d{2}(?:-\d{2})?\s*(?:through|to|until|[–�
 const BARE_SECTION = /^(?:#{1,6}\s*)?(experience|employment|skills|education|preferences|boundaries)\b/i;
 
 function applicantLine(raw) {
-  if (APPLICANT_NOISE.test(raw) || PREFERENCE_LINE.test(raw)) return null;
+  if (APPLICANT_NOISE.test(raw) || PREFERENCE_LINE.test(raw) || APPLICANT_PREFERENCE.test(raw)) return null;
   let text = String(raw).replace(/\s*Missing:[^.\n]*\.?/i, '').trim();
   text = supportedAchievement(text).replace(/\s*No GPA[^.]*\.?/gi, '').replace(/[.]{2,}$/, '.').trim();
   return text || null;
@@ -106,9 +107,8 @@ function focusLine(preferences, job) {
 }
 
 // Ordinary Markdown resumes (`# Name` / `## Experience` / dated role headings)
-// carry the same preference/audit shapes as labeled records. Select 4-6
-// supported relevant achievements globally while keeping every dated role,
-// education, identity and contact lines on a readable one-page PDF.
+// carry the same preference/audit shapes as labeled records. Preserve the
+// complete grounded pool here; the canonical compiler fits it to the renderer.
 function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
   const contacts = [];
   let section = '';
@@ -180,7 +180,7 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
     const kept = [];
     for (const raw of role.bullets) {
       const text = applicantLine(raw);
-      if (text) kept.push({ raw, text, rank: rank(raw) });
+      if (text) kept.push({ owner: role, raw, text, rank: rank(raw) });
     }
     kept.sort((a, b) => b.rank - a.rank);
     role.ranked = kept;
@@ -192,27 +192,20 @@ function ordinaryResumeCopy(identity, lines, selected = [], options = {}) {
     const text = applicantLine(raw);
     if (text) pool.push({ raw, text, rank: rank(raw) });
   }
-  pool.sort((a, b) => b.rank - a.rank);
-  // Global 4-6: keep every dated role, emphasize relevant achievements
-  // within it, overflow selected material under its own heading.
-  const selectionLimit = Math.min(6, Math.max(4, selected.length));
-  const chosen = new Set(pool.filter(item => item.rank > 0).slice(0, selectionLimit));
-  if (chosen.size < 4) for (const item of pool) { if (chosen.size >= 4) break; chosen.add(item); }
-  const placed = new Set();
+  const chosen = new Set(pool);
   const output = [identity, contacts.join(' | '), '', 'EXPERIENCE'];
   const ordinaryFocus = focusLine(options.preferences, options.job);
   if (ordinaryFocus) output.splice(2, 0, ordinaryFocus, '');
   if (roles.length) {
     for (const role of [...roles].reverse()) {
       if (role.text) output.push(role.text);
-      const within = role.ranked.filter(item => chosen.has(item)).slice(0, 2);
-      for (const item of within) placed.add(item);
+      const within = role.ranked.filter(item => chosen.has(item));
       output.push(...within.map(item => `- ${item.text}`), '');
     }
-    const extra = [...chosen].filter(item => !placed.has(item)).slice(0, Math.max(0, 6 - placed.size));
+    const extra = [...chosen].filter(item => !item.owner);
     if (extra.length) output.push('SELECTED ACHIEVEMENTS', ...extra.map(item => `- ${item.text}`), '');
   } else {
-    for (const item of pool.filter(item => chosen.has(item)).slice(0, 6)) output.push(`- ${item.text}`);
+    for (const item of pool.filter(item => chosen.has(item))) output.push(`- ${item.text}`);
     if (chosen.size) output.push('');
   }
   const skillLines = skills.map(applicantLine).filter(Boolean);
@@ -263,7 +256,8 @@ function migrateLegacyResumeSource(profile, selected, omittedProofs, options) {
   let section = '';
   for (const raw of projected.split(/\r?\n/)) {
     const line = raw.trim();
-    if (/^(EXPERIENCE|PROJECTS|EDUCATION|SKILLS|SUMMARY)$/.test(line)) { section = line; sections.set(section, []); continue; }
+    const normalizedHeading = line.replace(/^(?:SELECTED|KEY)\s+/i, '').replace(/\s+(?:AND|&)\s+PORTFOLIO$/i, '').toUpperCase();
+    if (/^(EXPERIENCE|PROJECTS|EDUCATION|SKILLS|SUMMARY)$/.test(normalizedHeading)) { section = normalizedHeading; sections.set(section, []); continue; }
     if (section && line) sections.get(section).push(line);
   }
   const experience = [];
@@ -372,7 +366,7 @@ export function resumeCopy(profile, selected = [], omittedProofs = [], options =
   for (const entry of [...employment].reverse()) {
     output.push(entry.text);
     // Keep every dated role; emphasize relevant achievements within that role.
-    const bullets = [...entry.bullets].sort((a, b) => rank(b) - rank(a)).slice(0, 2);
+    const bullets = [...entry.bullets].sort((a, b) => rank(b) - rank(a));
     output.push(...bullets.map(bullet => `- ${bullet.text}`), '');
   }
   if (unassigned.length) output.push('SELECTED ACHIEVEMENTS', ...unassigned.map(bullet => `- ${bullet.text}`), '');
@@ -381,56 +375,130 @@ export function resumeCopy(profile, selected = [], omittedProofs = [], options =
   return output.join('\n').trim() + '\n';
 }
 
-export function coverLetterCopy(profile, job, selected) {
-  const name = String(profile.resumeText || '').match(/^Name:\s*(.+)$/im)?.[1]
-    || profile.resume?.identity?.name || profile.name;
+function normalizeJobFacts(job = {}) {
+  const title = String(job.title || '').trim() && !/^(?:imported role|unknown role)$/i.test(String(job.title))
+    ? String(job.title).trim() : '';
+  const company = String(job.company || '').trim() && !/^unknown company$/i.test(String(job.company))
+    ? String(job.company).trim() : '';
+  const description = String(job.description || '');
+  const requirements = Array.isArray(job.requirements)
+    ? job.requirements.map(item => typeof item === 'string' ? item : item?.text || '').filter(Boolean)
+    : [...description.matchAll(/^\s*[-*]\s+(.+)$/gm)].map(match => match[1]);
+  return { title, company, description, requirements };
+}
+
+function titleCaseInitial(value) {
+  return String(value || '').replace(/^([a-z])/, letter => letter.toUpperCase());
+}
+
+const CONTRIBUTION_VERB = /^(?:built|created|designed|developed|delivered|implemented|led|managed|coordinated|conducted|automated|migrated|launched|shipped|improved|reduced|increased|grew|cut|wrote|authored|trained|taught|supported|partnered|collaborated|analyzed|analysed|produced|facilitated|established|introduced|repaired|resolved|maintained|organized|organised|oversaw|owned|co-owned|configured|deployed|tested|optimized|optimised|reconciled|transformed|mentored|advised|negotiated|presented|served|provided|worked|contributed|helped|gathered|mapped|evaluated|measured|identified|refined|published|documented|prototyped|recruited|screened)\b/i;
+
+function contributionSentence(value) {
+  const text = supportedAchievement(value).replace(/[.]+$/, '').trim();
+  if (!text) return '';
+  if (/^(?:I|My|We|At|Through|Across|As)\b/.test(text)) return titleCaseInitial(text) + '.';
+  if (CONTRIBUTION_VERB.test(text)) return `I ${text[0].toLowerCase()}${text.slice(1)}.`;
+  return `My experience includes ${text[0].toLowerCase()}${text.slice(1)}.`;
+}
+
+export function coverLetterCopy(profile, job, selected = [], options = {}) {
+  const parsed = parseResumeSource(profile.resumeText || '');
+  const name = String(parsed.identity || profile.resume?.identity?.name || profile.name || '').trim();
+  const facts = normalizeJobFacts(job);
+  const email = String(options.contactEmail || '').trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw Object.assign(new Error('Cover-letter contact email must be a valid selected email address.'), { code: 'cover_letter_contact_invalid' });
+  }
+  const contactParts = [...parsed.contacts]
+    .map(value => clean(value))
+    .filter(value => value && !PREFERENCE_LINE.test(value) && !APPLICANT_PREFERENCE.test(value));
+  if (email) {
+    const existing = contactParts.findIndex(value => /[^\s|]+@[^\s|]+\.[^\s|]+/.test(value));
+    if (existing >= 0) contactParts[existing] = contactParts[existing].replace(/[^\s|]+@[^\s|]+\.[^\s|]+/, email);
+    else contactParts.unshift(email);
+  }
+  const contactLine = [...new Set(contactParts)].join(' | ');
+  const explicitDate = String(options.date || '').trim();
+  if (explicitDate && /[\r\n]/.test(explicitDate)) {
+    throw Object.assign(new Error('Cover-letter date must be a single line.'), { code: 'cover_letter_date_invalid' });
+  }
+  const recipient = String(options.recipient || '').trim();
+  const recipientTitle = String(options.recipientTitle || '').trim();
+  const location = String(job.location || '').trim();
+  const recipientBlock = [recipient || (facts.company ? 'Hiring Team' : ''), recipientTitle,
+    facts.company, location && !/^(?:remote|hybrid|onsite|on-site)$/i.test(location) ? location : '']
+    .filter(Boolean).join('\n');
+  const salutation = `Dear ${recipient || 'Hiring Team'},`;
   // Intake extraction and explicit proof retention can describe the same claim.
   // Deduplicate copy, not stored proofs: historical provenance stays intact.
-  const normalizeClaim = text => tokenize(text).join(' ');
   const unique = [];
-  for (const proof of selected) {
+  for (const proof of Array.isArray(selected) ? selected : []) {
     const summary = String(proof.summary || '');
-    if (APPLICANT_PREFERENCE.test(summary) || AUTHORIZATION_LINE.test(summary)
+    if (APPLICANT_PREFERENCE.test(summary) || PREFERENCE_LINE.test(summary) || AUTHORIZATION_LINE.test(summary)
       || /\bI seek\b|working preferences|candidate-stated preferences|guaranteed base/i.test(summary)) continue;
-    const text = contribution(summary);
+    const text = supportedAchievement(summary).trim();
     const key = tokenize(text).join(' ');
     if (!key) continue;
     if (unique.some(item => item.key === key || (Math.min(item.key.split(' ').length, key.split(' ').length) >= 8
       && (item.key.startsWith(key + ' ') || key.startsWith(item.key + ' '))))) continue;
     unique.push({ text, key });
   }
-  const posting = `${job.title || ''}\n${job.description || ''}\n${(job.requirements || []).join('\n')}`;
-  const topics = [
-    { pattern: /warehouse.{0,30}(?:cost|spend)|(?:cost|spend).{0,30}warehouse/i, label: 'warehouse-cost improvements' },
-    { pattern: /self.service|dashboard/i, label: 'self-service reporting' },
-    { pattern: /metric|data dictionary/i, label: 'consistent metric definitions' },
-    { pattern: /test|data quality|data defect/i, label: 'reliable, tested data models' },
-    { pattern: /transformation|dbt|dimensional model/i, label: 'maintainable data transformations' },
-    { pattern: /reconcil|automat/i, label: 'reliable reporting workflows' },
-  ].filter(topic => topic.pattern.test(posting));
+  const posting = [facts.title, facts.description, ...facts.requirements].join('\n');
   const terms = new Set(tokenize(posting).filter(term => term.length > 3));
   const ranked = unique.map(item => ({ ...item,
-    topics: topics.filter(topic => topic.pattern.test(item.text)),
     overlap: [...new Set(tokenize(item.text))].filter(term => terms.has(term)).length,
-  })).sort((a, b) => b.topics.length - a.topics.length || b.overlap - a.overlap);
-  const chosen = [];
-  while (ranked.length && chosen.length < 2) {
-    // Prefer a second contribution covering a different relevant team need.
-    const index = chosen.length ? ranked.findIndex(item => item.topics.some(topic => !chosen[0].topics.includes(topic))) : 0;
-    chosen.push(ranked.splice(index < 0 ? 0 : index, 1)[0]);
+  })).sort((a, b) => b.overlap - a.overlap || unique.indexOf(a) - unique.indexOf(b));
+  const chosen = ranked.slice(0, 2).map(item => item.text);
+  const appliedRole = facts.title ? `the ${facts.title} role` : 'the role';
+  const atCompany = facts.company ? ` at ${facts.company}` : '';
+  const opening = `I am applying for ${appliedRole}${atCompany}.`;
+  const firstClaim = chosen[0] || '';
+  const roleTitle = facts.title || '';
+  const matchesRoleAndEvidence = (pattern, proofPattern) => pattern.test(roleTitle) && proofPattern.test(firstClaim);
+  let evidenceLead = 'A relevant example from my work is';
+  if (matchesRoleAndEvidence(/(?:learning|education|training|enablement|instructional|customer success)/i,
+    /(?:learner|learning|education|training|curriculum|course|tutorial|instruction|onboard)/i)) {
+    evidenceLead = 'My learning and enablement work includes';
+  } else if (matchesRoleAndEvidence(/(?:implementation|solutions|delivery|project|program|deployment)/i,
+    /(?:implemented|delivered|launched|rolled out|deployed|coordinated|project)/i)) {
+    evidenceLead = 'My delivery experience includes';
+  } else if (matchesRoleAndEvidence(/(?:engineer|engineering|developer|software|data|platform|technical)/i,
+    /(?:software|data|sql|dbt|api|cloud|platform|pipeline|service|system|code|engineer|technical)/i)) {
+    evidenceLead = 'My technical work includes';
+  } else if (matchesRoleAndEvidence(/(?:analyst|operations|product|coordinator|customer|partner|relationship)/i,
+    /(?:partner|cross.functional|stakeholder|liaison|coordinat|between teams|client|customer)/i)) {
+    evidenceLead = 'My work across teams includes';
   }
-  const contributions = chosen.map(item => item.text);
-  const connections = [...new Set(chosen.flatMap(item => item.topics.map(topic => topic.label)))].slice(0, 2);
-  return [
-    'Dear Hiring Team,', '',
-    `I am interested in the ${job.title} role at ${job.company}.`, '',
-    contributions.length ? `In my previous work, I ${contributions[0]}.` : '',
-    contributions[1] ? `I also ${contributions[1]}.` : '', '',
-    connections.length ? `I would welcome the opportunity to apply this experience to your team's work on ${connections.join(' and ')}.`
-      : contributions.length ? 'I would welcome the opportunity to bring this experience to your team and discuss how it could support the role.'
-      : 'I would welcome a conversation about the role and the experience your team needs.', '',
-    'Thank you for your consideration,', clean(name), '',
-  ].filter((line, index, all) => line || all[index - 1]).join('\n');
+  const body = [opening];
+  const evidenceParagraph = (claim, lead) => {
+    const sentence = contributionSentence(claim);
+    const match = sentence.match(/^I\s+(.+?)\.$/);
+    if (match && / includes$/.test(lead)) {
+      const prefix = lead.replace(/ includes$/, ' includes work where')
+        .replace(/^My work across teams includes work where$/, 'In my cross-team work,')
+        .replace(/^My learning and enablement work includes work where$/, 'In my learning and enablement work,')
+        .replace(/^My delivery experience includes work where$/, 'In my delivery work,')
+        .replace(/^My technical work includes work where$/, 'In my technical work,');
+      return `${prefix} I ${match[1]}.`;
+    }
+    return sentence;
+  };
+  if (chosen.length) body.push(evidenceParagraph(chosen[0], evidenceLead));
+  if (chosen.length > 1) body.push(evidenceParagraph(chosen[1], 'A second example from my work'));
+  const voice = options.voice || profile.preferences?.coverLetterVoice || {};
+  const warmTone = /warm|conversational|friendly/i.test(`${voice.tone || ''} ${voice.style || ''}`);
+  const closing = warmTone ? 'I would be glad to discuss my experience with you.'
+    : 'I would welcome a conversation about the role.';
+  body.push(closing);
+  const blocks = [
+    contactLine ? `${name}\n${contactLine}` : name,
+    explicitDate,
+    recipientBlock,
+    salutation,
+    ...body,
+    `Thank you for your consideration,\n${name}`,
+  ].filter(Boolean);
+  return blocks.join('\n\n');
 }
 
 // Standard PDF Helvetica widths (ASCII, thousandths of an em). WinAnsi
@@ -466,6 +534,151 @@ function wrap(text, size, bold, maxWidth) {
   if (line) out.push(line);
   return out;
 }
+
+// Adobe standard-font AFM widths in thousandths of an em for printable ASCII.
+// These match Times-Roman and Times-Bold, the fonts embedded by the native PDF
+// renderer, so line wrapping follows the metrics Word uses for the letter.
+const TIMES_ROMAN_WIDTHS = [
+  250,333,408,500,500,833,778,180,333,333,500,564,250,333,250,278,
+  500,500,500,500,500,500,500,500,500,500,278,278,564,564,564,444,
+  921,722,667,667,722,611,556,722,722,333,389,722,611,889,722,722,
+  556,722,667,556,611,722,722,944,722,722,611,333,278,333,469,500,
+  333,444,500,444,500,444,333,500,500,278,278,500,278,778,500,500,
+  500,500,333,389,278,500,500,722,500,500,444,480,200,480,541,
+];
+const TIMES_BOLD_WIDTHS = [
+  250,333,555,500,500,1000,833,278,333,333,500,570,250,333,250,278,
+  500,500,500,500,500,500,500,500,500,500,333,333,570,570,570,500,
+  930,722,667,722,722,667,611,778,778,389,500,778,667,944,722,778,
+  611,778,722,556,667,722,722,1000,722,722,667,333,278,333,581,500,
+  333,500,556,444,556,444,333,500,556,278,333,556,278,833,556,500,
+  556,556,444,389,333,556,500,722,500,500,444,394,220,394,520,
+];
+
+function timesWidth(text, size, bold = false) {
+  const metrics = bold ? TIMES_BOLD_WIDTHS : TIMES_ROMAN_WIDTHS;
+  return [...text].reduce((sum, char) => {
+    const ascii = char.normalize('NFD')[0];
+    const code = ascii.codePointAt(0);
+    const fallback = ({ '€': 500, '‘': 333, '’': 333, '“': 444, '”': 444, '•': 350, '–': 500, '—': 1000, '…': 1000 })[char] || 500;
+    return sum + (code >= 32 && code <= 126 ? metrics[code - 32] : fallback);
+  }, 0) * size / 1000;
+}
+
+function wrapTimes(text, size, bold, maxWidth) {
+  const out = []; let line = '';
+  for (const word of String(text || '').split(/\s+/)) {
+    if (timesWidth(word, size, bold) > maxWidth) {
+      if (line) { out.push(line); line = ''; }
+      let chunk = '';
+      for (const char of word) {
+        if (timesWidth(chunk + char, size, bold) > maxWidth) { out.push(chunk); chunk = ''; }
+        chunk += char;
+      }
+      line = chunk;
+    } else if (line && timesWidth(`${line} ${word}`, size, bold) > maxWidth) { out.push(line); line = word; }
+    else line = line ? `${line} ${word}` : word;
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+function renderCoverLetterPdf(content, options = {}) {
+  const layout = COVER_LETTER_LAYOUT;
+  const blocks = Array.isArray(options.blocks) && options.blocks.length
+    ? options.blocks : classifyCoverLetterBlocks(content);
+  const pages = [[]];
+  const margin = layout.margin;
+  const maxWidth = 612 - margin * 2;
+  const lineSpacing = layout.lineSpacing;
+  let y = 792 - margin;
+  const addPage = () => { pages.push([]); y = 792 - margin; };
+  const measure = (block, type = block.type) => {
+    const size = type === 'contact' ? layout.contactFontSize : layout.fontSize;
+    const bold = false;
+    const lines = String(block.text || '').split(/\r?\n/).flatMap(line => wrapTimes(line, size, bold, maxWidth));
+    return { size, bold, lines, leading: size * lineSpacing };
+  };
+  const afterGap = type => type === 'contact' ? 12
+    : type === 'date' || type === 'recipient' ? layout.blockAfter
+      : type === 'salutation' || type === 'closing' ? layout.blockAfter
+        : type === 'signature' ? 0 : layout.paragraphAfter;
+  const pushBlock = (block) => {
+    const measured = measure(block);
+    const groupHeight = measured.lines.length * measured.leading + afterGap(block.type);
+    const printableHeight = 792 - 2 * margin;
+    const canFitWholePage = groupHeight <= printableHeight;
+    const canSplit = ['paragraph', 'contact', 'recipient'].includes(block.type) && !canFitWholePage;
+    if (y - groupHeight < margin && pages.at(-1).length && !canSplit) addPage();
+    if (!canSplit && y - groupHeight < margin && !pages.at(-1).length && groupHeight > printableHeight) {
+      addPage();
+    }
+    if (canSplit) {
+      let offset = 0;
+      while (offset < measured.lines.length) {
+        let available = Math.floor((y - margin) / measured.leading) + 1;
+        const remaining = measured.lines.length - offset;
+        if (available < 2 && pages.at(-1).length) { addPage(); available = Math.floor((y - margin) / measured.leading) + 1; }
+        let take = Math.min(remaining, available);
+        // Avoid leaving a one-line widow at the top of the next page when
+        // reducing this page by one line makes both chunks readable.
+        if (remaining - take === 1 && take > 2) take -= 1;
+        for (const line of measured.lines.slice(offset, offset + take)) {
+          pages.at(-1).push({ text: line, size: measured.size, bold: measured.bold, y, x: margin, leading: measured.leading, color: '0 0 0' });
+          y -= measured.leading;
+        }
+        offset += take;
+        if (offset < measured.lines.length) addPage();
+      }
+    } else {
+      for (const line of measured.lines) {
+        pages.at(-1).push({ text: line, size: measured.size, bold: measured.bold, y, x: margin, leading: measured.leading, color: '0 0 0' });
+        y -= measured.leading;
+      }
+    }
+    y -= afterGap(block.type);
+  };
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    const next = ['salutation', 'closing'].includes(block.type) ? blocks[index + 1] || null : null;
+    if (['salutation', 'closing'].includes(block.type) && next) {
+      const currentHeight = measure(block).lines.length * measure(block).leading + afterGap(block.type);
+      const nextHeight = measure(next).lines.length * measure(next).leading + afterGap(next.type);
+      if (y - currentHeight - nextHeight < margin && pages.at(-1).length) addPage();
+    }
+    pushBlock(block);
+  }
+  const objects = [];
+  const add = value => { objects.push(value); return objects.length; };
+  const catalog = add(''); const pageTree = add('');
+  const mappings = new Map();
+  for (const page of pages) for (const line of page) for (const char of line.text) mappings.set(encode(char), char.codePointAt(0).toString(16).padStart(4, '0'));
+  const entries = [...mappings];
+  const cmap = ['/CIDInit /ProcSet findresource begin 12 dict begin begincmap', '/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def', '/CMapName /JobSSSText def /CMapType 2 def', '1 begincodespacerange <00> <FF> endcodespacerange'];
+  for (let start = 0; start < entries.length; start += 100) {
+    const chunk = entries.slice(start, start + 100);
+    cmap.push(`${chunk.length} beginbfchar`, ...chunk.map(([a,b]) => `<${a}> <${b}>`), 'endbfchar');
+  }
+  cmap.push('endcmap CMapName currentdict /CMap defineresource pop end end');
+  const stream = value => `<< /Length ${Buffer.byteLength(value)} >>\nstream\n${value}\nendstream`;
+  const unicode = add(stream(cmap.join('\n')));
+  const regular = add(`<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding /ToUnicode ${unicode} 0 R >>`);
+  const bold = add(`<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding /ToUnicode ${unicode} 0 R >>`);
+  const ids = pages.map(page => {
+    const commands = page.map(line => `BT /${line.bold ? 'F2' : 'F1'} ${line.size} Tf 1 0 0 1 ${line.x.toFixed(2)} ${line.y.toFixed(2)} Tm <${encode(line.text)}> Tj ET`).join('\n');
+    const contents = add(stream(commands));
+    return add(`<< /Type /Page /Parent ${pageTree} 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${contents} 0 R >>`);
+  });
+  objects[catalog - 1] = `<< /Type /Catalog /Pages ${pageTree} 0 R >>`;
+  objects[pageTree - 1] = `<< /Type /Pages /Count ${ids.length} /Kids [${ids.map(id => `${id} 0 R`).join(' ')}] >>`;
+  let pdf = '%PDF-1.4\n'; const offsets = [0];
+  objects.forEach((value, index) => { offsets.push(Buffer.byteLength(pdf)); pdf += `${index + 1} 0 obj\n${value}\nendobj\n`; });
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return { bytes: Buffer.from(pdf), pageCount: pages.length, bodyFontSize: layout.fontSize, pageSize: 'Letter', marginsPt: margin,
+    pageMarginsPt: { top: margin, right: margin, bottom: margin, left: margin }, engine: 'native', style: 'cover-letter-word',
+    fontFamily: layout.fontFamily };
+}
 function resolveStyle(style) {
   const id = String(style || 'navy').toLowerCase().replace(/_/g, '-');
   if (id === 'editorial' || id === 'a') return 'editorial';
@@ -484,6 +697,7 @@ function markdownBlocks(content) {
 }
 
 export function renderPdf(content, options = {}) {
+  if (options.kind === 'cover_letter') return renderCoverLetterPdf(content, options);
   const style = resolveStyle(options.style);
   const blocks = Array.isArray(options.blocks) && options.blocks.length ? options.blocks : markdownBlocks(content);
   const navy = style === 'navy';
@@ -637,9 +851,11 @@ export function exportPdf(dataDir, content, options = {}) {
   if (options.kind === 'resume' && !options.document) {
     throw Object.assign(new Error('Resume PDF requires a canonical validated document.'), { code: 'resume_document_required' });
   }
-  const rendered = options.document
-    ? renderResumeBrowser(options.document, { style: options.style || 'navy' })
-    : (renderLatexPdf(content, options) || renderPdf(content, options));
+  const rendered = options.kind === 'cover_letter'
+    ? renderPdf(content, { ...options, kind: 'cover_letter' })
+    : options.document
+      ? renderResumeBrowser(options.document, { style: options.style || 'navy' })
+      : (renderLatexPdf(content, options) || renderPdf(content, options));
   const { bytes, ...layout } = rendered;
   const root = ensureDataDir(dataDir);
   const sha256 = createHash('sha256').update(bytes).digest('hex');

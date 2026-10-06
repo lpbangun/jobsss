@@ -44,8 +44,8 @@ const BLOCKED_MCP_TOOLS = Object.freeze([
 
 const REAL_USER_STATE = [
   path.join(process.env.HOME || '', '.jobos'),
-  '/tmp/job-app/.jobos',
-  '/tmp/job-app/jobos-workspace'
+  '/home/logani/projects/Job App/.jobos',
+  '/home/logani/projects/Job App/jobos-workspace'
 ];
 
 export function frameJsonl(message) {

@@ -146,7 +146,7 @@ test('relationships.js imports omitted/null/unknown channel cards inline and sta
   assert.ok(map.people.every(person => !person.reachable && person.email === null));
 });
 
-test('documents.js deduplicates contribution claims and connects two grounded team needs', () => {
+test('cover-letter starter deduplicates claims and retains evidence for distinct job needs', () => {
   const first = 'Implemented incremental models and tuned warehouses, reducing monthly warehouse spend from USD 7,200 to USD 5,900 over four measured months.';
   const second = 'Built a self-service dashboard and documentation used by 17 colleagues.';
   const letter = coverLetterCopy({ name: 'Casey Rivera' }, {
@@ -158,13 +158,10 @@ test('documents.js deduplicates contribution claims and connects two grounded te
   ]);
   assert.equal((letter.match(/7,200/g) || []).length, 1);
   assert.match(letter, /17 colleagues/);
-  // The two grounded contributions must map to both distinct team needs, in
-  // either order (source-derived ordering is not a contract). Do not force
-  // a single letter wording to satisfy a brittle exact-order regex.
-  assert.match(letter, /team's work on .*(?:warehouse-cost improvements|self-service reporting)/);
-  const connection = letter.match(/team's work on .*/)?.[0] || '';
-  assert.match(connection, /warehouse-cost improvements/);
-  assert.match(connection, /self-service reporting/);
+  assert.match(letter, /Analytics Engineer role at Bay Software/);
+  assert.match(letter, /monthly warehouse spend from USD 7,200 to USD 5,900/);
+  assert.match(letter, /self-service dashboard and documentation used by 17 colleagues/);
+  assert.doesNotMatch(letter, /A second example from my work I|I also travel|warehouse-cost improvements/);
   assert.doesNotMatch(letter, /EMP-E2|ACH1|manual|auto|verified/);
 });
 
@@ -264,7 +261,7 @@ Hard minimum: USD 110,000 annual guaranteed base salary, excluding bonus/equity.
 Proof verification and artifact approval are pending human-only actions. Internal verification notes for review only.
 `;
 
-test('ordinary Markdown resume produces applicant copy with 4-6 grounded achievements and no internal noise', t => {
+test('ordinary Markdown resume preserves its substantive source achievements without internal noise', t => {
   const data = workspace(t);
   const { profileId } = domain.createProfile(data, { name: 'Casey profile', resumeText: ordinaryMarkdown });
   const { jobId } = domain.importJob(data, { profileId, text: posting });
@@ -273,7 +270,11 @@ test('ordinary Markdown resume produces applicant copy with 4-6 grounded achieve
   for (const value of ['Casey Rivera', '2022-01', '2025-12', 'Cedar Research', 'Bay Research', 'Elm College', '40 to 25 minutes']) assert.ok(c.includes(value), value);
   assert.doesNotMatch(c, /EMP-E1|no production java|no gpa|pending human-only|internal verification|measured by|comparison used|not proof of sole causation|remote only|hard minimum|not seeking staff|fictional/i);
   const bullets = c.split('\n').filter(line => /^- /.test(line));
-  assert.ok(bullets.length >= 4 && bullets.length <= 6, `expected 4-6 achievement bullets, got ${bullets.length}`);
+  assert.equal(bullets.length, 10, 'all ten distinct source achievements fit and should survive');
+  for (const value of ['Supported ad-hoc executive requests', 'Helped onboard two analysts',
+    'Added data quality checks', 'Migrated three legacy jobs', 'Mentored an intern']) {
+    assert.ok(c.includes(value), `missing source achievement: ${value}`);
+  }
 });
 
 test('plain-language hard constraints (staff, travel cap, collaboration) resolve via native intake', t => {

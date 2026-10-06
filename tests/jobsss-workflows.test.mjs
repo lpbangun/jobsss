@@ -68,7 +68,7 @@ test('B21 materials are proof-grounded and persist across restart', async t => {
   const made = await mcp(ctx, [
     initializeRequest(1),
     callRequest(2, 'tailor_resume', { jobId, profileId, format: 'markdown' }),
-    callRequest(3, 'draft_cover_letter', { jobId, profileId, format: 'markdown' })
+    callRequest(3, 'draft_cover_letter', { jobId, profileId, format: 'markdown', requestedByUser: true })
   ], { timeoutMs: 45_000 });
   const resume = requireOk(made, 2, 'tailor_resume');
   const cover = requireOk(made, 3, 'draft_cover_letter');
@@ -343,7 +343,7 @@ test('B25 skill routes extended workflows without claiming send, submit, or JobO
   assert.ok(corpus.includes('./bin/jobsss'));
   assert.match(
     corpus,
-    /without JobOS|JobOS (?:is )?not (?:required|needed|used)|no JobOS/i
+    /without requiring external services|no external product (?:installation|runtime)|does not require external (?:services|products)/i
   );
   for (const topic of ['send', 'submit', 'approv']) {
     assert.match(

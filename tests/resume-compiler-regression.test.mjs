@@ -83,11 +83,29 @@ test('achievement ownership wording preserves the source qualifier exactly', () 
   assert.doesNotMatch(result.content, /Co-owned with the on-call rotation/);
 });
 
-test('redundant low-signal projects are omitted from the canonical document', () => {
+test('project work retains distinct source facts even when its title overlaps employment', () => {
   const result = compile(DESIGN_PROFILE);
-  assert.equal(result.ir.nodes.some(node => node.type === 'section_heading' && node.text === 'PROJECTS'), false);
-  assert.equal(result.ir.nodes.some(node => node.type === 'project' && /Fieldnote/.test(node.text)), false);
-  assert.equal(result.ir.nodes.some(node => node.type === 'project_item'), false);
+  assert.equal(result.ir.nodes.some(node => node.type === 'section_heading' && node.text === 'PROJECTS'), true);
+  assert.equal(result.ir.nodes.some(node => node.type === 'project' && /Fieldnote/.test(node.text)), true);
+  const items = result.ir.nodes.filter(node => node.type === 'project_item');
+  assert.equal(items.length, 2);
+  for (const item of items) {
+    assert.equal(item.claimIds.length, 1);
+    const claim = result.ledger.claims.find(candidate => candidate.claimId === item.claimIds[0]);
+    assert.equal(claim.sourceQuote, item.text);
+  }
   assert.match(result.content, /Led the Fieldnote design system/);
-  assert.doesNotMatch(result.content, /Published the Fieldnote roadmap|Documented accessibility patterns/);
+  assert.match(result.content, /Published the Fieldnote roadmap/);
+  assert.match(result.content, /Documented accessibility patterns/);
+});
+
+test('an exactly repeated employment claim is not repeated as a project item', () => {
+  const duplicate = 'Led the Fieldnote design system from 12 scattered components to 48 governed components adopted by four product teams.';
+  const text = DESIGN_PROFILE.replace(
+    '- Published the Fieldnote roadmap and quarterly adoption metrics reviewed by all four teams.\n- Documented accessibility patterns for forms, tables, and dialogs with annotated examples.',
+    `- ${duplicate}`,
+  );
+  const result = compile(text);
+  assert.equal(result.ir.nodes.filter(node => node.text === duplicate).length, 1);
+  assert.equal(result.ir.nodes.some(node => node.type === 'project_item'), false);
 });

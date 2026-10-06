@@ -1,6 +1,6 @@
 # Human-only handoffs
 
-The following JobOS operations are human-only. They are **not MCP-attestable**, require a handoff to the trusted local CLI (`./bin/jobsss decide --data ${PLUGIN_DATA} --list`) — there is no JobOS CLI/TUI — and must never be reported as done by JobSSS:
+The following decision actions are human-only. They are **not MCP-attestable**, require a handoff to the trusted local CLI (`./bin/jobsss decide --data ${PLUGIN_DATA} --list`) — no separate legacy CLI/TUI is used — and must never be reported as done by JobSSS:
 
 - `approve_artifact`
 - `reject_artifact`

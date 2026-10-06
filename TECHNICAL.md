@@ -27,8 +27,8 @@ Six boundaries carry the whole design:
 5. **Human authority never travels through MCP.** `list_decision_handoffs` and
    `create_decision_handoff` create non-authoritative markers only; a human
    completes the decision on `./bin/jobsss decide`.
-6. **Companions are separate plugins, not internals.** [people-finder](https://github.com/OWNER/people-finder)
-   and [contact-brief](https://github.com/OWNER/contact-brief) are optional
+6. **Companions are separate plugins, not internals.** [people-finder](https://github.com/lpbangun/people-finder)
+   and [contact-brief](https://github.com/lpbangun/contact-brief) are optional
    plugins installed from the same pack. They own candidate discovery and contact
    evidence; their output reaches JobSSS only as host-supplied input to
    `record_contact_discovery` / `prepare_applications_batch`. The dependency never
@@ -59,7 +59,7 @@ flowchart LR
 | **Offline by default** | The entire core journey (doctor → start → profile → intake → score → pursue → pipeline → review) runs with no network, no API key, and no provider. Network is used only for optional public intake. |
 | **One data root** | All durable state lives under `PLUGIN_DATA`. Nothing is written into the plugin directory, and no user state leaks into the repository. |
 | **Restart-safe** | Versioned store with lossless migration from the legacy `store.json`, plus read-only restart readbacks (`get_resume`, `get_score`, `get_interview_prep`). |
-| **Readable state** | Canonical `store.json` plus JSON projections and a Markdown `audit.md` mirror so humans and agents can inspect state without a running service. |
+| **Readable state** | Canonical `store.json` plus JSON and Markdown mirrors in the default full mode. A new workspace can opt into compact mode to keep only canonical state and requested document exports; tool readbacks still work. |
 
 ### Profile, resume and proof
 
@@ -85,7 +85,7 @@ flowchart LR
 
 ### Fit scoring (deterministic, no model)
 
-`score_job` implements the frozen `jobos.fit-score.v1` contract with all seven
+`score_job` implements the stable `jobsss.fit-score.v1` contract with all seven
 weighted dimensions, evidence references, reasons, contradiction handling, and
 fail-closed eligibility:
 
@@ -111,7 +111,7 @@ floor.
 | Feature | What you get |
 | --- | --- |
 | **Tailored resume** | `tailor_resume` routes normalized, labelled, and ordinary Markdown profiles through one canonical document. `revise_resume` takes explicit claim IDs to suppress or prefer source-backed bullets and creates a separate draft. Legacy sources are migrated to a source-linked draft; the original resume stays in `PLUGIN_DATA`, and inferred original-line matches are marked as legacy projections for human review. Candidate identity, role/project ownership, selected achievements, and direct/adjacent/unsupported/unknown requirement coverage are inspectable. `contactEmail` chooses the application address; `locationNote` adds an explicitly verified relocation phrase. |
-| **Cover letter** | Built from the *selected* proofs (never an unselected one), using supported contributions — not copied posting requirements dressed up as candidate claims. |
+| **Cover letter** | `inspect_cover_letter_brief` gathers active proof, job requirements, recorded employer context, and candidate voice preferences. `draft_cover_letter` uses a natural first-person voice tailored to the role and employer, separates established accomplishments from a clearly framed future contribution, and never turns requirements into claimed experience. Optional voice samples guide style only, never facts. Export as editable DOCX or PDF. `revise_cover_letter` saves reviewed edits as separate revisions, preserved when materials are regenerated. |
 | **Resume PDF export and designs** | `list_resume_designs` exposes Navy Professional, Editorial Serif, and Quick Scan. Choose `style: "navy"`, `"editorial"`, or `"scan"` with `render_resume` or `tailor_resume`; `compare_resume_designs` generates all three from one canonical content revision, `list_resume_design_variants` reads them back, and `select_resume_design` stores the user's local preference. Selection does not attest that a resume was used or submitted. Each design has a separate PDF artifact and visual review. An installed Chrome or Edge prints local HTML; `doctor.resumeRenderer` reports detection, and a missing browser fails with `resume_renderer_unavailable`. Browser layout is measured at Letter printable width before printing; the PDF must be one searchable Letter page. `inspect_resume_qa` reads the stored result. Trusted visual review and content approval are separate decisions; approval blocks missing PDF QA or unverified cited proof points. No employer site is opened. |
 | **Other PDF export** | Cover letters and other materials retain the dependency-free native PDF renderer. Its Letter pages use 44pt margins and paginate long sources. |
 | **Reusable answers** | `save_answer` stores drafts from exact proof wording with explicit `sensitivity` (`public \| personal \| sensitive \| restricted`) and `reuseScope` (`global \| employer_specific \| never_auto_fill`). Invalid values are rejected with typed errors. No auto-fill, no send. |
@@ -162,9 +162,10 @@ floor.
 </details>
 
 <details>
-<summary><b>Profile, resume and proof</b> (6)</summary>
+<summary><b>Profile, resume and proof</b> (8)</summary>
 
-`create_profile`, `list_profiles`, `update_profile`, `add_proof_point`,
+`create_profile`, `list_profiles`, `update_profile`, `archive_profile`,
+`restore_profile`, `add_proof_point`,
 `list_resumes`, `get_resume`
 </details>
 
@@ -195,11 +196,12 @@ floor.
 </details>
 
 <details>
-<summary><b>Materials and answers</b> (13)</summary>
+<summary><b>Materials and answers</b> (15)</summary>
 
 `inspect_resume_requirements`, `tailor_resume`, `revise_resume`, `render_resume`,
 `inspect_resume_qa`, `list_resume_designs`, `compare_resume_designs`,
-`list_resume_design_variants`, `select_resume_design`, `draft_cover_letter`,
+`list_resume_design_variants`, `select_resume_design`,
+`inspect_cover_letter_brief`, `draft_cover_letter`, `revise_cover_letter`,
 `save_answer`, `list_answers`, `match_answers`
 </details>
 
@@ -229,7 +231,14 @@ floor.
 `preview_sync`
 </details>
 
-`47` is the entire advertised surface: `tools/list` is audited to contain no
+<details>
+<summary><b>Bounded preparation and contact evidence</b> (4)</summary>
+
+`prepare_applications_batch`, `record_contact_discovery`,
+`list_preparation_batches`, `list_contact_discoveries`
+</details>
+
+`53` is the entire advertised surface: `tools/list` is audited to contain no
 hidden or extra names, and no blocked name may appear there.
 
 ## Human-only authority
@@ -267,6 +276,24 @@ PLUGIN_DATA/
 │   └── audit.md                    human/agent-readable audit trail
 └── … job, document and profile payloads (including exported PDFs)
 ```
+
+This is the default **full** mode. To choose a smaller layout for a new data
+directory, run `./bin/jobsss start --data <dir> --compact` or call the MCP
+`start` tool with `{ "outputMode": "compact" }`. Compact mode automatically
+writes only `store.json` until a document is explicitly exported. User-staged
+intake files, if any, remain the user's files. It keeps profiles, jobs,
+searches, evidence, decisions, and audit history in that canonical store; the
+normal readback tools remain available. It omits automatic JSON and Markdown
+mirrors, including `application.md` packet links in batch results. Text and
+Markdown drafts remain available as tool responses when no resume PDF renderer
+is installed. A compact workspace retains its mode on restart; changing the
+mode of an existing workspace requires a separate migration.
+
+Cover letters default to editable DOCX in compact mode; full mode keeps its
+Markdown default. `draft_cover_letter` also accepts `format: "docx"` explicitly,
+and Markdown, text, and PDF formats remain available. Exported
+DOCX files, like PDFs, use content-addressed names so a reviewed version is
+not silently overwritten.
 
 - Durable state is created and migrated on `start`; a legacy `store.json`
   migrates losslessly with ids preserved and an audit trail.
@@ -415,18 +442,18 @@ reproducible per commit.
   title        = {JobSSS: a standalone Agent Plugin for local, evidence-grounded job-search workflows},
   author       = {{JobSSS contributors}},
   year         = {2026},
-  version      = {0.1.0},
+  version      = {0.1.1},
   license      = {MIT},
-  url          = {https://github.com/OWNER/jobsss},
-  note         = {Agent Plugins 1.0.0; 57 local MCP tools; frozen pass bar B1-B70; release v0.1.0}
+  url          = {https://github.com/lpbangun/jobsss},
+  note         = {Agent Plugins 1.0.0; 57 local MCP tools; frozen pass bar B1-B70; release v0.1.1}
 }
 ```
 
 Plain text:
 
 > JobSSS contributors. *JobSSS: a standalone Agent Plugin for local,
-> evidence-grounded job-search workflows.* v0.1.0, MIT, 2026.
-> Agent Plugins 1.0.0. Release `v0.1.0`.
+> evidence-grounded job-search workflows.* v0.1.1, MIT, 2026.
+> Agent Plugins 1.0.0. Release `v0.1.1`.
 
 Reproducing a claim: quote the commit, the tool name, the arguments, and the
 persisted readback (tool output or a file under `PLUGIN_DATA`). Anything a human
@@ -434,8 +461,8 @@ completed belongs to the human and is recorded with `actor: trusted_local`.
 
 ## Status and limitations
 
-- Pre-release `0.1.0`. The deterministic offline core, discovery/intake, scoring,
-  materials with the declared resume PDF adapter and native other-material PDFs, networking drafts, interview prep, review/authority
+- Pre-release `0.1.1`. The deterministic offline core, discovery/intake, scoring,
+  browser-rendered resume PDFs and native other-material PDFs, networking drafts, interview prep, review/authority
   split, persistence, and packaging are implemented and under a frozen,
   reviewer-owned acceptance bar.
 - `linux-x64` standalone is verified; `linux-arm64`, `darwin-x64`,
@@ -457,8 +484,6 @@ earlier MIT-licensed project; the attribution lives in [NOTICE](NOTICE).
 
 
 ## Install surface implementation notes
-
-The following reference preserves the host-loader and packaging details. Examples containing `OWNER` are historical publishing templates, not ready-to-run commands. For current user instructions, use [INSTALL.md](INSTALL.md).
 
 ## Instructions for an agent asked to install this
 
@@ -508,33 +533,34 @@ placeholders in `mcp.json`. The portable loader resolves these placeholders when
 loading the package and manages the plugin data location; a hand-wired duplicate
 can collide with the plugin's own server registration.
 
-### Runtime requirement: Node.js 22+ on the launcher's PATH
+### Runtime requirement: Node.js 22+ through PATH or `JOBSSS_NODE`
 
 Both portable package roots declare Node.js `>=22` in `package.json`. The
-launcher is a Node script (`#!/usr/bin/env node`), so the Hermes process itself
-must have Node.js 22 or newer on its `PATH`; an interactive shell's PATH change
-may not reach a desktop or service process. This metadata and guidance do not
-make the launcher Node-free and do not guarantee that an installer enforces the
-engine requirement.
+metadata declarations do not guarantee that an installer enforces this requirement.
+launcher needs a Node.js 22+ executable available to the Hermes service, either
+as `node` or `nodejs` on its `PATH`, or through `JOBSSS_NODE` set to the absolute
+path of a Node.js 22+ executable. An interactive shell's PATH change may not
+reach a desktop or service process. The override selects an installed Node
+runtime; it does not provide Node-free startup.
 
-If Node is missing from the service PATH, the launcher fails with this symptom
-(exit code 127, empty stdout):
+If neither source is available, the launcher reports:
 
 ```text
-/usr/bin/env: 'node': No such file or directory
+jobsss: Node.js 22 or newer is required, but this service could not find node or nodejs on PATH.
+jobsss: Set JOBSSS_NODE to an executable Node.js 22+ binary, or add node (or nodejs) to the service PATH.
 ```
 
-To diagnose the PATH inherited by a running Hermes service, inspect its
-`/proc/<pid>/environ` (substitute the Hermes serve-process PID):
+Set `JOBSSS_NODE` in the Hermes service environment or add `node`/`nodejs` to
+that service's PATH. To inspect the PATH inherited by a running Hermes service,
+read `/proc/<pid>/environ` (substitute the Hermes serve-process PID):
 
 ```bash
-tr '\0' '\n' < /proc/<pid>/environ | grep -E '^(PATH|HOME)='
+tr '\0' '\n' < /proc/<pid>/environ | grep -E '^(PATH|HOME|JOBSSS_NODE)='
 ```
 
-Make a Node.js 22+ executable available to that service PATH; configuring only
-an interactive terminal is insufficient. Node-free startup of the portable
-package, such as shipping verified per-platform SEA launchers, is a separate
-follow-up and is not provided by this metadata-and-documentation change.
+Node-free startup of the portable package, such as shipping verified
+per-platform SEA launchers, is a separate follow-up and is not provided by the
+current launcher metadata or `JOBSSS_NODE` override.
 
 ## How these surfaces stay honest
 

@@ -1,6 +1,61 @@
-#!/usr/bin/env node
+#!/bin/sh
+':' /*__JOBSSS_SHELL__ 2>/dev/null
+# The block above is a JavaScript comment when invoked as `node bin/jobsss`.
+# When launched directly by an agent host, /bin/sh checks its service runtime
+# before Node can fail silently through the old /usr/bin/env shebang.
+
+jobsss_hint='Set JOBSSS_NODE to an executable Node.js 22+ binary, or add node (or nodejs) to the service PATH.'
+jobsss_runtime=${JOBSSS_NODE:-}
+
+if [ -z "$jobsss_runtime" ]; then
+  jobsss_runtime=$(command -v node 2>/dev/null) || jobsss_runtime=
+  if [ -z "$jobsss_runtime" ]; then
+    jobsss_runtime=$(command -v nodejs 2>/dev/null) || jobsss_runtime=
+  fi
+  if [ -z "$jobsss_runtime" ]; then
+    printf '%s\n' 'jobsss: Node.js 22 or newer is required, but this service could not find node or nodejs on PATH.' "jobsss: $jobsss_hint" >&2
+    exit 127
+  fi
+elif [ ! -x "$jobsss_runtime" ] && ! command -v "$jobsss_runtime" >/dev/null 2>&1; then
+  printf 'jobsss: JOBSSS_NODE does not resolve to an executable: %s\n' "$jobsss_runtime" >&2
+  printf 'jobsss: %s\n' "$jobsss_hint" >&2
+  exit 127
+fi
+
+if ! jobsss_version=$("$jobsss_runtime" --version 2>/dev/null); then
+  printf 'jobsss: could not run the Node.js runtime selected as %s.\n' "$jobsss_runtime" >&2
+  printf 'jobsss: %s\n' "$jobsss_hint" >&2
+  exit 126
+fi
+
+case "$jobsss_version" in
+  v[0-9]*.*)
+    jobsss_major=${jobsss_version#v}
+    jobsss_major=${jobsss_major%%.*}
+    case "$jobsss_major" in
+      ''|*[!0-9]*) jobsss_major=invalid ;;
+    esac
+    ;;
+  *) jobsss_major=invalid ;;
+esac
+
+case "$jobsss_major" in
+  invalid)
+    printf 'jobsss: selected runtime returned an unrecognized Node.js version: %s\n' "$jobsss_version" >&2
+    printf 'jobsss: %s\n' "$jobsss_hint" >&2
+    exit 126
+    ;;
+  0|[1-9]|1[0-9]|20|21)
+    printf 'jobsss: Node.js 22 or newer is required; selected runtime reports %s.\n' "$jobsss_version" >&2
+    printf 'jobsss: %s\n' "$jobsss_hint" >&2
+    exit 1
+    ;;
+esac
+
+exec "$jobsss_runtime" "$0" "$@"
+*/
 // Bundled JobSSS launcher — resolves bundled src independent of cwd.
-// JobOS attribution: launch/transport framing inspired by JobOS src/mcp.js.
+// Third-party attribution is centralized in NOTICE and LICENSE.
 import { runCli } from '../src/cli.js';
 
 runCli(process.argv.slice(2));

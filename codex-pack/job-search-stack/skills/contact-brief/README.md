@@ -4,7 +4,7 @@ Portable, standalone evidence compiler and agent workflow for one professional c
 
 This remains a **single-person compiler**. A fixed list or multi-person Fiber run belongs in a separate host bridge: the host owns scheduling, bounded concurrency/spend, resumable journaling and raw provider records, then imports one normalized result per person. This package does not discover people, call Fiber, or send outreach.
 
-## Install locally
+## Local checkout setup
 
 Python 3.10+; one dependency, jsonschema. From this directory:
 
@@ -13,11 +13,11 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
-Use `.venv/bin/python` in place of `python3` below if needed. Windows: `.venv\Scripts\python.exe`. The compiler installs nothing into Hermes profiles or Jobsss; the optional Agent Plugin package below installs only through the host's own plugin command.
+Use `.venv/bin/python` in place of `python3` below if needed. Windows: `.venv\Scripts\python.exe`. The compiler installs nothing into Hermes profiles or Jobsss; the optional Agent Plugin package below installs only through the host's own plugin command. For an installed skill, follow the first-run section in SKILL.md: resolve TOOL_ROOT from the active skill path and put any virtual environment or outputs in an external writable RUN_DIR.
 
 ## Hermes Agent Plugin package
 
-The repository root is a portable **Agent Plugins v1** package, so a Hermes host can install and discover it without any Hermes-specific code path:
+The repository root is a portable **Agent Plugins v1** package that Hermes can validate and install through its plugin manager:
 
 - `plugin.json` — the Agent Plugins v1 manifest (`name`, `version`, `description`, `license`, `keywords`). No other top-level field is declared, because the portable reader ignores unknown fields.
 - `skills/contact-brief/SKILL.md` — the installable skill surface. Its body is byte-identical to [SKILL.md](SKILL.md); only the frontmatter differs, flattened into the string-only `metadata` map Agent Plugins v1 requires. An offline test enforces that equality, so the installed skill cannot drift from the canonical procedure.
@@ -34,7 +34,7 @@ hermes plugins validate . --json
 hermes plugins doctor . --ci
 ```
 
-State stays under the host-provided `${PLUGIN_DATA}`; the plugin directory itself is never written. The skill is resolvable in a new session as `contact-brief:contact-brief` through the host's skill surface. The offline packaging checks are `python3 -m unittest tests.test_plugin_package` (manifest, skill surface, route metadata, boundaries) and `python3 -m unittest tests.test_plugin_smoke` (real `hermes plugins validate`/`doctor` in a throwaway HOME; it skips, with that reason, when the CLI is absent). Installing the package grants no discovery, browser, social, messaging or sending capability: those routes do not exist here.
+The CLI has no persistent database and never writes into the installed package. Use an external writable run directory. The smoke test copies the package into a throwaway HERMES_HOME, runs Hermes validate/doctor/enable/list without network or provider calls, and confirms the enabled plugin record. This CLI-only check does not prove that a live model prompt received the skill. On the Hermes CLI checked for this release, hermes skills list does not enumerate portable Agent Plugin skills. The offline packaging checks are python3 -m unittest tests.test_plugin_package and python3 -m unittest tests.test_installed_skill; python3 -m unittest tests.test_plugin_smoke skips with a reason if Hermes CLI is absent. Installing the package grants no discovery, browser, social, messaging or sending capability.
 
 ## Codex Exa plugin route
 
@@ -129,4 +129,4 @@ Without `--smtp`, this is syntax/DNS checking, NOT mailbox verification. Even SM
 - `routes.json`: provider-route metadata, approval and boundary declarations checked by the offline packaging tests.
 - [Schemas](references/contact-brief.schema.json), [Exa plugin handoff](references/exa-plugin-result.md), [Fiber Agent handoff](references/fiber-agent-result.schema.json), [Jobsss handoff](references/jobsss.md), [verification](VERIFICATION.md).
 
-Not implemented: autonomous browser orchestration, direct MCP invocation from Python, automatic conversion of raw tool output without a host-normalized handoff, or Jobsss import. A bundled MCP server is also deliberately absent: the package registers a skill surface only, and the compiler is invoked through the host terminal. These remain agent/manual boundaries. The real optional AfterShip library was exercised on invalid syntax with no DNS, and DNS/SMTP outcomes were tested with mocks. No paid calls, external mailbox probes, native session tests, real contact mutation, sending, cron or profile installation were performed. Jobsss integration is documentation against inspected MCP source, not an exercised integration.
+Not implemented: autonomous browser orchestration, direct MCP invocation from Python, automatic conversion of raw tool output without a host-normalized handoff, or Jobsss import. A bundled MCP server is also deliberately absent: the package registers a skill surface only, and the compiler is invoked through the host terminal. These remain agent/manual boundaries. The real optional AfterShip library was exercised on invalid syntax with no DNS, and DNS/SMTP outcomes were tested with mocks. No paid calls, external mailbox probes, native session tests, real contact mutation, sending, cron, network install or production-profile change were performed. Jobsss integration is documentation against inspected MCP source, not an exercised integration.

@@ -1,14 +1,5 @@
-// Bundled JobSSS discovery module — standalone offline discovery helpers.
-// Attributed ports (JobOS remains MIT, see root LICENSE; never imported at runtime):
-//   - URL safety: JobOS src/discovery/http.js publicUrl() + isBlockedIp()
-//   - job text parsing + dedupe rules: JobOS src/jobs.js parseJob(), dedupeKey(),
-//     canMergeByKey(), importNormalized()
-//   - offline Greenhouse board normalization: JobOS src/discovery/adapters.js
-//     greenhouse.fetchJobs() + normalizedJob() (HTML-to-text without cheerio)
-//   - liveness: JobOS src/discovery/liveness.js classifyLiveness(),
-//     normalizeLiveness(), postingLivenessHandoff()
-//   - discovery run outputs: JobOS src/discovery.js runSavedSearch(),
-//     deriveDiscoveryStatus()
+// Bundled JobSSS discovery module — standalone discovery and intake helpers.
+// Attribution for adapted portions of this runtime is centralized in NOTICE.
 //
 // Wave 2 contract (see BENCHMARK.md B16/B19/B20):
 //   - job URL intake is http/https public-host only; file:/private/credentialed
@@ -26,10 +17,20 @@ import { id, now, hashText, dedupeKeyForJob, ensureDataDir } from './store.js';
 
 export const SUPPORTED_SAVED_SEARCH_ADAPTERS = Object.freeze(['greenhouse', 'ohshi']);
 export const DISCOVERY_OUTPUTS_VERSION = 2;
-export const LIVENESS_FRESH_MS = 86_400_000; // 24h, JobOS FRESH_WINDOW_MS
+export const LIVENESS_FRESH_MS = 86_400_000; // 24 hours
+export const POSTING_LIVENESS_CONTRACT = 'jobsss.posting-liveness.v1';
+export const LEGACY_POSTING_LIVENESS_CONTRACTS = Object.freeze(['jobos.posting-liveness.v1']);
+
+/** Return the current contract name for current and explicitly supported legacy payloads. */
+export function normalizePostingLivenessContract(value) {
+  const contract = String(value || '');
+  return contract === POSTING_LIVENESS_CONTRACT || LEGACY_POSTING_LIVENESS_CONTRACTS.includes(contract)
+    ? POSTING_LIVENESS_CONTRACT
+    : '';
+}
 
 // ---------------------------------------------------------------------------
-// URL safety (B16) — port of JobOS publicUrl() + isBlockedIp().
+// URL safety (B16).
 // ---------------------------------------------------------------------------
 
 function ipv4Blocked(address) {
@@ -308,8 +309,8 @@ function jobPostingJsonLd(html) {
 export async function fetchPublicJob(value, options = {}) {
   const resource = await fetchPublicResource(value, options);
   const posting = jobPostingJsonLd(resource.text);
-  const visible = stripHtml(resource.text).slice(0, 50_000);
-  const pageTitle = stripHtml(resource.text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '');
+  const visible = htmlToText(resource.text).slice(0, 50_000);
+  const pageTitle = htmlToText(resource.text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '');
   const greenhouseTitle = pageTitle.match(/^Job Application for (.+) at (.+)$/i);
   const location = posting?.jobLocation?.address;
   const locationText = typeof location === 'string' ? location : [location?.addressLocality, location?.addressRegion, location?.addressCountry].filter(Boolean).join(', ');
@@ -317,7 +318,7 @@ export async function fetchPublicJob(value, options = {}) {
     title: String(posting?.title || greenhouseTitle?.[1] || pageTitle || 'Imported URL role').trim(),
     company: String(posting?.hiringOrganization?.name || greenhouseTitle?.[2] || 'Unknown company').trim(),
     location: locationText || '',
-    description: stripHtml(posting?.description || '') || visible,
+    description: htmlToText(posting?.description || '') || visible,
     text: resource.text,
     url: resource.url,
     source: 'public_url',
@@ -332,8 +333,7 @@ export async function fetchPublicJob(value, options = {}) {
 }
 
 /**
- * Build the degraded "URL import recorded" job draft (JobOS importUrl fallback,
- * offline). Content is never fetched here; the parent decides whether a
+ * Build the degraded "URL import recorded" job draft (offline). Content is never fetched here; the parent decides whether a
  * fetchImpl is permitted. Never claims the posting was read successfully.
  */
 export function urlImportFallbackJob({ profileId, url, source = 'url', note = '' }) {
@@ -356,7 +356,7 @@ export function urlImportFallbackJob({ profileId, url, source = 'url', note = ''
 }
 
 // ---------------------------------------------------------------------------
-// Job text parsing (B16/B19) — port of JobOS jobs.js parseJob().
+// Job text parsing (B16/B19).
 // ---------------------------------------------------------------------------
 
 function companyName(value) {
@@ -470,7 +470,7 @@ export function parseJobText(text, fallback = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Normalization and dedupe (B19) — port of JobOS importNormalized() rules.
+// Normalization and dedupe (B19).
 // ---------------------------------------------------------------------------
 
 function textLikeUrl(value) {
@@ -480,7 +480,7 @@ function textLikeUrl(value) {
 
 /**
  * Find an existing profile-owned job that the incoming job should merge with.
- * JobOS-faithful: same public URL wins; otherwise same source+sourceId; for
+ * Stable merge identity: same public URL wins; otherwise same source+sourceId; for
  * text-like records (no public URL on either side) same sourceHash. A partner
  * record that has a public URL never collapses with a text/pseudo-URL record
  * that merely shares the dedupeKey.
@@ -569,7 +569,7 @@ export function importDiscoveredJob(store, { profileId, job, source, sourceId, r
 }
 
 // ---------------------------------------------------------------------------
-// Liveness (B19/B22) — port of JobOS discovery/liveness.js lite.
+// Liveness (B19/B22).
 // ---------------------------------------------------------------------------
 
 function evidence(kind, value) {
@@ -665,7 +665,7 @@ export function classifyLiveness(job = {}, opts = {}) {
 export function postingLivenessHandoff(liveness) {
   const value = liveness && typeof liveness === 'object' ? liveness : {};
   return {
-    contract: 'jobos.posting-liveness.v1',
+    contract: POSTING_LIVENESS_CONTRACT,
     jobId: String(value.jobId || ''),
     status: ['active', 'expired', 'uncertain'].includes(value.status) ? value.status : 'uncertain',
     checkedAt: value.checkedAt || null,
@@ -675,21 +675,65 @@ export function postingLivenessHandoff(liveness) {
 }
 
 // ---------------------------------------------------------------------------
-// Offline Greenhouse board adapter (B19/B20) — port of JobOS greenhouse.
+// Offline Greenhouse board adapter (B19/B20).
 // ---------------------------------------------------------------------------
 
-function stripHtml(value) {
-  return String(value || '')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/&amp;/gi, '&') // decoded last so &amp;nbsp; collapses correctly
-    .replace(/\s+/g, ' ')
+const HTML_ENTITIES = Object.freeze({
+  amp: '&', apos: "'", copy: '©', gt: '>', hellip: '…', ldquo: '“', lsquo: '‘', lt: '<', mdash: '—',
+  nbsp: ' ', ndash: '–', quot: '"', rdquo: '”', reg: '®', rsquo: '’', trade: '™',
+});
+
+function decodeHtmlEntities(value) {
+  let text = String(value || '');
+  // A few feeds encode markup inside JSON-LD and then encode the ampersands a
+  // second time. Decode a small, bounded number of layers before recognizing
+  // tags; malformed or unknown references remain literal text.
+  for (let pass = 0; pass < 3; pass += 1) {
+    const decoded = text.replace(/&(?:#x([\da-f]{1,8})|#(\d{1,8})|([a-z][a-z\d]+));/gi, (entity, hex, decimal, named) => {
+      if (hex || decimal) {
+        const point = Number.parseInt(hex || decimal, hex ? 16 : 10);
+        if (!Number.isInteger(point) || point <= 0 || point > 0x10ffff || (point >= 0xd800 && point <= 0xdfff)) return '\uFFFD';
+        try { return String.fromCodePoint(point); } catch { return '\uFFFD'; }
+      }
+      const key = named.toLowerCase();
+      return Object.hasOwn(HTML_ENTITIES, key) ? HTML_ENTITIES[key] : entity;
+    });
+    if (decoded === text) break;
+    text = decoded;
+  }
+  return text;
+}
+
+function htmlToText(value) {
+  let text = decodeHtmlEntities(value)
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    // A malformed feed may omit the closing tag. Discard from the opening tag
+    // through end-of-input so script/style contents cannot become job text.
+    .replace(/<script\b[^>]*>[\s\S]*?(?:<\/script\s*>|$)/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?(?:<\/style\s*>|$)/gi, ' ');
+
+  // Turn structural elements into line boundaries before removing remaining
+  // markup. This keeps headings and list items visible to the requirement
+  // parser while still tolerating arbitrary inline tags and nested wrappers.
+  text = text
+    .replace(/<br\b[^>]*\/?\s*>/gi, '\n')
+    .replace(/<hr\b[^>]*\/?\s*>/gi, '\n\n')
+    .replace(/<li\b[^>]*>/gi, '\n- ')
+    .replace(/<\/li\s*>/gi, '\n')
+    .replace(/<\/?(?:ul|ol)\b[^>]*>/gi, '\n')
+    .replace(/<h[1-6]\b[^>]*>/gi, '\n\n')
+    .replace(/<\/h[1-6]\s*>/gi, '\n\n')
+    .replace(/<(?:p|div|section|article|header|footer|address|blockquote|pre)\b[^>]*>/gi, '\n\n')
+    .replace(/<\/(?:p|div|section|article|header|footer|address|blockquote|pre)\s*>/gi, '\n\n')
+    .replace(/<\/?(?:tr|table|thead|tbody|tfoot)\b[^>]*>/gi, '\n')
+    .replace(/<\/?(?:td|th)\b[^>]*>/gi, '\t')
+    .replace(/<\/?[a-z][a-z\d:-]*(?:\s[^<>]*?)?\s*\/?>/gi, ' ');
+
+  return text
+    .replace(/\u00a0/g, ' ')
+    .replace(/[\t ]*\n[\t ]*/g, '\n')
+    .replace(/[\t ]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
@@ -784,7 +828,7 @@ export function resolveDiscoveryFixture(fixture, dataDir) {
 
 /**
  * Fetch and normalize jobs from an offline Greenhouse board fixture
- * (JobOS adapters.js greenhouse.fetchJobs + normalizedJob). Reads JSON only
+ * (public Greenhouse board jobs). Reads JSON only
  * from the PLUGIN_DATA-staged fixture path; no network, no API keys.
  */
 export function fetchGreenhouseOffline(config = {}, { dataDir, nowMs = Date.now() } = {}) {
@@ -811,7 +855,7 @@ function normalizeGreenhouseBoard(data, config = {}, nowMs = Date.now()) {
     company,
     jobs: rows.map(row => {
       const location = String(row.location?.name || row.location || '');
-      const description = stripHtml(row.content || row.description || '');
+      const description = htmlToText(row.content || row.description || '');
       const compensationText = metadataValue(row.metadata, ['salary', 'compensation', 'salary range', 'pay range', 'salary_range']);
       const workModelValue = row.workplace_type || row.work_model || metadataValue(row.metadata, ['workplace type', 'work model', 'remote']);
       const employmentTypeValue = row.employment_type || metadataValue(row.metadata, ['employment type', 'commitment']);
@@ -1133,7 +1177,7 @@ export function listSavedSearches(store, { profileId = null } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Discovery run execution (B19/B20) — port of JobOS runSavedSearch() outputs.
+// Discovery run execution (B19/B20).
 // ---------------------------------------------------------------------------
 
 export function deriveDiscoveryStatus({ counts = {}, errors = [] } = {}) {

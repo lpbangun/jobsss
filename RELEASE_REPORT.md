@@ -10,7 +10,15 @@ Current native artifact refresh (2026-09-07, separately authorized closure round
 
 ## Release summary
 
-JobSSS remains one portable Agent Plugin, one canonical skill, and one bundled MCP runtime. Authoritative product version **0.1.0** comes from `plugin.json` and agrees across real CLI help/version, doctor, MCP initialize/doctor, and generated `release-manifest.json`, including SEA execution.
+PR validation (2026-09-30, conversational tailoring): the required eleven-file suite, native evidence/remediation, conversational tailoring, cover-letter and portable-package tests completed with **88/89 passing**. The sole failure is the previously documented B52 assertion rejecting the metadata-only `package.json` already on the base. Install-surface and installed Codex-pack checks passed **5/5**. B67 reproduced the current evidence in two fresh processes with separate empty caches. JobSSS install pins and generated packages now include the conversational tailoring product commit.
+
+An independent temporary `hermes -p job-strategist` run exercised real portable-plugin MCP generation and preserved two authored letters through regeneration. Both native PDFs were visually inspected and searchable; DOCX paragraph/spacing XML and all six export hashes were checked. Hermes required its optional MCP SDK in the isolated runtime. Inline raw HTML passed to `import_job` remained unnormalized; structured text was used for the letter flow. This differs from the repaired `import_job_url` HTML extraction route. A remembered role thesis currently cannot be explicitly cleared for one matching job; host-level confirmation and job feedback remain important. All temporary Hermes state and outputs were removed.
+
+Earlier rollup validation (2026-09-30): the required eleven-file command and the native-evidence, packaging, identity, intake, resume, and cover-letter regressions passed together: **161/161**. Generated Agent Plugin and Codex pack checks passed, and the shipped Codex pack's MCP/contact-brief smoke test passed on Windows with its declared Python dependency in a temporary test directory. These are runtime/package checks, not a new authenticated agent-host journey.
+
+The broader sweep is not green. Eighteen audit/closure/composition failures reproduce on the unchanged `c160555` base; B52 rejects the metadata-only `package.json` already present on that base, and three captured-MCP PDF tests require a Linux browser absent on this host. Actual Chrome on Windows rendered both captured resume formats to one searchable page, and both PDFs were visually inspected. No identity, evidence, approval, or renderer gate was relaxed to mask these remaining checks.
+
+JobSSS remains one portable Agent Plugin, one canonical skill, and one bundled MCP runtime. Current authoritative product version **0.1.2** comes from `plugin.json` and agrees across real CLI help/version, doctor, MCP initialize/doctor, and generated `release-manifest.json`, including SEA execution.
 
 The release pipeline still uses the sole native implementation in `src/packaging.js` and checksum-pinned postject 1.0.0-alpha.6. No release was published and no custom injector was added.
 
@@ -18,13 +26,17 @@ The release pipeline still uses the sole native implementation in `src/packaging
 
 Complete evidence is recorded once:
 
+The 2026-09-30 release candidate is version 0.1.2. It addresses issues #15 and #26–#30 and adds voice-guided cover-letter preparation, preserved editorial revisions, and ordinary Word/PDF letter layout. Two fresh processes with separate empty external caches reproduced the canonical native evidence byte for byte (B67). Official inputs, injector, and validators remain pinned; cross-built targets remain unverified at runtime.
+
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `af593be8f1d0f7bd85ef5e52672705bfa0396230a24108a54637fb2a0c0ff6d9`
+- SHA-256: `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`
 - Exact reproduction command:
 
 ```bash
 JOBSSS_NATIVE_CACHE="$(mktemp -d)" ./bin/jobsss evidence --out "$(pwd)/evidence/native-validation.json"
 ```
+
+Current native artifact refresh (2026-09-24, profile recovery release candidate): two fresh processes with separate empty external caches emitted identical JSON at SHA-256 `6d24f991ff11a418b99ff9c057a11ea648b6759e5ca22c14400b00bec1f6e466` after the profile import/recovery runtime fixes and version 0.1.1 bump. Official input, injector, and validator pins are unchanged. This is local structural evidence; cross-built targets still need matching-host execution.
 
 Current native artifact refresh (2026-09-12, B67 consistency): the pinned evidence command was re-run on two fresh processes with separate empty caller-selected caches from the merged main tree, and both regenerations were byte-identical to each other and to the canonical artifact cited above. The previously committed bytes (`827416cdb222737f915576ff2e610e544d3765c832867adb6fd112dc7ec7ee78`) predated the RC-2–RC-6, Greenhouse-promotion and P1b–P3 integration merges, whose runtime source changes moved the SEA payload (payload length `407102` → `465906` bytes, with shifted Mach-O and PE layout offsets). Stale evidence therefore failed the B67 byte-identity comparison instead of being silently accepted. Official inputs, injector and validator pins are unchanged. This remains local build/test structural validation only — not publication, matching-host runtime proof, or a new reviewer verdict.
 
@@ -37,6 +49,9 @@ Current native artifact refresh (2026-09-21, Codex portability slice): the pinne
 Current native artifact refresh (2026-09-24, first-class resume slice): after the source-linked compiler, local Chrome/Edge resume adapter, and standalone bundle list changed, the pinned evidence command was run twice with separate empty external caches. The outputs were byte-identical at the current SHA-256 cited above. The local browser is a declared runtime prerequisite only for resume PDF export; no browser binary is bundled. Native format evidence remains structural and does not attest browser availability on other hosts.
 
 Current native artifact refresh (2026-09-25, resume-design slice): two fresh processes with separate empty external caches produced byte-identical evidence after the three resume designs and local comparison/selection APIs changed the runtime. The current SHA-256 is cited above. PDF layout, page size, and extracted text were checked separately through local browser rendering; native-format evidence does not attest browser availability on other hosts.
+
+Current native artifact refresh (2026-09-25, PR #24 main integration): after merging the 0.1.1 release changes with the resume-design branch, two fresh processes with separate empty external caches produced byte-identical evidence at the current SHA-256 cited above. The merged product pin and generated install surfaces were rebuilt separately.
+Current native artifact refresh (2026-09-27, compact-output and cover-letter DOCX slice): two fresh processes with separate empty external caches produced byte-identical evidence at the SHA-256 cited above. This validates the native bundle structure after the runtime change; DOCX package parsing and applicant text were checked separately.
 
 The command uses a caller-selected external empty cache, downloads only locked inputs, verifies checksums before validation, avoids user configuration/data and prior generated files, and emits deterministic path- and timestamp-free JSON. Frozen B67 requires two fresh processes with empty caches to produce byte-identical output matching the repository artifact.
 
@@ -63,7 +78,7 @@ Exact PE resource preservation result: 9 original type/name/language/size/SHA-25
 
 ## Generic restricted-PATH MCP evidence
 
-The current-host standalone release is built and exercised with Node and JobOS absent from PATH. Generic stdio MCP initialize, tools/list, doctor/start, journey behavior, and restart persistence pass. The generated manifest reports version 0.1.0.
+The current-host standalone release is built and exercised without Node or an external product runtime on PATH. Generic stdio MCP initialize, tools/list, doctor/start, journey behavior, and restart persistence pass.
 
 ## Client compatibility matrix
 
@@ -72,10 +87,10 @@ The current-host standalone release is built and exercised with Node and JobOS a
 | Pi | unverified |
 | OMP | unverified |
 | Codex aggregate pack | verified on Windows (fresh marketplace install, skill activation, MCP handshake and state-changing workflow) |
-| Hermes | verified |
-| Claude | verified |
+| Hermes | unverified (2026-09-30 isolated connectivity probe timed out) |
+| Claude | unverified (executable absent on this host) |
 
-Adapters remain thin and canonical assets remain authoritative. These retained Hermes/Claude labels describe historical MCP connectivity probes only, not canonical skill loading, a state-changing agent-host journey, or native Agent Plugins package loading. Current version availability observations are recorded separately in `compat/matrix.json` and do not upgrade verification.
+Adapters remain thin and canonical assets remain authoritative. Historical Hermes/Claude connectivity and Windows Codex marketplace results do not verify this changed runtime. Current observations are recorded separately in `compat/matrix.json`; pack installation and live connectivity are separate checks.
 
 ## Human-authority behavior
 
@@ -108,4 +123,6 @@ Result: `# tests 72`, `# pass 72`, `# fail 0`, exit `0`.
 Darwin x64, Darwin arm64, Windows x64, and Linux arm64 remain unverified as matching-host standalone-binary targets. Structural validation does not upgrade those labels. Windows standalone binaries require matching-host re-signing after unsigned staging; macOS requires matching-host signing/execution. The generated Codex aggregate pack is separately verified as a source/plugin installation on Windows; Pi and OMP remain unverified client integrations. Downloaded inputs, validator environments, caches, and release binaries are not committed.
 
 
-Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated user workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `af593be8f1d0f7bd85ef5e52672705bfa0396230a24108a54637fb2a0c0ff6d9`. Official Node inputs, injector, and independent validator pins are unchanged. This refresh records local structural build evidence; it does not establish a new host integration verdict or publish a release.
+Current native artifact refresh (2026-09-30, workspace initialization): after adding the dedicated workspace command and registering its module in the SEA bundle, two fresh processes with separate empty external caches produced byte-identical evidence at SHA-256 `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`. Official Node inputs, injector, and independent validator pins are unchanged. This is local structural evidence, not a new host integration verdict.
+
+Cover-letter requirements policy refresh (2026-10-01): structural native-format evidence was regenerated after integrating the policy with the workspace setup runtime. The current SHA-256 is `f25d0997bd8e91af3cfea86557a6e37053d6fbec6cf317994bff4e96a65aeefc`. Cross-built targets remain unverified on matching hosts. Behavior and regression results are recorded in docs/COVER_LETTER_POLICY.md.

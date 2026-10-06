@@ -21,11 +21,18 @@ function supportedAchievement(value) {
 
 const DATED_ROLE_LINE = /^(?:19|20)\d{2}(?:-\d{2})?\s*(?:through|to|until|[–—-])\s*(?:(?:19|20)\d{2}(?:-\d{2})?|present)\s*[:|]|^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}\s*(?:through|to|[–—-])\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|present)\s*[:|]/i;
 const MONTH_DATE = /\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}\b/i;
+const PREFERENCE_LINE = /^(?:travel(?: preference)?|hybrid(?: preference)?|remote(?: work)?|remote only|on[ -]?site|work model|work arrangement|schedule|availability|location preference)\s*:/i;
+
+function isPreferenceLine(value) {
+  const text = String(value || '').replace(/^[-*•]\s*/, '').replace(/^\[[A-Z][A-Z0-9_-]*\]\s*/i, '').trim();
+  return PREFERENCE_LINE.test(text) || /^(?:willing|available|open) to travel\b/i.test(text)
+    || /^hybrid(?: work| schedule)?\s+(?:preferred|preference|only|available)\b/i.test(text);
+}
 
 function headingKind(line) {
-  const t = clean(line);
+  const t = clean(line).replace(/\s*\[[^\]]+\]\s*$/, '').trim();
   if (/^(experience|employment)\b/i.test(t)) return 'experience';
-  if (/^selected projects\b/i.test(t)) return 'projects';
+  if (/^(?:(?:key|selected)\s+)?projects(?:\s+(?:and|&)\s+portfolio)?$|^project portfolio$/i.test(t)) return 'projects';
   if (/^education\b/i.test(t)) return 'education';
   if (/^(?:core\s+)?skills\b/i.test(t)) return 'skills';
   if (/^(preferences|boundaries|audit|additional notes|proof verification|internal)\b/i.test(t)) return 'internal';
@@ -191,8 +198,8 @@ export function parseResumeSource(text) {
         current.title = clean(raw);
         continue;
       }
-      if (current) current.bullets.push(supportedAchievement(clean(raw)));
-      else if (raw) {
+      if (current && !isPreferenceLine(raw)) current.bullets.push(supportedAchievement(clean(raw)));
+      else if (raw && !isPreferenceLine(raw)) {
         current = pushRole(doc.experience, '');
         current.bullets.push(supportedAchievement(clean(raw)));
       }
@@ -211,9 +218,28 @@ export function parseResumeSource(text) {
         current.dates = meta.dates;
         continue;
       }
-      if (current) {
-        const text = supportedAchievement(clean(raw));
+      if (!current) {
+        // Older Markdown sources often use an unmarked project title followed
+        // by a free-form descriptive paragraph. Keep both instead of dropping
+        // the entire section when it lacks a `###` marker.
+        current = pushRole(doc.projects, clean(raw));
+        current.company = clean(raw);
+      } else if (/^[-*•]\s/.test(raw)) {
+        const text = supportedAchievement(raw);
         if (text) current.text = current.text ? `${current.text} ${text}` : text;
+      } else if (isMeta(raw) || (!current.text && /^[A-Z][^.!?]{1,90}$/.test(clean(raw))
+          && clean(nextLine) && !/^[a-z]/.test(clean(nextLine)))) {
+        const meta = parseMeta(raw);
+        if (!current.title && (meta.dates || isMeta(raw))) {
+          current.title = meta.title;
+          current.dates = meta.dates;
+        } else {
+          current = pushRole(doc.projects, clean(raw));
+          current.company = clean(raw);
+        }
+      } else {
+        const text = supportedAchievement(clean(raw));
+        if (text && !isPreferenceLine(text)) current.text = current.text ? `${current.text} ${text}` : text;
       }
       continue;
     }
@@ -285,44 +311,12 @@ export function selectAchievements(doc, selected = [], job = null) {
       pool.push({ owner: role, kind: 'experience', text: bullet, rank: rankText(bullet, selected, posting, job) });
     }
   }
-  pool.sort((a, b) => b.rank - a.rank);
-  const chosen = [];
-  // Keep a compact, requirement-sensitive evidence set. The extra context
-  // slot preserves role coverage without making every target emit the full
-  // source bullet pool when the selected proof set is smaller.
-  const selectionLimit = Math.min(6, Math.max(4, selected.length + 1));
-  for (const item of pool) {
-    if (item.rank > 0 && chosen.length < selectionLimit) chosen.push(item);
-  }
-  if (chosen.length < 4) {
-    for (const item of pool) {
-      if (chosen.includes(item)) continue;
-      chosen.push(item);
-      if (chosen.length >= 4) break;
-    }
-  }
-  // Preserve role coverage inside the same compact evidence budget. If a
-  // high-scoring set omits a dated role, replace the lowest-scoring duplicate
-  // owner rather than appending an unbounded fallback bullet later.
-  const ownerCount = owner => chosen.filter(item => item.owner === owner).length;
-  for (const role of doc.experience) {
-    if (chosen.some(item => item.owner === role)) continue;
-    const roleCandidates = pool.filter(item => item.owner === role && !chosen.includes(item));
-    const candidate = roleCandidates.find(item => item.rank >= 60)
-      || roleCandidates[0];
-    if (!candidate) continue;
-    const replaceable = [...chosen]
-      .filter(item => ownerCount(item.owner) > 1)
-      .sort((a, b) => a.rank - b.rank)[0]
-      || [...chosen].sort((a, b) => a.rank - b.rank)[0];
-    if (replaceable) chosen.splice(chosen.indexOf(replaceable), 1);
-    chosen.push(candidate);
-  }
+  // Retain the whole grounded source pool here. The canonical compiler owns
+  // relevance and one-page fitting, after it has seen the complete profile.
+  const chosen = pool;
   const byOwner = new Map();
   for (const item of chosen) {
     const list = byOwner.get(item.owner) || [];
-    const cap = item.owner === doc.experience[0] ? 3 : 2;
-    if (list.length >= cap) continue;
     list.push(item);
     byOwner.set(item.owner, list);
   }
@@ -357,7 +351,7 @@ export function composeResume(doc, selected = [], options = {}) {
     const meta = [role.title, role.dates].filter(Boolean).join(' | ');
     if (meta) lines.push(meta);
     const picked = byOwner.get(role) || [];
-    const bullets = picked.length ? picked.map(item => item.text) : role.bullets.slice(0, 1);
+    const bullets = picked.length ? picked.map(item => item.text) : role.bullets;
     for (const bullet of bullets) lines.push(`- ${bullet}`);
     lines.push('');
   }
@@ -404,7 +398,7 @@ export function resumeBlocks(doc, selected, options = {}) {
     const meta = [role.title, role.dates].filter(Boolean).join(' | ');
     if (meta) blocks.push({ type: 'meta', text: meta, keep: true });
     const picked = byOwner.get(role) || [];
-    const bullets = picked.length ? picked.map(item => item.text) : role.bullets.slice(0, 1);
+    const bullets = picked.length ? picked.map(item => item.text) : role.bullets;
     bullets.forEach((bullet, index) => blocks.push({ type: 'bullet', text: bullet, keep: index === 0 }));
   }
   if (doc.projects.length) {

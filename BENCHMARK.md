@@ -10,7 +10,7 @@ Every check must pass. Do not delete, rewrite, or weaken a check to look green.
 
 JobSSS is a self-contained Agent Plugin with a bundled runtime. Runtime
 execution must not resolve or require a JobOS executable, installation,
-source tree, or files. JobOS at `/tmp/job-app` is a
+source tree, or files. JobOS at `/home/logani/projects/Job App` is a
 read-only reference for attributed ports and remains unmodified.
 
 This lock supersedes the 2026-08-24 JobOS-on-PATH foundation bar. B1–B4
@@ -119,16 +119,16 @@ wholesale; attributed ports are allowed):
   `https://agent-plugins.org/schemas/1.0.0/mcp.schema.json`
 - Agent Skills specification
   `https://agentskills.io/specification`
-- JobOS `/tmp/job-app/src/mcp.js`
-- JobOS `/tmp/job-app/src/domain-tools.js`
-- JobOS `/tmp/job-app/src/capabilities.js`
-- JobOS `/tmp/job-app/src/db.js`
-- JobOS `/tmp/job-app/src/profiles.js`
-- JobOS `/tmp/job-app/src/jobs.js`
-- JobOS `/tmp/job-app/src/scoring.js`
-- JobOS `/tmp/job-app/src/workflows.js`
-- JobOS `/tmp/job-app/.agents/skills/jobos/SKILL.md`
-- JobOS `/tmp/job-app/LICENSE` (MIT)
+- JobOS `/home/logani/projects/Job App/src/mcp.js`
+- JobOS `/home/logani/projects/Job App/src/domain-tools.js`
+- JobOS `/home/logani/projects/Job App/src/capabilities.js`
+- JobOS `/home/logani/projects/Job App/src/db.js`
+- JobOS `/home/logani/projects/Job App/src/profiles.js`
+- JobOS `/home/logani/projects/Job App/src/jobs.js`
+- JobOS `/home/logani/projects/Job App/src/scoring.js`
+- JobOS `/home/logani/projects/Job App/src/workflows.js`
+- JobOS `/home/logani/projects/Job App/.agents/skills/jobos/SKILL.md`
+- JobOS `/home/logani/projects/Job App/LICENSE` (MIT)
 - Node.js Single Executable Applications (v22.22.3)
   `https://nodejs.org/docs/v22.22.3/api/single-executable-applications.html`
 - Node-supported SEA injection tool postject 1.0.0-alpha.6
@@ -138,7 +138,7 @@ wholesale; attributed ports are allowed):
   `https://nodejs.org/dist/v22.22.3/SHASUMS256.txt`
 
 Frozen plugin root: the JobSSS repository root
-`<jobsss-root>`.
+`/home/logani/projects/jobsss`.
 
 Required portable layout:
 
@@ -161,7 +161,7 @@ node -v   # precondition: v22 or newer; not a scored check
 ```
 
 Run every scored command from the repository root. Do not read or write real
-JobOS user data (`~/.jobos`, `/tmp/job-app/.jobos`, or any
+JobOS user data (`~/.jobos`, `/home/logani/projects/Job App/.jobos`, or any
 existing `jobos-workspace/`). Isolated subprocesses must use a fresh
 temporary directory via `PLUGIN_DATA` / `--data`.
 
@@ -319,7 +319,7 @@ workaround and not a four-file hash defect. Focused command:
 
 exit `1`, `# tests 1` `# pass 0` `# fail 1`, `duration_ms 2976.112161`.
 First assertion: `bin/jobsss` and both `release-manifest.json` copies
-contain `<jobsss-root>`, `$HOME/.hermes/node/bin/node`,
+contain `/home/logani/projects/jobsss`, `/home/logani/.hermes/node/bin/node`,
 `.tmp/jobsss-productization`, output `--out` paths, and `tests/fixtures`.
 Independent helper probe against `out-a`/`out-b` also failed complete-tree
 determinism (manifest SHA-256
@@ -612,7 +612,7 @@ under `PLUGIN_DATA` and (2) the frozen Gate 0 fixtures
 `/etc/passwd`, `$HOME`, temp files outside `PLUGIN_DATA`, `file:` URLs, and
 JobOS user-state trees are forbidden.
 
-Fit scores must use contract `jobos.fit-score.v1` in `deterministic-degraded`
+Fit scores must use contract `jobsss.fit-score.v1` in `deterministic-degraded`
 mode without API keys, with dimensions and weights:
 `roleFit` 28, `domainFit` 18, `seniority` 14, `locationWorkModel` 12,
 `compensation` 8, `missionInterest` 14, `networkAccess` 6.
@@ -705,7 +705,7 @@ language is handoff-only.
 ### B8 — Self-contained bundled runtime, no JobOS dependency
 
 `bin/jobsss` and `src/` exist inside the plugin root and are not symlinks.
-The shipped runtime must not import `/tmp/job-app`, spawn
+The shipped runtime must not import `/home/logani/projects/Job App`, spawn
 `jobos`, or require JobOS files. Shipping `src/` requires a root `LICENSE`
 with an MIT notice; if the code mentions JobOS, the notice must attribute
 JobOS. This is one bundled runtime, not a second JobOS TUI/browser/scheduler
@@ -731,7 +731,7 @@ frozen blocked name. Do not read or write real user JobOS data.
 After `doctor` and `start`, durable files exist under the temporary
 `PLUGIN_DATA` directory. A new MCP process against the same directory still
 works. No user state is written into the plugin root, `~/.jobos`,
-`JOBOS_HOME`, `/tmp/job-app/.jobos`, or
+`JOBOS_HOME`, `/home/logani/projects/Job App/.jobos`, or
 `jobos-workspace/`.
 
 ### B12 — Full standalone doctor-to-review journey
@@ -809,7 +809,7 @@ every frozen extended MCP tool. Inline `import_job` text deduplicates to
 one job id. `create_saved_search` with adapter `greenhouse` and a fixture
 copied under `PLUGIN_DATA` plus `daily_discovery` / `search_jobs` must
 return discovered jobs without API keys. `score_job` returns
-`jobos.fit-score.v1` in `deterministic-degraded` mode with all seven
+`jobsss.fit-score.v1` in `deterministic-degraded` mode with all seven
 weighted dimensions (`roleFit` 28, `domainFit` 18, `seniority` 14,
 `locationWorkModel` 12, `compensation` 8, `missionInterest` 14,
 `networkAccess` 6) and a JobOS `scoreStatus`.
@@ -1838,7 +1838,7 @@ ed6d48f07219e6b8a57558e38af3b5c705d7727ac012cda239b463e1f4777fb0  tests/jobsss-n
   zero JobSSS activity, so the whole-directory mtime assertion cannot pass
   regardless of probe isolation. Independent evidence before this
   correction: frozen command `# tests 43` `# pass 42` `# fail 1`, exit `1`,
-  assertion `real client state changed: $HOME/.hermes` with size
+  assertion `real client state changed: /home/logani/.hermes` with size
   unchanged at 4096; passive control 3/3 intervals changed `~/.hermes`
   mtime with no JobSSS; `strace -f` of `./bin/jobsss compat-probe --client
   hermes` recorded 0 write-mode opens on real `~/.hermes`, 0 `shallow.lock`
@@ -1857,13 +1857,13 @@ ed6d48f07219e6b8a57558e38af3b5c705d7727ac012cda239b463e1f4777fb0  tests/jobsss-n
   Reason: genuine documented benchmark omission, not missing product
   behavior to be papered over. Default-agent final-artifact inspection
   found `.tmp/jobsss-productization/out-a/current-host/bin/jobsss` contains
-  `<jobsss-root>` (12 printable hits) and `tests/fixtures`
+  `/home/logani/projects/jobsss` (12 printable hits) and `tests/fixtures`
   source-checkout strings (`FROZEN_FIXTURES` realpath of
   `tests/fixtures/profile-resume.md` and `tests/fixtures/job-posting.md`,
-  plus `__srcDir: "<jobsss-root>/src"` and embedded
+  plus `__srcDir: "/home/logani/projects/jobsss/src"` and embedded
   `sea-entry.cjs` scratch path). Both `release-manifest.json` copies
   (output root and current-host tree) contain absolute workspace, `--out`,
-  Node binary (`$HOME/.hermes/node/bin/node`), and scratch
+  Node binary (`/home/logani/.hermes/node/bin/node`), and scratch
   `entryPath` values. Repeated-manifest SHA-256 differs
   (`56b49a1832d8e46aa132abb55033322dba6c3570f0ae2829baf216360ec44497` vs
   `25a71a248b2b6eaf58cb59cbf3e6e78467da3f218a5cafd558babffa801d108d`)
@@ -1880,7 +1880,7 @@ ed6d48f07219e6b8a57558e38af3b5c705d7727ac012cda239b463e1f4777fb0  tests/jobsss-n
   tests/jobsss-release.test.mjs` exit `1`, `# tests 1` `# pass 0`
   `# fail 1`, `duration_ms 2976.112161`, assertion `no release file or
   printable binary string may contain build-user/home/workspace/source/scratch/output paths`
-  on `current-host/bin/jobsss` (`<jobsss-root>`,
+  on `current-host/bin/jobsss` (`/home/logani/projects/jobsss`,
   `tests/fixtures`, `.tmp/jobsss-productization`) and both manifest
   copies (absolute `--out` and `entryPath`). Change: preserved B1–B29,
   B31–B41, every existing B30 assertion (including four-file identity),

@@ -417,7 +417,7 @@
     "no edits to BENCHMARK.md or tests/jobsss-*.test.mjs"
   ],
   "notes": [
-    "Files land at the paths listed above, mirrored under <evidence-root>/e0-codevisor-authored/ until the conductor copies them into the repo.",
+    "Files land at the paths listed above, mirrored under /home/logani/oprun-evidence/e0-codevisor-authored/ until the conductor copies them into the repo.",
     "Run node evaluation/freeze-files.mjs --write once the package is in place, then --verify in the release gate.",
     "harnessDefects entries are recorded rather than hidden: no check scores an assertion listed there."
   ]

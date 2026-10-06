@@ -1,15 +1,11 @@
 // Bundled JobSSS relationships module — profile-owned network and interview
 // helpers for the standalone journey.
 //
-// Attributed ports (read-only JobOS references, reimplemented standalone; JobOS
-// is never imported at runtime):
-//   - warm-path planning and contact selection from JobOS src/research/contacts.js
-//     (createOutreachPlan, contact evidence tiers) and warmth tiers from
-//     src/research/network.js (hot <= 30d, warm <= 90d, cool <= 180d).
-//   - outreach drafts must never send: JobOS keeps sending human-only
-//     (mark_outreach_sent is not agent-eligible); every record here is a
-//     local draft with no external action.
-//   - interview story/prep contracts from JobOS src/interview.js:
+// Third-party provenance is centralized in NOTICE and LICENSE.
+//   - warm-path planning and contact evidence tiers use bounded recency
+//     windows (hot <= 30d, warm <= 90d, cool <= 180d).
+//   - every outreach record is a local draft with no external action.
+//   - interview story/preparation contracts:
 //     INTERVIEW_STORY_STATES ('draft_needs_verification', 'verified', 'retired'),
 //     INTERVIEW_STORY_CONTENT_FIELDS (title, situation, task, action, result,
 //     reflection), INTERVIEW_AUDIENCES, INTERVIEW_COVERAGE_STATUSES
@@ -859,8 +855,8 @@ function storyTextForTags(story) {
 }
 
 // Story state machine: drafts always begin needing human verification; there is
-// no MCP attestation surface for verification (JobOS verify_interview_story is
-// human-only).
+// no MCP attestation surface for interview story verification, which is
+// human-only.
 function makeInterviewStory(profileId, args) {
   const title = field(args.title);
   const situation = field(args.situation);

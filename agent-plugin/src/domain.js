@@ -1,13 +1,11 @@
-// Domain handlers for the standalone JobSSS workflow.
-// Attributed ports: JobOS profiles/jobs/discovery/scoring/lifecycle/artifacts,
-// networking, and interview contracts, reimplemented over the bundled JSON
-// store. JobOS is MIT licensed (see root LICENSE) and is never loaded at runtime.
+import { coverLetterDecision } from './cover-letter-policy.js';
+// Domain handlers for the standalone JobSSS workflow over the bundled JSON store.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   slug, id, now, loadStore, commitStore, hashText, dedupeKeyForJob, tokenize,
-  ensureDataDir, STORE_SCHEMA_VERSION, activeProofIdsForStore, storeSchemaVersionOnDisk,
+  ensureDataDir, STORE_SCHEMA_VERSION, activeProofIdsForStore, storeSchemaVersionOnDisk, isValidStoreId,
 } from './store.js';
 import { localScore } from './scoring.js';
 import {
@@ -21,7 +19,7 @@ import {
   listTasks as tasksForProfile, updateTask as updateLocalTask,
   tailorResume as tailorLocal, compareResumeDesigns as compareResumeDesignsLocal,
   selectResumeDesign as selectResumeDesignLocal, listResumeDesignVariants as listResumeDesignVariantsLocal,
-  draftCoverLetter as coverLocal,
+  draftCoverLetter as coverLocal, reviseCoverLetter as reviseCoverLocal,
   listReviewArtifacts, addAnswer, listAnswers, matchAnswers, previewSync as syncPreview,
 } from './workflows.js';
 import {
@@ -33,6 +31,9 @@ import { PRODUCT_VERSION } from './version.js';
 import { detectResumeRenderer, listResumeDesigns as resumeDesignCatalog } from './resume-browser.js';
 import { postingRequirements } from './resume-compiler.js';
 import { unansweredRequiredFor } from './checklist.js';
+import { buildCoverLetterBrief, isCoverLetterEvidence } from './cover-letter-brief.js';
+
+import { normalizeTailoringContext, tailoringContext } from './tailoring-context.js';
 
 export { unansweredRequiredFor };
 
@@ -402,7 +403,7 @@ function defaultPreferences(input = {}, resumeText = '') {
   // stay empty and explicit caller values always win.
   const derivedRoleFamilies = Array.isArray(supplied.targetRoleFamilies) ? supplied.targetRoleFamilies : roleFamiliesFromResume(resumeText);
   const derivedSkills = Array.isArray(supplied.skills) ? supplied.skills : skillsFromResume(resumeText);
-  return {
+  const result = {
     targetRoleFamilies: derivedRoleFamilies,
     industries: Array.isArray(supplied.industries) ? supplied.industries : [],
     companyStages: Array.isArray(supplied.companyStages) ? supplied.companyStages : [],
@@ -417,6 +418,53 @@ function defaultPreferences(input = {}, resumeText = '') {
     communicationStyle: String(supplied.communicationStyle || 'concise, warm, evidence-grounded'),
     searchStrategy: String(supplied.searchStrategy || 'focused'),
   };
+  if (Object.prototype.hasOwnProperty.call(supplied, 'coverLetterVoice') && supplied.coverLetterVoice !== null) {
+    result.coverLetterVoice = normalizeCoverLetterVoice(supplied.coverLetterVoice);
+  }
+  return result;
+}
+
+function normalizeCoverLetterVoice(value) {
+  const invalid = message => { throw error('invalid_cover_letter_voice', message); };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid('coverLetterVoice must be an object or null.');
+  const allowed = new Set(['tone', 'style', 'samples']);
+  for (const key of Object.keys(value)) if (!allowed.has(key)) invalid(`Unknown coverLetterVoice field: ${key}`);
+  const voice = {};
+  for (const field of ['tone', 'style']) {
+    if (value[field] === undefined) continue;
+    if (typeof value[field] !== 'string') invalid(`coverLetterVoice.${field} must be a string.`);
+    const normalized = value[field].trim();
+    if (!normalized || normalized.length > 120 || /[\u0000-\u001f\u007f]/u.test(normalized)) {
+      invalid(`coverLetterVoice.${field} must contain 1–120 printable characters.`);
+    }
+    voice[field] = normalized;
+  }
+  const samples = value.samples === undefined ? [] : value.samples;
+  if (!Array.isArray(samples) || samples.length > 3) invalid('coverLetterVoice.samples must contain at most 3 writing samples.');
+  let totalChars = 0;
+  voice.samples = samples.map((sample, index) => {
+    if (!sample || typeof sample !== 'object' || Array.isArray(sample)) invalid(`coverLetterVoice.samples[${index}] must be an object.`);
+    for (const key of Object.keys(sample)) if (!['label', 'text'].includes(key)) invalid(`Unknown coverLetterVoice.samples[${index}] field: ${key}`);
+    if (typeof sample.text !== 'string') invalid(`coverLetterVoice.samples[${index}].text is required.`);
+    const text = sample.text.replace(/\r\n?/g, '\n').trim();
+    if (!text || text.length > 2000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(text)) {
+      invalid(`coverLetterVoice.samples[${index}].text must contain 1–2,000 printable characters.`);
+    }
+    totalChars += text.length;
+    const normalized = { text };
+    if (sample.label !== undefined) {
+      if (typeof sample.label !== 'string') invalid(`coverLetterVoice.samples[${index}].label must be a string.`);
+      const label = sample.label.trim();
+      if (!label || label.length > 80 || /[\u0000-\u001f\u007f]/u.test(label)) {
+        invalid(`coverLetterVoice.samples[${index}].label must contain 1–80 printable characters.`);
+      }
+      normalized.label = label;
+    }
+    return normalized;
+  });
+  if (totalChars > 5000) invalid('Combined coverLetterVoice sample text must not exceed 5,000 characters.');
+  if (!voice.tone && !voice.style && voice.samples.length === 0) invalid('coverLetterVoice must include tone, style, or at least one writing sample.');
+  return voice;
 }
 
 function extractProofPoints(profileId, resumeText) {
@@ -544,47 +592,308 @@ function resolveCollisionSafeProfileId(store, name) {
   return candidate;
 }
 
-export function doctor(dataDir) {
-  const abs = ensureDataDir(dataDir);
-  let writable = true;
-  try { fs.accessSync(abs, fs.constants.R_OK | fs.constants.W_OK); } catch { writable = false; }
-  // Diagnose corrupt canonical state without modifying it: invalid JSON or
-  // an invalid store shape reports non-ok accurately, while a healthy empty
-  // installation (no store yet) still diagnoses normally.
+const DOCTOR_SCAN_LIMITS = Object.freeze({ roots: 8, depth: 4, entries: 1500, candidates: 100, storeBytes: 2 * 1024 * 1024 });
+const INITIALIZATION_WINDOW_MS = 60 * 1000;
+const STORE_ENTITY_MAPS = Object.freeze([
+  'profiles', 'resumes', 'proofPoints', 'jobs', 'scores', 'applications', 'artifacts', 'searches',
+  'tasks', 'answers', 'contacts', 'research', 'outreachPlans', 'outreachDrafts', 'interviewStories',
+  'interviewPrep', 'contactDiscoveries', 'preparationBatches', 'decisions', 'decisionHandoffs',
+]);
+
+function sameFilesystemPath(left, right) {
+  const a = path.resolve(left);
+  const b = path.resolve(right);
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+function safeStoreSummary(parsed, storeExists = true) {
+  const createdAt = typeof parsed?.createdAt === 'string' && Number.isFinite(Date.parse(parsed.createdAt))
+    ? parsed.createdAt : null;
+  const storeId = isValidStoreId(parsed?.storeId) ? parsed.storeId : null;
+  return {
+    storeId,
+    createdAt,
+    revision: Number.isInteger(parsed?.revision) ? parsed.revision : null,
+    storeIdentityMigrationPending: Boolean(storeExists && (!storeId || !createdAt)),
+  };
+}
+
+function storeInitializationSummary(parsed) {
+  const isEmpty = STORE_ENTITY_MAPS.every(name => {
+    const value = parsed?.[name];
+    return value == null || (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
+  });
+  const createdAtMs = typeof parsed?.createdAt === 'string' ? Date.parse(parsed.createdAt) : NaN;
+  const updatedAtMs = typeof parsed?.updatedAt === 'string' ? Date.parse(parsed.updatedAt) : NaN;
+  const recentWindow = Number.isFinite(createdAtMs) && Number.isFinite(updatedAtMs)
+    ? Math.abs(updatedAtMs - createdAtMs) <= INITIALIZATION_WINDOW_MS : false;
+  return {
+    isEmpty,
+    initializationOnly: isEmpty && Number.isInteger(parsed?.revision) && parsed.revision <= 1 && recentWindow,
+  };
+}
+
+function readDescriptorBounded(fd, maxBytes) {
+  const chunks = [];
+  let total = 0;
+  while (total <= maxBytes) {
+    const chunk = Buffer.alloc(Math.min(64 * 1024, maxBytes + 1 - total));
+    const read = fs.readSync(fd, chunk, 0, chunk.length, total);
+    if (read === 0) break;
+    total += read;
+    if (total > maxBytes) return null;
+    chunks.push(chunk.subarray(0, read));
+  }
+  return Buffer.concat(chunks, total).toString('utf8');
+}
+
+function firstSymlinkInPath(abs) {
+  const root = path.parse(abs).root;
+  let current = root;
+  const relative = path.relative(root, abs);
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment);
+    try {
+      if (fs.lstatSync(current).isSymbolicLink()) return current;
+    } catch (cause) {
+      if (cause.code !== 'ENOENT') throw cause;
+      return null;
+    }
+  }
+  return null;
+}
+
+function readStoreCandidate(filePath) {
+  let fd = null;
   try {
-    const storeFile = path.join(abs, 'store.json');
-    if (fs.existsSync(storeFile)) {
-      const raw = fs.readFileSync(storeFile, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return { ok: false, status: 'corrupt_store', runtime: 'jobsss-bundled', version: PRODUCT_VERSION,
-          schemaVersion: STORE_SCHEMA_VERSION, dataDir: abs, pluginData: abs, storeExists: true,
-          bundled: true, writable, launcher: './bin/jobsss',
-          message: 'PLUGIN_DATA store is corrupt: valid JSON object required.' };
+    const stat = fs.lstatSync(filePath);
+    if (stat.isSymbolicLink()) return { skipped: 'symlink' };
+    if (!stat.isFile()) return { error: 'store.json is not a regular file' };
+    if (stat.size > DOCTOR_SCAN_LIMITS.storeBytes) return { error: `store.json exceeds the ${DOCTOR_SCAN_LIMITS.storeBytes}-byte scan limit` };
+    const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0);
+    fd = fs.openSync(filePath, flags);
+    const opened = fs.fstatSync(fd);
+    if (!opened.isFile()) return { error: 'store.json changed to a non-file during inspection' };
+    if (opened.size > DOCTOR_SCAN_LIMITS.storeBytes) return { error: `store.json exceeds the ${DOCTOR_SCAN_LIMITS.storeBytes}-byte scan limit` };
+    const contents = readDescriptorBounded(fd, DOCTOR_SCAN_LIMITS.storeBytes);
+    if (contents == null) return { error: `store.json exceeds the ${DOCTOR_SCAN_LIMITS.storeBytes}-byte scan limit` };
+    const parsed = JSON.parse(contents);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { error: 'store.json must contain a JSON object' };
+    const metadata = safeStoreSummary(parsed, true);
+    const updatedAt = typeof parsed.updatedAt === 'string' && Number.isFinite(Date.parse(parsed.updatedAt))
+      ? parsed.updatedAt : null;
+    return {
+      candidate: {
+        path: path.resolve(filePath),
+        ...metadata,
+        ...storeInitializationSummary(parsed),
+        updatedAt,
+        schemaVersion: Number(parsed.schemaVersion ?? parsed.version ?? 1),
+      },
+    };
+  } catch (cause) {
+    return { error: `Cannot inspect store.json: ${cause.message}` };
+  } finally {
+    if (fd != null) {
+      try { fs.closeSync(fd); } catch { /* diagnostic only; closing cannot change store state */ }
+    }
+  }
+}
+
+function scanStoreRoots(scanRoots, selectedPath, selectedStoreId) {
+  if (scanRoots == null) return { scans: [], possibleUnusedInitialStores: [], warnings: [] };
+  if (!Array.isArray(scanRoots) || scanRoots.length > DOCTOR_SCAN_LIMITS.roots) {
+    throw error('invalid_scan_roots', `scanRoots must contain no more than ${DOCTOR_SCAN_LIMITS.roots} explicit directories`);
+  }
+  const scans = [];
+  const possibleUnusedInitialStores = [];
+  for (const requested of scanRoots) {
+    if (typeof requested !== 'string' || !requested.trim() || requested.length > 4096) {
+      throw error('invalid_scan_root', 'Each scan root must be a nonempty path of at most 4096 characters');
+    }
+    const root = path.resolve(requested);
+    const scan = { root, candidates: [], errors: [], entriesInspected: 0, directoriesInspected: 0, symlinksSkipped: 0, truncated: false };
+    let linkedComponent;
+    try { linkedComponent = firstSymlinkInPath(root); }
+    catch (cause) {
+      scan.errors.push({ path: root, message: `Cannot inspect scan root components: ${cause.message}` });
+      scans.push(scan);
+      continue;
+    }
+    if (linkedComponent) {
+      scan.errors.push({ path: linkedComponent, message: 'Scan root crosses a symlink; refusing to follow it.' });
+      scans.push(scan);
+      continue;
+    }
+    let rootStat;
+    try { rootStat = fs.lstatSync(root); }
+    catch (cause) {
+      scan.errors.push({ path: root, message: `Cannot inspect scan root: ${cause.message}` });
+      scans.push(scan);
+      continue;
+    }
+    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+      scan.errors.push({ path: root, message: rootStat.isSymbolicLink() ? 'Scan root is a symlink; refusing to follow it.' : 'Scan root is not a directory.' });
+      scans.push(scan);
+      continue;
+    }
+    let realRoot;
+    try { realRoot = fs.realpathSync(root); }
+    catch (cause) {
+      scan.errors.push({ path: root, message: `Cannot resolve scan root: ${cause.message}` });
+      scans.push(scan);
+      continue;
+    }
+    const queue = [{ directory: root, depth: 0 }];
+    let stopTraversal = false;
+    let depthLimitReported = false;
+    while (queue.length && !stopTraversal) {
+      const current = queue.shift();
+      if (scan.directoriesInspected >= DOCTOR_SCAN_LIMITS.entries) {
+        scan.truncated = true;
+        scan.errors.push({ path: current.directory, message: 'Directory inspection limit reached.' });
+        stopTraversal = true;
+        break;
       }
-      for (const field of ['version', 'schemaVersion']) {
-        const numeric = Number(parsed[field]);
-        if (parsed[field] != null && Number.isFinite(numeric) && numeric > STORE_SCHEMA_VERSION) {
-          return { ok: false, status: 'unsupported_schema', runtime: 'jobsss-bundled', version: PRODUCT_VERSION,
-            schemaVersion: STORE_SCHEMA_VERSION, dataDir: abs, pluginData: abs, storeExists: true,
-            bundled: true, writable, launcher: './bin/jobsss',
-            message: `PLUGIN_DATA store uses unsupported future ${field} ${parsed[field]}; this runtime supports schema ${STORE_SCHEMA_VERSION}.` };
+      let currentStat;
+      try { currentStat = fs.lstatSync(current.directory); }
+      catch (cause) {
+        scan.errors.push({ path: current.directory, message: `Cannot inspect directory: ${cause.message}` });
+        continue;
+      }
+      if (currentStat.isSymbolicLink()) { scan.symlinksSkipped += 1; continue; }
+      if (!currentStat.isDirectory()) {
+        scan.errors.push({ path: current.directory, message: 'Expected a directory; skipped.' });
+        continue;
+      }
+      let actual;
+      try { actual = fs.realpathSync(current.directory); }
+      catch (cause) {
+        scan.errors.push({ path: current.directory, message: `Cannot resolve directory: ${cause.message}` });
+        continue;
+      }
+      if (actual !== realRoot && !actual.startsWith(`${realRoot}${path.sep}`)) {
+        scan.errors.push({ path: current.directory, message: 'Directory resolves outside the explicit scan root; skipped.' });
+        continue;
+      }
+      scan.directoriesInspected += 1;
+      let names;
+      try { names = fs.readdirSync(current.directory); }
+      catch (cause) {
+        scan.errors.push({ path: current.directory, message: `Cannot read directory: ${cause.message}` });
+        continue;
+      }
+      for (const name of names) {
+        scan.entriesInspected += 1;
+        if (scan.entriesInspected > DOCTOR_SCAN_LIMITS.entries) {
+          scan.truncated = true;
+          scan.errors.push({ path: current.directory, message: 'Entry inspection limit reached.' });
+          stopTraversal = true;
+          break;
+        }
+        const absolute = path.join(current.directory, name);
+        let entryStat;
+        try { entryStat = fs.lstatSync(absolute); }
+        catch (cause) {
+          scan.errors.push({ path: absolute, message: `Cannot inspect entry: ${cause.message}` });
+          continue;
+        }
+        if (entryStat.isSymbolicLink()) { scan.symlinksSkipped += 1; continue; }
+        if (name === 'store.json') {
+          if (scan.candidates.length >= DOCTOR_SCAN_LIMITS.candidates) {
+            scan.truncated = true;
+            scan.errors.push({ path: absolute, message: 'Store candidate limit reached.' });
+            stopTraversal = true;
+            break;
+          }
+          const inspected = readStoreCandidate(absolute);
+          if (inspected.error) {
+            scan.errors.push({ path: absolute, message: inspected.error });
+          } else if (inspected.candidate) {
+            const candidate = inspected.candidate;
+            candidate.selected = sameFilesystemPath(candidate.path, selectedPath);
+            candidate.sameStoreIdAsSelected = Boolean(selectedStoreId && candidate.storeId
+              && candidate.storeId.toLowerCase() === selectedStoreId.toLowerCase());
+            candidate.possibleUnusedInitialStore = Boolean(!candidate.selected && candidate.initializationOnly);
+            candidate.assessment = candidate.selected
+              ? { status: 'selected', certainty: 'high' }
+              : candidate.sameStoreIdAsSelected
+                ? { status: 'same_store_copy', certainty: 'medium', note: 'This copy reports the selected store ID; confirm which path is current.' }
+                : candidate.possibleUnusedInitialStore
+                  ? { status: 'possible_unused_initial_store', certainty: 'low', note: 'It is an empty revision-one store created and updated within one minute; confirm its purpose manually.' }
+                  : candidate.storeId
+                    ? { status: 'other_store', certainty: 'low', note: 'This is a separate identified store; its current use is unknown.' }
+                    : { status: 'unidentified_store', certainty: 'low', note: 'This store has no persisted store ID; its relationship to the selected store is unknown.' };
+            scan.candidates.push(candidate);
+            if (candidate.possibleUnusedInitialStore) possibleUnusedInitialStores.push(candidate);
+          }
+          continue;
+        }
+        if (entryStat.isDirectory()) {
+          if (current.depth >= DOCTOR_SCAN_LIMITS.depth) {
+            scan.truncated = true;
+            if (!depthLimitReported) {
+              scan.errors.push({ path: absolute, message: `Maximum scan depth ${DOCTOR_SCAN_LIMITS.depth} reached; deeper directories were skipped.` });
+              depthLimitReported = true;
+            }
+            continue;
+          }
+          queue.push({ directory: absolute, depth: current.depth + 1 });
         }
       }
     }
-  } catch (cause) {
-    return { ok: false, status: 'corrupt_store', runtime: 'jobsss-bundled', version: PRODUCT_VERSION,
-      schemaVersion: STORE_SCHEMA_VERSION, dataDir: abs, pluginData: abs,
-      storeExists: fs.existsSync(path.join(abs, 'store.json')), bundled: true, writable,
-      launcher: './bin/jobsss', message: `PLUGIN_DATA store is corrupt: ${cause.message}` };
+    scans.push(scan);
+  }
+  const allCandidates = scans.flatMap(scan => scan.candidates);
+  const selected = allCandidates.find(candidate => candidate.selected);
+  const otherCandidates = allCandidates.filter(candidate => !candidate.selected);
+  const warnings = selected?.initializationOnly && otherCandidates.length
+    ? ['The selected store looks initialization-only and an explicit scan found another store; confirm the intended PLUGIN_DATA path manually.']
+    : possibleUnusedInitialStores.length
+      ? [`Explicit scans found ${possibleUnusedInitialStores.length} empty initial store candidate(s); confirm their purpose manually.`]
+      : [];
+  return { scans, possibleUnusedInitialStores, warnings };
+}
+
+export function doctor(dataDir, args = {}) {
+  const abs = ensureDataDir(dataDir);
+  let writable = true;
+  try { fs.accessSync(abs, fs.constants.R_OK | fs.constants.W_OK); } catch { writable = false; }
+  const storeFile = path.join(abs, 'store.json');
+  const storeExists = fs.existsSync(storeFile);
+  let parsed = null;
+  let parseError = null;
+  if (storeExists) {
+    try {
+      parsed = JSON.parse(fs.readFileSync(storeFile, 'utf8'));
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('valid JSON object required');
+    } catch (cause) { parseError = cause; }
+  }
+  const identity = safeStoreSummary(parsed, storeExists && !parseError);
+  const common = { runtime: 'jobsss-bundled', version: PRODUCT_VERSION, schemaVersion: STORE_SCHEMA_VERSION,
+    dataDir: abs, pluginData: abs, storeExists, ...identity, bundled: true, writable, launcher: './bin/jobsss' };
+  const scanResult = scanStoreRoots(args.scanRoots, storeFile, identity.storeId);
+  const scanFields = { scans: scanResult.scans, possibleUnusedInitialStores: scanResult.possibleUnusedInitialStores,
+    warnings: scanResult.warnings };
+  // Diagnose corrupt canonical state without changing its bytes. In particular,
+  // store identity is backfilled only on the next committed write.
+  if (parseError) {
+    return { ok: false, status: 'corrupt_store', ...common, ...scanFields,
+      message: `PLUGIN_DATA store is corrupt: ${parseError.message}` };
+  }
+  if (parsed) {
+    for (const field of ['version', 'schemaVersion']) {
+      const numeric = Number(parsed[field]);
+      if (parsed[field] != null && Number.isFinite(numeric) && numeric > STORE_SCHEMA_VERSION) {
+        return { ok: false, status: 'unsupported_schema', ...common, ...scanFields,
+          message: `PLUGIN_DATA store uses unsupported future ${field} ${parsed[field]}; this runtime supports schema ${STORE_SCHEMA_VERSION}.` };
+      }
+    }
   }
   return {
-    ok: writable, status: 'ok', runtime: 'jobsss-bundled', version: PRODUCT_VERSION,
-    schemaVersion: STORE_SCHEMA_VERSION, dataDir: abs, pluginData: abs,
-    storeExists: fs.existsSync(path.join(abs, 'store.json')), bundled: true, writable,
-    launcher: './bin/jobsss',
+    ok: writable, status: 'ok', ...common, ...scanFields,
     resumeRenderer: detectResumeRenderer(),
-    message: 'Bundled runtime diagnosed; PLUGIN_DATA is isolated and writable. JobOS is not required. Do not invent jobs, scores, proofs, sends, or submissions.',
+    message: `Bundled JobSSS runtime diagnosed; selected PLUGIN_DATA is ${abs} and ${writable ? 'writable' : 'not writable'}. JobSSS does not invent jobs, scores, proofs, sends, or submissions.${scanResult.warnings.length ? ` ${scanResult.warnings.join(' ')}` : ''}`,
   };
 }
 
@@ -594,13 +903,25 @@ export function start(dataDir, args = {}) {
   // store both report false; only a store below the bundled schema reports
   // true. Read before the commit so the value describes the pre-commit state.
   const schemaOnDisk = storeSchemaVersionOnDisk(dataDir);
+  const requestedMode = args.outputMode == null ? null : String(args.outputMode).trim().toLowerCase();
+  if (requestedMode && !['full', 'compact'].includes(requestedMode)) {
+    throw error('invalid_output_mode', 'outputMode must be full or compact');
+  }
   const committed = commitStore(dataDir, { expectedRevision: expected(args) }, store => {
+    const isNew = store.revision === 0;
+    const existingMode = store.outputMode === 'compact' ? 'compact' : 'full';
+    if (requestedMode && !isNew && requestedMode !== existingMode) {
+      throw error('output_mode_migration_required', 'Output mode can only be selected for a new workspace; existing files require an explicit migration.');
+    }
+    if (isNew && requestedMode) store.outputMode = requestedMode;
     store.audit = Array.isArray(store.audit) ? store.audit : [];
     store.audit.push({ event: 'start', createdAt: now() });
     return store;
   });
   const migrated = schemaOnDisk !== null && schemaOnDisk < STORE_SCHEMA_VERSION;
-  return { ok: true, initialized: true, migrated, schemaVersion: STORE_SCHEMA_VERSION, revision: committed.revision,
+  return { ok: true, initialized: true, migrated, schemaVersion: STORE_SCHEMA_VERSION, storeId: committed.store.storeId,
+    createdAt: committed.store.createdAt, revision: committed.revision,
+    outputMode: committed.store.outputMode === 'compact' ? 'compact' : 'full',
     dataDir: path.resolve(dataDir), storePath: committed.storePath, message: 'Versioned durable state initialized under PLUGIN_DATA' };
 }
 
@@ -1095,6 +1416,65 @@ export function inspectResumeRequirements(dataDir, args = {}) {
     requirements: parsed.requirements, items: parsed.requirements, count: parsed.requirements.length };
 }
 
+export function inspectCoverLetterBrief(dataDir, args = {}) {
+  const store = loadStore(dataDir);
+  const profileId = String(args.profileId || '').trim();
+  const profile = requireProfile(store, profileId);
+  const job = requireJobOwned(store, String(args.jobId || '').trim(), profileId);
+  return buildCoverLetterBrief({
+    profile,
+    job,
+    proofPoints: activeProofsFor(store, profile).filter(isCoverLetterEvidence),
+    research: Object.values(store.research || {}),
+    artifacts: Object.values(store.artifacts || {}),
+  });
+}
+
+export function recordTailoringContext(dataDir, args = {}) {
+  if (!Number.isInteger(args.expectedRevision)) throw error('expected_revision_required', 'The current store revision is required.');
+  const context = normalizeTailoringContext(args.context);
+  return mutate(dataDir, args, store => {
+    const profile = requireProfile(store, args.profileId);
+    const job = requireJobOwned(store, args.jobId, args.profileId);
+    const previous = job.tailoringContext || null;
+    job.tailoringContext = { ...context, updatedAt: now() };
+    job.tailoringContextHistory = [...(job.tailoringContextHistory || []), { previous, current: job.tailoringContext }];
+    return { ok: true, profileId: profile.id, jobId: job.id, context: tailoringContext(profile, job), reusablePreferencesChanged: false };
+  });
+}
+
+export function rememberRoleNarrative(dataDir, args = {}) {
+  if (args.confirmedByUser !== true) throw error('confirmation_required', 'Ask the user to explicitly confirm the exact role thesis and/or voice and role-family reuse scope first.');
+  if (!Number.isInteger(args.expectedRevision)) throw error('expected_revision_required', 'The current store revision is required to remember a role narrative.');
+  return mutate(dataDir, args, store => {
+    const profile = requireProfile(store, args.profileId);
+    const job = requireJobOwned(store, args.jobId, args.profileId);
+    const context = job.tailoringContext;
+    if (!context) throw error('tailoring_context_required', 'Record this job’s conversation first.');
+    const voice = args.voice === undefined ? undefined : normalizeCoverLetterVoice(args.voice);
+    if (!context.roleThesis && !voice) throw error('tailoring_context_required', 'A role thesis or voice is required.');
+    const key = `role:${context.roleFamily.toLowerCase()}`;
+    profile.roleNarratives ||= {};
+    const previous = profile.roleNarratives[key] || null;
+    const current = { ...(previous || {}), roleFamily: context.roleFamily,
+      ...(context.roleThesis ? { roleThesis: context.roleThesis } : {}), ...(voice ? { voice } : {}), updatedAt: now(), sourceJobId: job.id };
+    profile.roleNarratives[key] = current;
+    profile.roleNarrativeHistory = [...(profile.roleNarrativeHistory || []), { previous, current }];
+    return { ok: true, profileId: profile.id, roleNarrative: current, artifactApprovalGranted: false };
+  });
+}
+
+export function inspectTailoringBrief(dataDir, args = {}) {
+  const store = loadStore(dataDir);
+  const profile = requireProfile(store, args.profileId);
+  const job = requireJobOwned(store, args.jobId, args.profileId);
+  return { ...inspectCoverLetterBrief(dataDir, args), context: tailoringContext(profile, job),
+    resume: { text: profile.resumeText || '', identity: profile.resume?.identity || null },
+    reusableRoleNarratives: Object.values(profile.roleNarratives || {}),
+    questions: ['What is your point of view about this target role?', 'What are one or two things you like about this company?'],
+    materials: coverLetterDecision(job).draft ? ['resume', 'cover_letter'] : ['resume'], readOnly: true };
+}
+
 export function inspectResumeQa(dataDir, args = {}) {
   const store = loadStore(dataDir);
   const profileId = String(args.profileId || '').trim();
@@ -1292,7 +1672,14 @@ export function selectResumeDesign(dataDir, args = {}) {
 export function listResumeDesignVariants(dataDir, args = {}) {
   return listResumeDesignVariantsLocal(loadStore(dataDir), args);
 }
-export function draftCoverLetter(dataDir, args = {}) { return mutate(dataDir, args, store => coverLocal(store, { ...args, dataDir })); }
+export function draftCoverLetter(dataDir, args = {}) {
+  return mutate(dataDir, args, store => coverLocal(store, {
+    ...args, format: args.format ?? (store.outputMode === 'compact' ? 'docx' : 'markdown'), dataDir,
+  }));
+}
+export function reviseCoverLetter(dataDir, args = {}) {
+  return mutate(dataDir, args, store => reviseCoverLocal(store, { ...args, dataDir }));
+}
 export function saveAnswer(dataDir, args = {}) { return mutate(dataDir, args, store => addAnswer(store, args)); }
 export function answersList(dataDir, args = {}) { return listAnswers(loadStore(dataDir), args); }
 export function answersMatch(dataDir, args = {}) { return matchAnswers(loadStore(dataDir), args); }

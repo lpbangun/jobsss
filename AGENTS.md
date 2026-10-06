@@ -1,14 +1,14 @@
 # AGENTS.md — JobSSS
 
 Purpose: JobSSS is a standalone Agent Plugin whose bundled runtime
-`./bin/jobsss mcp --data ${PLUGIN_DATA}` serves the `jobsss` skill. No JobOS
-installation or `jobos` on PATH is required. Persistent user state lives only
+`./bin/jobsss mcp --data ${PLUGIN_DATA}` serves the `jobsss` skill. The runtime
+owns its local workflows and uses no external product installation. Persistent user state lives only
 under the host-provided `PLUGIN_DATA`.
 
 Paths:
 - `plugin.json`, `mcp.json` — Agent Plugins 1.0.0 manifests at repo root.
 - `skills/jobsss/SKILL.md` + `skills/jobsss/references/` — the skill.
-- `bin/jobsss`, `src/` — bundled runtime (no JobOS import or spawn). `src/packaging.js` holds the separated native-format (ELF/Mach-O/PE) build definitions; `src/packaging.lock.json` pins the Node-supported postject SEA injector, official Node input checksums, and the build/test-only independent native-format validators pefile/macholib/altgraph (all downloaded into the temporary cache, never committed).
+- `bin/jobsss`, `src/` — bundled runtime (no external product import or spawn). `src/packaging.js` holds the separated native-format (ELF/Mach-O/PE) build definitions; `src/packaging.lock.json` pins the Node-supported postject SEA injector, official Node input checksums, and the build/test-only independent native-format validators pefile/macholib/altgraph (all downloaded into the temporary cache, never committed).
 - `compat/` — thin client adapters/probes referencing the canonical assets; never a source of truth. `compat/install-pins.json` pins the reviewed product trio; `compat/hermes/find-people.pack.yaml` is the generated Hermes install surface (metadata only, no product bytes).
 - `INSTALL.md` — the human/agent install surface table (host → one action → status) for the JobSSS family.
 - `BENCHMARK.md`, `tests/jobsss-*.test.mjs` — reviewer-owned pass bar (do not edit).
@@ -22,7 +22,7 @@ Commands:
 - Requires Node 22+; no npm dependencies. Independent native-format validation (pefile/macholib/altgraph) is build/test-only and needs `python3` at acceptance time, never at runtime.
 
 Invariants:
-- Standalone: one skill, one MCP server (`jobsss` via `./bin/jobsss mcp --data ${PLUGIN_DATA}`); runtime never resolves or spawns `jobos`.
+- Standalone: one skill, one MCP server (`jobsss` via `./bin/jobsss mcp --data ${PLUGIN_DATA}`); runtime never resolves or spawns another product runtime.
 - Keep the plugin portable: no credentials/secrets, no user or workspace paths, no symlinks escaping the root. Client-specific packaging is never a source of truth; `compat/` holds only thin adapters/probes that reference the canonical skill and runtime.
 - Install surfaces: `compat/install-pins.json` is the single source for the reviewed trio; every host surface under `compat/` is generated from it, pins only exact 40-character commits, carries no product bytes, grants no consent, and is never a runtime dependency. Advance the pins as a deliberate trio via `--refresh`, then re-verify before committing.
 - State isolation: all durable state under `PLUGIN_DATA`; never write into the plugin directory.

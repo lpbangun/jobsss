@@ -1,16 +1,13 @@
 ---
 name: jobsss
-description: Standalone job-search skill for offline local workflows over the bundled ./bin/jobsss MCP runtime and PLUGIN_DATA — profile/preferences, secure staged/inline job & contact intake, discovery, scoring, pipeline, materials, tasks, networking drafts, interview prep, and sync preview, without requiring JobOS or API keys.
+description: Standalone job-search skill for offline local workflows over the bundled ./bin/jobsss MCP runtime and PLUGIN_DATA — profile/preferences, secure staged/inline job & contact intake, discovery, scoring, pipeline, materials, tasks, networking drafts, interview prep, and sync preview, without requiring external services or API keys.
 ---
 
 # JobSSS — standalone bundled runtime
 
 JobSSS is a self-contained Agent Plugin with a bundled runtime. It runs locally
 via `./bin/jobsss mcp --data ${PLUGIN_DATA}` and persists all user state under
-the host-provided `PLUGIN_DATA` directory. No JobOS installation, `jobos`
-executable, API keys, or network access are required for the core journey. The
-runtime works offline without JobOS — JobOS is not required, not spawned, and
-not imported at runtime.
+the host-provided `PLUGIN_DATA` directory. No legacy executable, API keys, or network access are required for the core journey. The runtime works offline; no external executable is spawned or imported at runtime.
 
 `/jobsss` with no intent shows help and a next-action menu. Never fabricate
 execution or authority. Do not claim, invent, fabricate, or pretend that a job,
@@ -39,7 +36,7 @@ What JobSSS does, and what it never claims:
 | Invocation | Route |
 | --- | --- |
 | `/jobsss` | base — Help / next-action menu. Never fabricate execution or authority. |
-| `/jobsss doctor` | MCP `doctor` — diagnose the bundled `./bin/jobsss` launcher and `PLUGIN_DATA` readability/writability. No JobOS on PATH is required. |
+| `/jobsss doctor` | MCP `doctor` — diagnose the bundled `./bin/jobsss` launcher and `PLUGIN_DATA` readability/writability. No external executable on PATH is required. |
 | `/jobsss start` | MCP `start` — initialize durable state under `PLUGIN_DATA`. Creates the local store if absent. |
 | `/jobsss profile` or `create_profile` | MCP `create_profile` — create or import a local profile/resume (`name` plus optional resume text or a path under `PLUGIN_DATA`), extracting proof-point candidates for human verification. Returns `profileId`. Pass the source resume text unchanged (keep `Name:`, employment/skills/education headings, and dated role lines). Do not reformat into unlabeled pipe-only prose; the parser still accepts reasonable unlabeled variants. Achievement bullets may sit under the employment heading or in a separate achievements section, and skills/education sections do not need `Production:`/`Education:` label prefixes. |
 | `/jobsss find` or `import_job` | MCP `import_job` and `list_jobs` — import job content inline (`text`/`content`) or from a path under `PLUGIN_DATA`, then list imported jobs. Re-importing the same job deduplicates to a single job id. |
@@ -55,10 +52,6 @@ Required MCP tools for this journey (all operate under `PLUGIN_DATA` via
 for argument shapes and persistence details.
 
 For human-only operations, follow [Human-only handoffs](references/human-only-handoffs.md).
-If the candidate has no source resume, follow [Candidate setup](references/candidate-setup.md).
-A personal master resume is optional; use the bundled [resume quality reference](references/resume-quality/rubric.md)
-as presentation guidance, never as candidate evidence. The experimental agent-QA
-orchestrator is not yet a shipped MCP enforcement gate.
 Those tools are not available to MCP and must not be reported as done. Approval,
 send, submit, and packet-freeze language is handoff-only via trusted CLI/TUI.
 
@@ -72,8 +65,7 @@ references/client-compatibility.md).
 
 ## Extended local workflows (all offline, all under PLUGIN_DATA)
 
-These bundled MCP tools extend the core journey. They all run locally without
-JobOS, without API keys, and with `jobos` absent from `PATH`. Route them by MCP
+These bundled MCP tools extend the core journey. They run locally without external services or API keys and do not require an external executable on `PATH`. Route them by MCP
 tool name or natural language; do not add stable slash sub-intents for
 networking, interview planning, or scheduling. External sending, scheduling,
 and browser actions stay blocked or human-only.
@@ -82,11 +74,11 @@ and browser actions stay blocked or human-only.
 | --- | --- | --- |
 | Secure intake | `import_job` (inline `text`/`content` or a path under `PLUGIN_DATA`), `import_job_url` (fetches public HTTP(S), rejects `file:`/private URLs), `import_contact` (inline card, inline `contact-brief.v1` JSON, or a `PLUGIN_DATA` path), `list_contacts` | No arbitrary absolute filesystem paths are read. Re-importing the same job deduplicates to one id, and a repeat or address-less contact re-import reconciles onto the existing logical contact instead of duplicating it; an address-bearing contact re-import also reconciles the unprotected address-less machine duplicate an older release left beside it. |
 | Migration & state | `start` | A legacy `store.json` migrates losslessly into versioned persistence with an audit trail; never drop or rewrite ids. |
-| Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `list_resumes`, `get_resume`, `add_proof_point` | Versioned structured resumes, preferences, and proof candidates remain profile-owned and require human verification. `get_resume` is a read-only restart readback that returns the full current resume text and identity. |
+| Profile & preferences | `create_profile`, `list_profiles`, `update_profile`, `archive_profile`, `restore_profile`, `list_resumes`, `get_resume`, `add_proof_point` | Versioned structured resumes, preferences, and proof candidates remain profile-owned and require human verification. Reimport with an explicit `profileId` when known; an unfamiliar name sharing an email produces `identityCollisionProfileIds` rather than overwriting a profile. Correct parsed `resumeIdentity` with `update_profile`. Archive/restore require the current `expectedRevision` and preserve audit history. `get_resume` is a read-only restart readback that returns the full current resume text and identity. |
 | Discovery & saves | `create_saved_search`, `list_saved_searches`, `search_jobs`, `daily_discovery`, `save_job`, `skip_job`, `archive_job`, `list_jobs` | Fetch public Greenhouse ATS boards by `boardToken`, or select the public ohshi.work intelligence saved-search source with query filters; staged offline search data under `PLUGIN_DATA` is also supported. ohshi data is CC BY 4.0 and must retain attribution. Discoveries stay database-only until saved/pursued. |
-| Scoring | `score_job`, `get_score` | Offline deterministic multidimensional fit (`jobos.fit-score.v1`) with all seven weighted dimensions; no API key. `get_score` is a read-only restart readback of the stored fit/eligibility/constraints for an owned job. |
+| Scoring | `score_job`, `get_score` | Offline deterministic multidimensional fit (`jobsss.fit-score.v1`) with all seven weighted dimensions; no API key. `get_score` is a read-only restart readback of the stored fit/eligibility/constraints for an owned job. |
 | Lifecycle & tasks | `pursue_job`, `applications_plan`, `update_application_status`, `list_tasks`, `update_task` | Local pipeline and next actions. `update_application_status` rejects `applied`/`submitted` — it cannot attest submission. |
-| Materials | `inspect_resume_requirements`, `tailor_resume`, `revise_resume`, `render_resume`, `inspect_resume_qa`, `list_resume_designs`, `compare_resume_designs`, `list_resume_design_variants`, `select_resume_design`, `draft_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Resume drafting uses one canonical document for normalized and migrated legacy profiles. Revise by preferring or suppressing source-linked claim IDs, then inspect requirement spans and the stored PDF QA before human review. Compare navy, editorial, and scan PDFs from the same content; a local style selection does not prove external use or a better outcome. Answers use exact owned proof wording; never arbitrary claims, invented metrics, auto-fill, or send. `save_answer` accepts only `sensitivity: public \| personal \| sensitive \| restricted` (default `personal`) and `reuseScope: global \| employer_specific \| never_auto_fill`; other values fail with typed `invalid_sensitivity`/`invalid_reuse_scope` for the caller to correct. |
+| Materials | `inspect_resume_requirements`, `tailor_resume`, `revise_resume`, `render_resume`, `inspect_resume_qa`, `list_resume_designs`, `compare_resume_designs`, `list_resume_design_variants`, `select_resume_design`, `inspect_cover_letter_brief`, `draft_cover_letter`, `revise_cover_letter`, `save_answer`, `list_answers`, `match_answers` | Resume drafting uses one canonical document for normalized and migrated legacy profiles. Revise by preferring or suppressing source-linked claim IDs, then inspect requirement spans and the stored PDF QA before human review. Compare navy, editorial, and scan PDFs from the same content; a local style selection does not prove external use or a better outcome. Cover-letter briefs are read-only; revisions require the current content hash and explicit active proof IDs. Answers use exact owned proof wording; never arbitrary claims, invented metrics, auto-fill, or send. `save_answer` accepts only `sensitivity: public \| personal \| sensitive \| restricted` (default `personal`) and `reuseScope: global \| employer_specific \| never_auto_fill`; other values fail with typed `invalid_sensitivity`/`invalid_reuse_scope` for the caller to correct. |
 | Networking drafts | `record_research`, `list_research`, `map_reachable_network`, `plan_outreach`, `draft_outreach`, `list_outreach` | Local people/company research, maps, plans, follow-ups, and drafts only. Sending stays human-only; `mark_outreach_sent` is not MCP. |
 | Interview prep | `draft_interview_story`, `list_interview_stories`, `interview_prep`, `get_interview_prep`, `interview_debrief_handoff` | Local story drafting, preparation, coverage gaps, and a non-attesting handoff. Verification/debrief confirmation stays human-only via trusted CLI/TUI. |
 | Sync preview | `preview_sync` | Dry-run, secret-safe preview of derived/export data. No automatic or cloud sync. |
@@ -133,6 +125,12 @@ natural language; no slash sub-intent is needed.
   `applications/<jobId>/contacts/<contactKey>.md`. Human-only state
   (artifact approval, contact approval or suppression, recorded external
   outcomes) is preserved across regeneration and is never overwritten.
+- On a new workspace, MCP `start` with `outputMode: "compact"` opts out of
+  automatic JSON and Markdown projections. All state and history still live in
+  `store.json`; use the MCP readback tools. Existing workspaces keep their mode.
+  `draft_cover_letter` defaults to editable DOCX in compact mode and also
+  accepts `format: "docx"` explicitly;
+  text, Markdown, and PDF remain available.
 - Read back at any time with `list_preparation_batches` and
   `list_contact_discoveries`; both are plain local reads from `PLUGIN_DATA`.
 
@@ -152,8 +150,13 @@ The one-page Letter PDF remains under `PLUGIN_DATA`. Call
 `inspect_resume_requirements` and `inspect_resume_qa`, then inspect the
 source-linked draft, requirement gaps, searchable text, and rendered page before
 sharing. Trusted approval requires PDF QA and verified cited proof points.
-For a cover letter, `draft_cover_letter` with `format: "pdf"` retains the native
-renderer. Searchable text is an ATS-readability proxy, not an ATS guarantee.
+For a cover letter, start with the read-only `inspect_cover_letter_brief` to see
+the job context, selected active proof, and any candidate-owned voice or company
+context. The brief's suggested narrative is a starting point, not a claim or
+approval. Use `draft_cover_letter` to establish a source draft, then author the
+tailored prose from the brief and save it with `revise_cover_letter`. Choose
+`format: "docx"` for an editable Word document or `format: "pdf"` for the native
+PDF renderer. Searchable PDF text is an ATS-readability proxy, not an ATS guarantee.
 
 Keep the imported resume as the fact source. Change preferences with
 `update_profile`; never replace achievements with formatting instructions.
@@ -161,9 +164,11 @@ A real preference revision (for example the target role family) flows into
 the tailored resume focus, so successive `tailor_resume` PDFs
 stay distinct truthful revisions and both are kept under `PLUGIN_DATA`;
 formatting-only changes regenerate the identical file.
-Applicant copy excludes proof IDs, posting inventories, and human-review notes;
-those remain in the returned metadata and review artifact. Cover letters use
-supported contributions, never copied posting requirements as candidate claims.
+Applicant copy excludes proof IDs, posting inventories, and human-review notes; those remain in the returned metadata and review artifact. Write cover letters in a natural first-person voice that fits the candidate's preferences and the role. `profile.preferences.coverLetterVoice` may contain `tone` and `style` (each at most 120 characters) and up to three `{label?, text}` writing samples (label at most 80 characters; text at most 2,000 characters each and 5,000 total). Samples are style references only: observe tone, rhythm, punctuation, and structure, but never copy their claims, names, or sentences as evidence. Prefer relevant, recent context if voice preferences conflict.
+
+Choose a focused narrative from the job description and active, supported proof. Use employer research or a “why this role” angle only when recorded and confirmed by the candidate; do not invent company praise. Make the employer-specific point concrete enough that it could not be pasted into any application. State established evidence as past fact, then distinguish a proposed future contribution (what the candidate could help do). Never rewrite a posting requirement as an accomplishment. Write naturally with varied openings and sentence rhythms, usually three to five paragraphs as the material warrants; avoid a repeated template and do not force a fixed word count or bullet count. Include ordinary business-letter date and contact details when available.
+
+For a finished tailored letter, compose a fresh narrative using the brief; do not present the deterministic starter as the final personalized prose. An evidence-first letter may open with a relevant result, a project-led letter with the work itself, and a career-bridge letter with a supported connection to the posting. Choose the structure for the job rather than randomly swapping synonyms. Preserve the authored or user-edited text with `revise_cover_letter`, supplying the source draft's current content hash and explicit active proof IDs. Treat each reviewed edit as a separate revision; later generation must not overwrite it. Keep human approval and any external use as separate decisions.
 
 Use native `score_job.eligibility` and its grounded hard failures when making a
 shortlist: excluded roles are not actionable high-fit recommendations. Missing
@@ -191,6 +196,24 @@ different companies are not merged. Recipient-facing subject/body stay separate
 from internal notes. All drafts remain UNSENT; only trusted human actions
 approve/suppress contacts or attest external outcomes.
 
+## Cover-letter requirements policy
+
+Before creating any cover letter, inspect the posting and available application requirements. The brief exposes `coverLetterDecision` with the requirement state, source evidence, and draft/skip reason. Automatically create a letter only when the employer requests or requires one. Optional, explicitly not required, a complete form without a letter field, unknown, and conflicting requirements skip automatic generation. Missing or degraded form detail is unknown. A prohibition such as "do not submit a cover letter" always skips application-letter generation.
+
+A generic request to prepare an application, tailor materials, or pursue a job is not an explicit request for a cover letter. Only when the user specifically requests a letter may you pass `requestedByUser:true` to `draft_cover_letter`, or `coverLetter:true` for a batch; this can override optional/not-required/unknown cases, but never an employer prohibition. Pass false when the user declines. Do not infer user intent from an old draft. A skipped letter is not missing work; preserve existing draft/revision/approval history and report the decision.
+
+## Conversational tailoring for an individual job
+
+After resume upload, for individual-job material requests, call `inspect_tailoring_brief` before generating the resume and any cover letter warranted by the requirements policy. This returns the current resume facts, active evidence, posting requirements, role-scoped reusable narratives, and per-job conversation. Ask the user what their thesis or point of view is about the target role and one or two things they like about this company. If a matching reusable role-family thesis exists, offer it for confirmation or editing rather than interviewing again. Let the user skip unanswered questions; never invent answers. Choose the role family with the user; do not assume a universal/global preference from a specific role.
+
+Save the answers with `record_tailoring_context` using `{profileId, jobId, expectedRevision, context: {roleFamily, roleThesis?, companyInterests?: [string, string], feedback?}}`. Re-read the brief after a restart. Background facts remain in the uploaded resume and active proof inventory; newly stated achievements require the existing proof verification flow. Thesis, voice samples, interests and feedback are editorial guidance only, never candidate achievement evidence or verified employer facts.
+
+Generate the resume with `tailor_resume`, then use its source-linked claim ledger and `revise_resume` to prefer or suppress grounded claims that support the user's role thesis and posting. Do not put company motivations or unsupported thesis assertions into the factual resume summary. When the policy calls for a cover letter, establish a draft with `draft_cover_letter`, author natural prose from the conversation, posting and cited active proof, then use hash-checked `revise_cover_letter` for an editable DOCX preview. Express company interests as the user's motivations and ground any company factual assertions in posting or recorded research. Neither material may invent metrics, credentials, job history or achievements.
+
+Present the resume and any generated cover letter for editable review. If the letter is skipped, explain its requirement state and reason. Persist feedback in this job's context, revise the materials through their existing revision tools, and preserve earlier versions and final human approval. A one-off edit must not automatically change reusable preferences. Ask explicit confirmation of the exact thesis and/or voice AND role-family scope before `remember_role_narrative` with `confirmedByUser:true`, the current `expectedRevision`, and optional bounded `voice` (same shape as `coverLetterVoice`). This is a preference record, never proof verification or artifact approval. Company interests and feedback cannot be promoted by this tool. Role narratives are profile-owned and match only the explicitly selected role family.
+
+For batch requests, retain `prepare_applications_batch`: do not require a per-company interview or create invented conversation answers. Conversation is an optional individual-job authoring flow, not a gate on bulk preparation. No sending or submission is performed.
+
 ## PLUGIN_DATA and bundled launcher
 
 - The installing agent expands `${PLUGIN_DATA}` to an absolute writable data
@@ -206,7 +229,7 @@ approve/suppress contacts or attest external outcomes.
 For `/jobsss doctor`, diagnose whether `./bin/jobsss` is present and executable
 and whether `PLUGIN_DATA` is set, absolute, and writable. If state is missing,
 advise running `./bin/jobsss mcp --data ${PLUGIN_DATA}` and then `doctor` →
-`start`. JobOS is not required and must not be installed or placed on `PATH`;
+`start`. No legacy executable is required or should be placed on `PATH`;
 do not invent or claim success, jobs, scores, proofs, sends, or submissions
 while diagnosing. Do not claim, invent, or fabricate success.
 

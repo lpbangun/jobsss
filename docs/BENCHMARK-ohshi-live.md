@@ -6,7 +6,7 @@ Owner: reviewer (Codevisor `gpt-5.6-sol` / `openai-codex` / reasoning `medium`, 
 
 Baseline: JobSSS `main` at `7eb5813`, measured 2026-09-15
 
-Implementation worktree: `<ohshi-live-worktree>`
+Implementation worktree: `/home/logani/projects/jobsss-worktrees/ohshi-live-envelope/jobsss`
 
 Branch: `feat/ohshi-live-envelope`
 

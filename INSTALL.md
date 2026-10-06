@@ -44,8 +44,7 @@ jobsss init
 Follow the workspace steps below to check setup and start using your agent.
 
 Both npm routes use the GitHub source, rather than a published npm registry
-package. They require this packaging change to be published to GitHub first.
-For a local checkout before publication, run `npm install -g .` from its root.
+package. For a local checkout, run `npm install -g .` from its root.
 To remove the global CLI later, run `npm uninstall -g jobsss`.
 
 ## Open your new workspace
@@ -133,10 +132,15 @@ session. An empty MCP list before reload can be expected. The existing Hermes
 integration evidence is described in [client compatibility](compat/README.md);
 this hosted command has not been newly verified by this documentation update.
 
-The generated Hermes three-plugin pack still contains `OWNER` publishing
-placeholders in `compat/install-pins.json`. It is **not ready for public use**
-until the real repository owners and reviewed commit pins are configured and
-the pack is regenerated and verified.
+To install the reviewed companion stack in Hermes:
+
+```bash
+hermes plugins pack install https://raw.githubusercontent.com/lpbangun/jobsss/main/compat/hermes/find-people.pack.yaml
+```
+
+The pack uses the real repository owners and exact reviewed commit pins in
+`compat/install-pins.json`. It preserves each plugin's normal host confirmation
+and activation steps.
 
 For another host, use its plugin-loading mechanism with the portable package
 (`plugin.json`, `mcp.json`, `skills/`). Host support and verification vary;

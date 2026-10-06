@@ -1,8 +1,4 @@
 // Bundled JobSSS store — versioned, serialized, atomic persistence under PLUGIN_DATA.
-// Attributed port: persistence concepts from JobOS src/db.js, src/workspace.js,
-// and src/profiles.js (post-commit workspace projections, write serialization),
-// reimplemented as plain JSON reviews for the standalone journey. JobOS remains
-// MIT (see root LICENSE) and is never imported at runtime.
 //
 // Wave 1 contract (see BENCHMARK.md B14–B17):
 //   - canonical store.json is schema/version >= 2 with an integer `revision`
@@ -19,11 +15,13 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { workspaceProjectionWrites } from './projection.js';
+import { migrateIdentityContractsInPlace } from './identity-migrations.js';
 
 const PLUGIN_ROOT = fs.realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 
 export const STORE_SCHEMA_VERSION = 2;
 export const LOCK_FILE_NAME = 'jobsss.lock';
+const STORE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const COLLECTIONS = Object.freeze([
   'profiles', 'resumes', 'proofPoints', 'jobs', 'scores', 'applications', 'artifacts',
@@ -50,6 +48,12 @@ export function id(prefix, seed) {
 
 export function now() {
   return new Date().toISOString();
+}
+
+/** Stable identity validation is deliberately separate from reads that may be
+ * legacy: callers can report a pending backfill without inventing an ID. */
+export function isValidStoreId(value) {
+  return typeof value === 'string' && STORE_ID_PATTERN.test(value);
 }
 
 export function tokenize(text) {
@@ -205,6 +209,7 @@ function assertSupportedSchema(parsed) {
   }
 }
 function normalizeStore(parsed) {
+  const identityMigration = migrateIdentityContractsInPlace(parsed);
   assertSupportedSchema(parsed);
   const store = ensureCollections(parsed);
   const current = Number(store.version || store.schemaVersion || 1);
@@ -213,6 +218,10 @@ function normalizeStore(parsed) {
   if (!Number.isInteger(store.revision) || store.revision < 1) store.revision = 1;
   if (current < STORE_SCHEMA_VERSION) {
     appendAudit(store, { event: 'migration', fromVersion: current });
+  }
+  if (identityMigration.changed) {
+    appendAudit(store, { event: 'identity_contract_migration', migrationVersion: identityMigration.version,
+      migratedContracts: identityMigration.migrated });
   }
   return store;
 }
@@ -824,24 +833,43 @@ export function commitStore(dataDir, { expectedRevision = null } = {}, mutate = 
         { code: 'stale_revision' }
       );
     }
+    // Assign persistent workspace identity only inside the serialized write
+    // transaction. loadStore()/doctor() intentionally leave older stores
+    // untouched, so concurrent starts cannot mint competing IDs on read.
+    const hadStoreId = isValidStoreId(store.storeId);
+    const stableStoreId = hadStoreId ? store.storeId : crypto.randomUUID();
+    store.storeId = stableStoreId;
+    if (typeof store.createdAt !== 'string' || !Number.isFinite(Date.parse(store.createdAt))) {
+      const initializedAt = Array.isArray(store.audit)
+        ? store.audit.find(entry => entry?.event === 'init' && Number.isFinite(Date.parse(entry.createdAt)))?.createdAt
+        : null;
+      store.createdAt = initializedAt || now();
+    }
+    const stableCreatedAt = store.createdAt;
+    if (!hadStoreId) appendAudit(store, { event: 'store_identity_backfill', storeId: stableStoreId });
     const result = mutate(store) || store;
-    // B27: reject symlink/junction/non-directory projection targets BEFORE any
-    // write is staged or persisted. A rejected escape throws here, so the
-    // on-disk store, revision, and state remain untouched and no file is
-    // written outside PLUGIN_DATA.
-    assertProjectionRootsSafe(dir);
-    const targets = deriveProjectionTargets(result);
-    for (const target of targets) assertProjectionTargetSafe(dir, target);
-    // Deterministic human-readable workspace projection (profile.md,
-    // tracker.md, applications/<jobId>/application.md, resume.md,
-    // cover-letter.md, contacts/<key>.md). Validated with the same no-follow
-    // confinement lens as every other projection BEFORE anything is staged.
-    const workspaceWrites = workspaceProjectionWrites(result);
-    for (const write of workspaceWrites) assertProjectionPathSafe(dir, write.segments.slice(0, -1));
+    // Identity and creation time belong to the store, not the individual
+    // mutation snapshot, so caller-supplied replacement objects cannot change
+    // either value.
+    result.storeId = stableStoreId;
+    result.createdAt = stableCreatedAt;
+    // Compact workspaces keep the same canonical state and document artifacts,
+    // but do not materialize read-only JSON/Markdown copies of that state.
+    const compact = result.outputMode === 'compact';
+    let targets = [];
+    let workspaceWrites = [];
+    if (!compact) {
+      // Legacy workspaces retain their projection confinement and output contract.
+      assertProjectionRootsSafe(dir);
+      targets = deriveProjectionTargets(result);
+      for (const target of targets) assertProjectionTargetSafe(dir, target);
+      workspaceWrites = workspaceProjectionWrites(result);
+      for (const write of workspaceWrites) assertProjectionPathSafe(dir, write.segments.slice(0, -1));
+    }
     bumpMeta(result);
     incrementRevision(result);
     const writes = [
-      ...buildAggregateProjectionWrites(result).map(write => ({ ...write, abs: path.join(dir, ...write.segments) })),
+      ...(compact ? [] : buildAggregateProjectionWrites(result).map(write => ({ ...write, abs: path.join(dir, ...write.segments) }))),
       ...targets.map(target => ({
         segments: target.segments,
         abs: path.join(dir, ...target.segments),

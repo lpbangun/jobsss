@@ -221,8 +221,8 @@ test('B6 standalone core journey intents', () => {
   assert.ok(corpus.includes('./bin/jobsss'), 'skill must name the bundled launcher ./bin/jobsss');
   assert.match(
     corpus,
-    /without JobOS|JobOS (?:is )?not (?:required|needed|used)|no JobOS (?:CLI|runtime|executable)|JobOS absent/i,
-    'skill must say the standalone runtime does not require JobOS'
+    /without requiring external services|no external product (?:installation|runtime)|does not require external (?:services|products)/i,
+    'skill must say the standalone runtime does not require external services or products'
   );
   for (const topic of ['network', 'interview', 'schedul', 'browser']) {
     assert.match(
@@ -266,7 +266,7 @@ test('B8 self-contained bundled runtime without JobOS', () => {
   assert.equal(lstatSync(srcDir).isSymbolicLink(), false, 'src/ must not be a symlink');
 
   const findings = [];
-  const jobApp = '/tmp/job-app';
+  const jobApp = '/home/logani/projects/Job App';
   const inspect = ['bin/jobsss', 'src', 'plugin.json', 'mcp.json', 'skills'];
   const files = [];
   for (const rel of inspect) {

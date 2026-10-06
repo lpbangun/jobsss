@@ -47,7 +47,6 @@ jobsss init
 ```
 
 These commands fetch the CLI from GitHub and need Git as well as Node.js.
-They become available when this packaging change is published to the repository.
 `init` creates `jobsss-workspace/` in your current folder, including a local
 runtime, personal data folder, and project configuration for Codex and Claude
 Code. Choose a custom folder with `jobsss init my-job-search`. You can use a
@@ -79,7 +78,7 @@ the companions add candidate-lead discovery and contact briefs.
 
 This integration has been verified on Windows. See the
 [installation guide](INSTALL.md) for other hosts, activation checks, and source
-setup, including a local install before the GitHub update is published.
+setup, including local source installation.
 
 ### Start with one job
 

@@ -10,7 +10,7 @@ Gold artifacts (measured 2026-09-16):
 
 Each QRP-C1…C8 scores 10.0 or 0.0. Done = all 10.0. Not an average.
 
-Fail-closed: an email domain does not establish education; Focus-only difference ≠ tailoring; `SELECTED ACHIEVEMENTS` orphan bucket = fail.
+Fail-closed: email domain ≠ school; Focus-only difference ≠ tailoring; `SELECTED ACHIEVEMENTS` orphan bucket = fail; `gse.harvard.edu` does not satisfy Harvard Graduate School of Education.
 
 Keep-out: Chromium, LaTeX, npm, JobOS, HTML intermediate, invented facts, three independent copy pipelines.
 

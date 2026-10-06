@@ -16,7 +16,7 @@ const candidates = process.platform === 'win32'
   : [process.env.PYTHON, 'python3', 'python'];
 for (const candidate of candidates.filter(Boolean)) {
   if (path.isAbsolute(candidate) && !fs.existsSync(candidate)) continue;
-  const result = spawnSync(candidate, [script, ...args], { stdio: 'inherit', cwd: process.cwd(), env: process.env });
+  const result = spawnSync(candidate, [script, ...args], { stdio: 'inherit', cwd: process.cwd(), env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
   if (!result.error) process.exit(result.status ?? 1);
   if (result.error.code !== 'ENOENT') { console.error(result.error.message); process.exit(1); }
 }

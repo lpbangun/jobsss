@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "scanExtensions": [
+    ".js",
+    ".json",
+    ".md",
+    ".mjs",
+    ".mmd",
+    ".sh",
+    ".svg",
+    ".toml",
+    ".txt",
+    ".yaml",
+    ".yml"
+  ],
+  "markers": [
+    { "name": "legacy-product-name", "pattern": "\\bJobOS\\b", "flags": "i" },
+    { "name": "legacy-executable-or-namespace", "pattern": "\\bjobos(?:[._/-][A-Za-z0-9_.-]+)?\\b", "flags": "i" },
+    { "name": "legacy-environment-variable", "pattern": "\\bJOBOS_[A-Z0-9_]+\\b", "flags": "" }
+  ],
+  "skip": [
+    {
+      "path": "identity-reference-audit.json",
+      "reason": "This policy defines the legacy markers that the audit scans for."
+    }
+  ],
+  "allowlist": [
+    {
+      "category": "legal-attribution",
+      "paths": ["LICENSE", "NOTICE"],
+      "reason": "MIT copyright and provenance notices must retain the original project attribution."
+    },
+    {
+      "category": "versioned-read-migration",
+      "paths": ["src/identity-migrations.js", "src/discovery.js"],
+      "reason": "These canonical compatibility helpers recognize old persisted contract IDs without presenting them as active product language."
+    },
+    {
+      "category": "generated-legal-attribution",
+      "paths": [
+        "agent-plugin/LICENSE",
+        "agent-plugin/NOTICE",
+        "codex-pack/job-search-stack/products/jobsss/LICENSE",
+        "codex-pack/job-search-stack/products/jobsss/NOTICE"
+      ],
+      "reason": "Generated runtime packages carry the required original MIT copyright and provenance notices."
+    },
+    {
+      "category": "generated-legacy-read-migration",
+      "paths": [
+        "agent-plugin/src/identity-migrations.js",
+        "agent-plugin/src/discovery.js",
+        "codex-pack/job-search-stack/products/jobsss/src/identity-migrations.js",
+        "codex-pack/job-search-stack/products/jobsss/src/discovery.js"
+      ],
+      "reason": "Generated copies preserve the narrow compatibility reader for persisted contract IDs."
+    },
+    {
+      "category": "reviewer-tests-and-legacy-fixtures",
+      "paths": ["tests/**"],
+      "reason": "Tests preserve isolation traps, reviewer-owned frozen assertions, an old-store fixture, and explicit migration regression coverage."
+    },
+    {
+      "category": "frozen-or-historical-records",
+      "paths": [
+        "BENCHMARK.md",
+        "CRITIQUE_3.md",
+        "JOURNEY_RESUME.md",
+        "RESUME_PARITY.md",
+        "RESUME_REBUILD.md",
+        "docs/BENCHMARK-ohshi-live.md"
+      ],
+      "reason": "These reviewer locks and recorded evaluation reports preserve historical test context; current contract requirements are updated in the benchmark."
+    }
+  ]
+}

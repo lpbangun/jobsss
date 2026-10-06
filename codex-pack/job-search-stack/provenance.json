@@ -6,7 +6,7 @@
       "name": "jobsss",
       "repo": "lpbangun/jobsss",
       "subdir": "agent-plugin",
-      "ref": "d8c70c8ef84bc3c3252fc3f92811f8d048ac7a36"
+      "ref": "f1775e138ef2719d0da4230c94ef013b6459d063"
     },
     {
       "name": "people-finder",
@@ -24,10 +24,10 @@
     "businessLogic": false,
     "sourceSha256": "0fa3bea1b1cd20c86c1cc2f9b5515a09b4b16d9f054f16ef019315e35dc9331b",
     "pythonResolution": "PATH first; Codex bundled dependency fallback on Windows",
-    "cachebuster": "0fe16f9313ce"
+    "cachebuster": "ae7ebcc31664"
   },
   "files": {
-    ".codex-plugin/plugin.json": "04453f01dd2c7530245e98545b7a81fc039a64871d0dfc976c784d207745f9fc",
+    ".codex-plugin/plugin.json": "8ef20230272c17c0b21dfaed2be138a59657f165a25230fc860d92c877fea971",
     ".mcp.json": "e6e527f94cf4a7afd9eff17c6c87d716ad8eaf15bccfafacd2c71c2b395fc3e5",
     "products/jobsss/LICENSE": "2a8310b77c5e7e334f45a9dfc10b7c1e5580b5ef416a8237f3af8fb29428a8d9",
     "products/jobsss/NOTICE": "1f34b2b99cea1ee03611af82b33fa6bb2eb8ab5c9f579ac35f33b84b224ee018",
@@ -94,9 +94,15 @@
     "skills/contact-brief/scripts/cb_providers.py": "3041e7ac3df55c13a47056c7af4f1853ba8e8fc91ef1ffec3455f5738a341f30",
     "skills/contact-brief/scripts/contact_brief.py": "53f05db3fbf1b8d5a8bea26de034a6feac51d18699614c5f17562e14d1d2b58e",
     "skills/contact-brief/scripts/live_test.py": "71f4f4bc247300c446df89af2eb30f207a0d715873009eaecbb1c91ddb2108f7",
-    "skills/jobsss/SKILL.md": "9fb7a93e0091b2549a63d1722bf063827b325915eff5e37cd5a3147d621338ee",
+    "skills/jobsss/SKILL.md": "06d453969e6403b09fcf5986a89eb2ebb3ba076d46da57a069a784b788036899",
+    "skills/jobsss/references/candidate-setup.md": "842abd9d99beafbcc9572efd44f63b4b6469e780a1b22f2e89dd05b9194449f6",
     "skills/jobsss/references/client-compatibility.md": "1c5178c98a9c2ac483ba4e83bb8d9112f7f915caab0ebf57f2546513539722ae",
     "skills/jobsss/references/human-only-handoffs.md": "e2331ea463ec7353dc6bf70ce5210b08d6f12e442984cbec1111d4505f34729a",
+    "skills/jobsss/references/resume-quality/examples/dense.md": "f9f57d4f5abfb9d6ab2af4384111f92d8ae1882479708ed054551a9420da7784",
+    "skills/jobsss/references/resume-quality/examples/sparse.md": "9a91511f09df5ba85c5e0b90fbe71df8d4f4ffd2d80a309a534fbf2e97fcc134",
+    "skills/jobsss/references/resume-quality/examples/typical.md": "60eb6dc071a60369195267b99a388d46b4a56172340d9814a5fffe72fcceaccc",
+    "skills/jobsss/references/resume-quality/rubric.json": "b2538e156f1b4b623c17689e5f420b9e73bbec109c292bb8c351e3d36a3aa87c",
+    "skills/jobsss/references/resume-quality/rubric.md": "ea4f7cb8b8d9730c871bbecbdbaecd9e5c0cbba8d8293d3bec57067147fce7fd",
     "skills/jobsss/references/resume-workflow.md": "4f50428af608041a77ee6c8abb27dcffaca32ace06181caae1f984c9271386ec",
     "skills/jobsss/references/standalone-journey.md": "58a5a6a204798339951cbf65a1ea6bdc0a9b93b8aca5328ef6fe751ca4acf34f",
     "skills/people-finder/SKILL.md": "5c477e68a692848f09e0b4f498d23002be21af4436dd068116fd91b71537d4d3"

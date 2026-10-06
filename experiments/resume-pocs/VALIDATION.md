@@ -66,3 +66,26 @@ This is a POC branch, not a production release. Canonical `src/`/`bin/` bytes an
 native evidence remain unchanged. Direct production tools do not yet enforce
 the experimental agent review gate. Human approval and external submission are
 separate and were not performed.
+
+## PR 33 conflict resolution, October 6
+
+Merged main at 20c2c52, retaining only the POC additions over its current tree.
+The old integration snapshot no longer appears as runtime/test reversions in
+the PR diff. Runtime src/bin and native evidence are byte-identical to main;
+no new runtime evidence generation is warranted. Mirrors were regenerated,
+and the JobSSS install pin advances to source merge commit f1775e1 while both
+peer pins remain unchanged.
+
+Validation after resolution:
+- 17/17 POC tests on Windows Node with actual Chrome; no skips.
+- 15/15 Agent Plugin parity, Codex source-check, and resume compiler checks.
+- All three package/install generators pass check mode; Codex pack also
+  passes with both exact pinned peer checkouts supplied.
+- 49/49 prescribed AGENTS.md checks, no skips, in an isolated snapshot named
+  jobsss with the checksum-pinned official Node 22.22.3 on PATH.
+- Independent Luna/max merge-tree review: no blocking findings.
+
+The first broad run was 45/49: the frozen gate assumes a checkout named
+jobsss, and release tests refuse an unpinned Node executable. The corrected
+run changes only the environment, not tests or acceptance thresholds.
+Historical baseline failures above describe earlier runs, not this merge.

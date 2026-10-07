@@ -68,3 +68,29 @@ resume remains under `PLUGIN_DATA`; an inferred migrated source-line match is
 marked `legacy_projection` for human review. Missing identity, contact,
 or attributable evidence fails with a typed migration error. Native PDF export
 remains available for other document kinds.
+
+## Master parity and full-page requests
+
+Import the current master resume unchanged. Markdown masters with dated experience
+records use the canonical compiler directly; do not expand condensed master bullets
+from an older proof pool. Target positioning is stored in `ir.headline` separately
+from the factual summary, and appears after contact details in both applicant copy
+and the PDF. Source-summary repairs must retain this headline.
+
+Set durable presentation preferences with `create_profile` or `update_profile`:
+`preferences.resumePresentation: {mode: "master", maxBulletsPerRole: 3, fillPage: true}`.
+`mode` accepts `master` or `navy`; the bullet limit accepts integers 1–12;
+`fillPage` accepts a boolean. Markdown masters select master mode automatically
+unless an explicit mode overrides it. Master mode uses Navy typography, a larger
+name, compact role details, an unshaded summary, project paragraphs, and grouped
+skills. It retains both distinct source projects and ranks achievements within
+each role before applying the cap. Explicitly preferred claims take precedence over
+the cap. A cap is a selection preference, never permission to invent or merge facts.
+
+The browser measures visible fill, minimum body type, gaps, printable bounds,
+page count and searchable mapping. Master mode tries at most seven readable
+spacing/font presets without adding claims. `fillPage: true` requires 88–96%
+visible printable-height fill; insufficient evidence returns
+`resume_page_fill_unresolved`, rather than fabricated padding or a successful QA
+claim. Inspect the actual rendered page before delivery. These mechanical checks
+do not attest content review, human approval, or application submission.

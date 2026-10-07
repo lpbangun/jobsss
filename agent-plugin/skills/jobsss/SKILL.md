@@ -145,6 +145,9 @@ human-only catalog.
 ### Applicant documents and fit/contact evidence
 
 For a resume, follow [the resume workflow](references/resume-workflow.md).
+Preserve the current master’s balance, keep the job title separate from its factual
+summary, and use durable `preferences.resumePresentation` for a master layout,
+per-role bullet limits, and measured full-page requests.
 Use `doctor.resumeRenderer` before `render_resume` with
 `{profileId, jobId, contactEmail}`. A local Chrome/Edge executable
 prints plugin-generated HTML from a local file. Return the actual `document.path`,

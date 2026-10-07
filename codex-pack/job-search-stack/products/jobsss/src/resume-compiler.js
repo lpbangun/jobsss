@@ -48,7 +48,9 @@ function words(value) {
 }
 
 function cleanLine(value) {
-  return String(value ?? '').replace(/\r$/, '').trim();
+  return String(value ?? '').replace(/\r$/, '').trim()
+    .replace(/^#{1,6}\s+/, '').replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1 ($2)');
 }
 
 function normalizedSectionHeading(value) {
@@ -101,7 +103,7 @@ function looksLikeProjectHeading(raw, nextLine = '') {
 }
 
 function sourceQuote(value) {
-  return String(value ?? '').trim();
+  return String(value ?? '').split('\n').map(cleanLine).join('\n').trim();
 }
 
 function supportedAchievement(value) {
@@ -239,7 +241,7 @@ function parseProfile(sourceText, fallbackName = '', sourceFormat = 'normalized'
   const text = String(sourceText ?? '').replace(/\r\n/g, '\n');
   const lines = text.split('\n');
   const nonEmpty = lines.map(cleanLine).filter(Boolean);
-  const name = fallbackName.trim() || nonEmpty[0] || '';
+  const name = cleanLine(fallbackName) || nonEmpty[0] || '';
   if (!name || /^(?:summary|profile|experience|employment|education|skills|projects|name)$/i.test(name)
       || /@|https?:\/\/|\|/.test(name) || name.split(/\s+/).length < 2) {
     throw Object.assign(new Error('A candidate name must be supplied in the profile header.'), { code: 'resume_identity_missing' });
@@ -258,6 +260,13 @@ function parseProfile(sourceText, fallbackName = '', sourceFormat = 'normalized'
   if (summaryStart !== undefined) {
     const end = sectionEnd(lines, summaryStart, sectionNames);
     summary = lines.slice(summaryStart + 1, end).map(cleanLine).filter(Boolean).join(' ');
+  }
+
+  // Master resumes may place positioning and a summary directly in the header.
+  if (summaryStart === undefined) {
+    summary = headerLines.slice(headerLines.indexOf(contact) + 1).filter(line => !/^[-_=]{3,}$/.test(line)).join(' ');
+    const inline = lines.slice(0, firstSection).find(line => /^\*\*[^*]+\*\*\s+\S/.test(line.trim()));
+    if (inline) summary = cleanLine(inline.replace(/^\*\*[^*]+\*\*\s+/, ''));
   }
 
   const experienceStart = headings.get('EXPERIENCE') ?? headings.get('EMPLOYMENT');
@@ -311,12 +320,12 @@ function parseProfile(sourceText, fallbackName = '', sourceFormat = 'normalized'
         const quote = line.slice(2).trim();
         const text = supportedAchievement(quote);
         if (current && text && !isPreferenceClaim(quote)) current.items.push({ text, sourceQuote: sourceQuote(quote) });
-      } else if (looksLikeProjectHeading(line, cleanLine(lines[index + 1] || '')) || !current) {
+      } else if (looksLikeProjectHeading(lines[index].trim(), cleanLine(lines[index + 1] || '')) || !current) {
         if (current) projects.push(current);
         const { title, details } = parseProjectHeading(line);
         if (!title) { current = null; continue; }
         current = { title, sourceQuote: sourceQuote(line), items: [], details };
-      } else if (isProjectMetadata(line)) {
+      } else if (isProjectMetadata(lines[index].trim())) {
         // Project metadata (such as ownership, dates, or a public URL) belongs
         // with the project heading. It is source context, not an editable claim.
         current.details.push(cleanProjectTitle(line));
@@ -332,11 +341,27 @@ function parseProfile(sourceText, fallbackName = '', sourceFormat = 'normalized'
   const educationStart = headings.get('EDUCATION');
   if (educationStart !== undefined) {
     const end = sectionEnd(lines, educationStart, new Set(['SKILLS']));
-    const records = lines.slice(educationStart + 1, end).map(cleanLine).filter(Boolean);
-    for (let index = 0; index < records.length; index += sourceFormat === 'migrated_legacy' ? 1 : 2) {
-      const school = records[index];
-      const degree = sourceFormat === 'migrated_legacy' ? '' : records[index + 1] || '';
-      if (school) education.push({ school, degree, sourceQuote: sourceQuote([school, degree].filter(Boolean).join('\n')) });
+    const rawRecords = lines.slice(educationStart + 1, end).filter(line => cleanLine(line));
+    const markedSchools = rawRecords.some(line => /^(?:#{3,6}\s+|\*\*[^*]+\*\*\s*$)/.test(line.trim()));
+    if (markedSchools && sourceFormat !== 'migrated_legacy') {
+      let record = null;
+      for (const raw of rawRecords) {
+        if (/^(?:#{3,6}\s+|\*\*[^*]+\*\*\s*$)/.test(raw.trim())) {
+          if (record) education.push(record);
+          record = { school: cleanLine(raw), degree: '', sourceQuote: sourceQuote(raw) };
+        } else if (record) {
+          record.degree = [record.degree, cleanLine(raw)].filter(Boolean).join('\n');
+          record.sourceQuote += '\n' + sourceQuote(raw);
+        }
+      }
+      if (record) education.push(record);
+    } else {
+      const records = rawRecords.map(cleanLine);
+      for (let index = 0; index < records.length; index += sourceFormat === 'migrated_legacy' ? 1 : 2) {
+        const school = records[index];
+        const degree = sourceFormat === 'migrated_legacy' ? '' : records[index + 1] || '';
+        if (school) education.push({ school, degree, sourceQuote: sourceQuote([school, degree].filter(Boolean).join('\n')) });
+      }
     }
   }
 
@@ -605,10 +630,9 @@ function buildSummary(profile, claims, target) {
   const summaryClaims = [...preferredClaims, ...fallbackClaims].slice(0, Math.max(2, preferredClaims.length));
   const headlineTitle = GENERIC_JOB_TITLE_RE.test(String(target.title || ''))
     || /^Target role$/i.test(String(target.title || '')) ? firstRole : String(target.title).trim();
-  const headline = target.company && target.company !== 'Target company'
-    ? `Target: ${headlineTitle} at ${target.company}`
-    : headlineTitle;
-  return { text: headline + ' | ' + sentence(lead), claimIds: summaryClaims.map(claim => claim.claimId) };
+  // Target positioning is independent of the candidate's factual summary.
+  const headline = cleanLine(headlineTitle).replace(/\s+/g, ' ').slice(0, 140);
+  return { headline, text: sourceSummary || sentence(lead), claimIds: summaryClaims.map(claim => claim.claimId) };
 }
 
 function node(nodes, input) {
@@ -638,6 +662,7 @@ function canonicalContent(ir) {
   const lines = [];
   for (const item of ir.nodes.filter(value => value.renderPolicy === 'required')) {
     if (item.type === 'name' || item.type === 'contact' || item.type === 'section_heading' || item.type === 'summary') lines.push(item.text);
+    if (item.type === 'contact' && ir.headline) lines.push(ir.headline);
     else if (item.type === 'role' || item.type === 'education') lines.push(...String(item.text).split('\n'));
     else if (item.type === 'achievement' || item.type === 'project_item') lines.push(`- ${item.text}`);
     else if (item.type === 'project') lines.push(item.text);
@@ -663,7 +688,20 @@ function canonicalBlocks(ir) {
   });
 }
 
-export function compileResumeDocument({ profileText, originalSourceText = null, sourceFormat = 'normalized', postingText = '', profileId = '', job = {}, label = 'A', designId = `design-${String(label).toLowerCase()}`, contactEmail = '', locationNote = '', proofPoints = null, activeProofPointIds = null, excludeClaimIds = [], preferClaimIds = [] } = {}) {
+export function compileResumeDocument({ profileText, originalSourceText = null, sourceFormat = 'normalized', postingText = '', profileId = '', job = {}, label = 'A', designId = `design-${String(label).toLowerCase()}`, contactEmail = '', locationNote = '', proofPoints = null, activeProofPointIds = null, excludeClaimIds = [], preferClaimIds = [], presentation = {} } = {}) {
+  if (!presentation || typeof presentation !== 'object' || Array.isArray(presentation)
+      || Object.keys(presentation).some(key => !['mode', 'maxBulletsPerRole', 'fillPage'].includes(key))
+      || (presentation.fillPage !== undefined && typeof presentation.fillPage !== 'boolean')) {
+    throw Object.assign(new Error('Invalid resume presentation options.'), { code: 'resume_presentation_invalid' });
+  }
+  const masterMode = presentation.mode === 'master' || (!presentation.mode && /^#{1,6}\s+/m.test(String(profileText)));
+  const maxBullets = presentation.maxBulletsPerRole ?? (masterMode ? 3 : null);
+  if (maxBullets !== null && (!Number.isInteger(maxBullets) || maxBullets < 1 || maxBullets > 12)) {
+    throw Object.assign(new Error('maxBulletsPerRole must be an integer from 1 to 12.'), { code: 'resume_presentation_invalid' });
+  }
+  if (presentation.mode && !['master', 'navy'].includes(presentation.mode)) {
+    throw Object.assign(new Error('Resume presentation mode must be master or navy.'), { code: 'resume_presentation_invalid' });
+  }
   const profile = parseProfile(profileText, job.profileName || '', sourceFormat);
   const sourceContact = profile.contact;
   if (contactEmail) {
@@ -749,7 +787,11 @@ export function compileResumeDocument({ profileText, originalSourceText = null, 
     const allowedBullets = role.bullets.filter(bullet => factory.byQuote.get(`employment-${role.index}|${sourceQuote(bullet.sourceQuote)}`)?.status === 'active');
     // Keep source order for every claim that fits; relevance only decides what
     // yields when a source document exceeds the one-page renderer's capacity.
-    selectedByRole.set(role, [...allowedBullets]);
+    const priority = b => Number(preferred.has(factory.byQuote.get(`employment-${role.index}|${sourceQuote(b.sourceQuote)}`)?.claimId));
+    const chosen = maxBullets === null ? allowedBullets : [...allowedBullets]
+      .sort((a, b) => priority(b) - priority(a) || relevance(b.text) - relevance(a.text))
+      .slice(0, Math.max(maxBullets, allowedBullets.filter(priority).length));
+    selectedByRole.set(role, allowedBullets.filter(b => chosen.includes(b)));
   }
   const projectRelevance = project => {
     const preferredItem = project.items.some(item => preferred.has(factory.byQuote.get(`project-${sha256(project.title).slice(0, 12)}|${sourceQuote(item.sourceQuote)}`)?.claimId));
@@ -766,7 +808,7 @@ export function compileResumeDocument({ profileText, originalSourceText = null, 
   })).filter(project => project.items.length);
   const selectedProjects = selectProjects(activeProjects, activeExperience)
     .sort((a, b) => projectRelevance(b) - projectRelevance(a));
-  if (target.requirements.length) {
+  if (target.requirements.length && !masterMode) {
     // When the posting supplies explicit requirements, keep a project in the
     // initial one-page candidate set only if its source text matches one of
     // those job terms. Explicitly preferred projects still win.
@@ -803,7 +845,7 @@ export function compileResumeDocument({ profileText, originalSourceText = null, 
   // exceeds the available page, lower-relevance material yields first; user
   // preferred claims and dated-role coverage stay intact. Browser QA still
   // verifies actual one-page fit after font metrics and line wrapping.
-  const PAGE_LAYOUT_BUDGET = 58;
+  const PAGE_LAYOUT_BUDGET = masterMode ? 75 : 58;
   while (estimateLayoutUnits() > PAGE_LAYOUT_BUDGET) {
     const removable = [];
     for (const role of activeExperience) {
@@ -881,7 +923,9 @@ export function compileResumeDocument({ profileText, originalSourceText = null, 
     node(nodes, { type: 'skills_group', text: group.group, items: chosen, structuralReason: 'Grouped skills copied from a source skills line.' });
     for (const item of chosen) node(nodes, { type: 'skill', text: item, claimIds: claimIdsFor(factory, group.sourceLine), structuralReason: null });
   }
-  const ir = { schemaVersion: 2, designId, sourceFormat, revisionSelection: ledger.revisionSelection,
+  const ir = { schemaVersion: 2, designId, sourceFormat, headline: summary.headline, headlineKind: 'target_positioning',
+    presentation: { mode: masterMode ? 'master' : 'navy', maxBulletsPerRole: maxBullets, fillPage: presentation.fillPage === true },
+    revisionSelection: ledger.revisionSelection,
     candidateName: profile.name, contactEmail: profile.contact.match(/[^\s|]+@[^\s|]+\.[^\s|]+/)?.[0] || '',
     profileId: target.profileId, profileSha256: sha256(originalSourceText ?? profile.sourceText),
     normalizedSourceSha256: sha256(profile.sourceText), postingSha256: sha256(postingText || job.description || ''), nodes };
@@ -913,7 +957,7 @@ export function stableStringify(value) {
 
 export function canonicalResumeSource(sourceText) {
   const text = String(sourceText ?? '');
-  return /(?:^|\n)EXPERIENCE\s*\n/i.test(text)
-    && /\s+-\s+[^\n]+\n[^\n]+\|[^\n]+/.test(text)
-    && !/^##\s/m.test(text);
+  const plain = text.split(/\r?\n/).map(cleanLine).join('\n');
+  return /(?:^|\n)EXPERIENCE\s*\n/i.test(plain)
+    && /[^\n]+\n[^\n]+\|[^\n]*(?:19|20)\d{2}/.test(plain);
 }

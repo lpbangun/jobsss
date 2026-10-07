@@ -9,9 +9,12 @@ import { stableStringify } from '../../src/resume-compiler.js';
 export function refreshCanonical(canonical) {
   const result = structuredClone(canonical);
   result.irSha256 = hash(stableStringify(result.ir));
-  result.content = result.ir.nodes.filter(n => n.renderPolicy === 'required').filter(n => n.type !== 'skill')
-    .map(n => ['achievement', 'project_item'].includes(n.type) ? `- ${n.text}`
-      : n.type === 'skills_group' ? `${n.text}: ${(n.items || []).join(', ')}` : n.text).join('\n') + '\n';
+  result.content = result.ir.nodes.filter(n => n.renderPolicy === 'required' && n.type !== 'skill')
+    .flatMap(n => {
+      const text = ['achievement', 'project_item'].includes(n.type) ? `- ${n.text}`
+        : n.type === 'skills_group' ? `${n.text}: ${(n.items || []).join(', ')}` : n.text;
+      return n.type === 'contact' && result.ir.headline ? [text, result.ir.headline] : [text];
+    }).join('\n') + '\n';
   const summary = result.ir.nodes.find(n => n.type === 'summary');
   result.summary = summary ? { text: summary.text, claimIds: summary.claimIds } : null;
   // The POC exports IR, not production block renderer state.
@@ -69,7 +72,8 @@ export function repairSelection(canonical, posting, direction) {
   if (direction === 'restore') {
     const used = new Set(nodes.flatMap(n => n.claimIds));
     const omitted = result.ledger.claims.filter(c => c.status === 'active' && c.roleIndex !== null
-      && !used.has(c.claimId) && scoreText(c.sourceQuote, posting) >= 2)
+      && !used.has(c.claimId)
+      && (!result.ir.presentation?.maxBulletsPerRole || nodes.filter(n => n.type === 'achievement' && n.roleRef?.roleIndex === c.roleIndex).length < result.ir.presentation.maxBulletsPerRole) && scoreText(c.sourceQuote, posting) >= 2)
       .sort((a, b) => scoreText(b.sourceQuote, posting) - scoreText(a.sourceQuote, posting) || a.claimId.localeCompare(b.claimId));
     const claim = omitted[0]; if (!claim) return null;
     const role = nodes.find(n => n.type === 'role' && n.roleRef?.roleIndex === claim.roleIndex);
@@ -79,7 +83,8 @@ export function repairSelection(canonical, posting, direction) {
     nodes.splice(at, 0, { nodeId: `restored-${claim.claimId}`, type: 'achievement', text: claim.sourceQuote,
       claimIds: [claim.claimId], renderPolicy: 'required', roleRef: role.roleRef, ownerId: null, structuralReason: null });
   } else {
-    const removable = nodes.filter(n => n.type === 'achievement'
+    const preferred = new Set(result.ir.revisionSelection?.preferClaimIds || []);
+    const removable = nodes.filter(n => n.type === 'achievement' && !n.claimIds.some(id => preferred.has(id))
       && nodes.filter(p => p.type === 'achievement' && p.roleRef?.roleIndex === n.roleRef?.roleIndex).length > 1)
       .sort((a, b) => scoreText(a.text, posting) - scoreText(b.text, posting) || a.nodeId.localeCompare(b.nodeId));
     if (!removable.length) return null;

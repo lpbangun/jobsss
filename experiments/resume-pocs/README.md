@@ -1,7 +1,9 @@
 # Resume quality and candidate setup POCs
 
-Two executable experiments, not a released runtime change. One canonical JobSSS
-skill/server remains; source `src/` and native runtime bytes are unchanged.
+Two executable experiments with one canonical JobSSS skill/server. Independent
+agent review remains experimental. Master-resume parsing, separate target
+positioning, durable presentation preferences, and measured browser layout now
+live in the shared production compiler/renderer; these experiments consume them.
 
 ## What each experiment does
 

@@ -34,7 +34,7 @@ Optional `codex exec` needs the user's configured account and supported model.
 From the repository root:
 
 ```sh
-node --test --test-concurrency=1 tests/resume-pocs.test.mjs tests/reviewer-resume-pocs.acceptance.test.mjs
+node --test --test-concurrency=1 tests/resume-pocs.test.mjs tests/reviewer-resume-pocs.acceptance.test.mjs tests/resume-master-parity.test.mjs
 ```
 
 Set `JOBSSS_RESUME_BROWSER` to a local browser executable if auto-detection fails.
@@ -105,3 +105,16 @@ captures existing project changes from `fix/profile-import-recovery`; the origin
 checkout was not modified. Review POC changes against that baseline. Existing
 frozen benchmark edits in the baseline are not part of this POC. New tests are
 additive; reviewer-owned frozen tests must not be weakened.
+
+### Master-parity regression gate
+
+The additive `tests/resume-master-parity.test.mjs` gate exercises synthetic
+Markdown masters through the actual tailor, revise, render and batch MCP routes.
+It checks a distinct job-specific headline, source-summary repair, 3/2/2 role
+balance, both source projects, grouped skills, optional education notes, and PDF
+QA. Restore-to-fill must obey the per-role cap and cannot resurrect excluded
+claims; reduction must preserve explicitly preferred claims. The canonical
+compiler and renderer own these guarantees, so the experiment cannot repair away
+the title or hide a production regression behind a separate renderer. Browser
+cases require a detected local Chrome/Edge. Frozen reviewer-owned benchmark tests
+remain unchanged; this adds coverage rather than relaxing their pass bar.

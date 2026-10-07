@@ -43,17 +43,17 @@ function escape(value) {
 
 const RESUME_DESIGNS = Object.freeze([
   Object.freeze({
-    id: 'navy', name: 'Navy Professional', version: 1,
+    id: 'navy', name: 'Navy Professional', version: 2,
     description: 'The existing restrained navy design with a shaded summary and clear section dividers.',
     bodyFontSize: 9.7,
   }),
   Object.freeze({
-    id: 'editorial', name: 'Editorial Serif', version: 1,
+    id: 'editorial', name: 'Editorial Serif', version: 2,
     description: 'A classic serif design with a centered name and a quiet, literary hierarchy.',
     bodyFontSize: 9.7,
   }),
   Object.freeze({
-    id: 'scan', name: 'Quick Scan', version: 1,
+    id: 'scan', name: 'Quick Scan', version: 2,
     description: 'A compact sans-serif design with strong section labels and a high-contrast teal accent.',
     bodyFontSize: 9.4,
   }),
@@ -72,14 +72,20 @@ function resolveResumeDesign(style = 'navy') {
   return design;
 }
 
-export function resumeHtml(document, { style = 'navy' } = {}) {
+export function resumeHtml(document, { style = 'navy', density = 0 } = {}) {
   const design = resolveResumeDesign(style);
+  const master = document.presentation?.mode === 'master';
+  const sizes = [10, 10.25, 10.5, 10.75, 11, 9.75, 9.5];
+  const gaps = [4, 5, 6, 7, 8, 3, 2];
+  const font = sizes[density] ?? sizes[0];
+  const gap = gaps[density] ?? gaps[0];
   const nodes = document.nodes.filter(node => node.renderPolicy === 'required');
   const body = [];
   let list = false;
   const close = () => { if (list) { body.push('</ul>'); list = false; } };
   for (const node of nodes) {
-    if (node.type === 'achievement' || node.type === 'project_item') {
+    if (master && node.type === 'skill') continue;
+    if (node.type === 'achievement' || (node.type === 'project_item' && !master)) {
       if (!list) { body.push('<ul>'); list = true; }
       body.push(`<li>${escape(node.text)}</li>`);
       continue;
@@ -90,11 +96,16 @@ export function resumeHtml(document, { style = 'navy' } = {}) {
       project: 'h3', education: 'p', skills_group: 'p', skill: 'span',
     }[node.type] || 'p';
     const klass = ({ contact: 'contact', summary: 'summary', education: 'education', skills_group: 'skills-group', skill: 'skill' })[node.type] || node.type;
-    const value = ['role', 'education'].includes(node.type) ? String(node.text).split('\n').map(escape).join('<br>')
+    const value = node.type === 'skills_group' && master
+      ? `<strong>${escape(node.text)}:</strong> ${(node.items || []).map(escape).join(', ')}`
+      : node.type === 'role' && master
+      ? `<strong>${escape(node.text.split('\n')[0])}</strong><br><span class="role-details">${node.text.split('\n').slice(1).map(escape).join(' | ')}</span>`
+      : ['role', 'education'].includes(node.type) ? String(node.text).split('\n').map(escape).join('<br>')
       : node.type === 'contact' && /Open to /i.test(node.text)
         ? escape(node.text).replace(/ \| (?=linkedin\.com\/)/i, '<br>')
         : escape(node.text);
     body.push(`<${tag} class="${klass}">${value}</${tag}>`);
+    if (node.type === 'contact' && document.headline) body.push(`<p class="headline">${escape(document.headline)}</p>`);
   }
   close();
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${escape(document.candidateName)} Resume</title><style>
@@ -138,6 +149,21 @@ ul { margin:2px 0 5px 18px; padding:0; } li { margin:0 0 3px; padding-left:3px; 
 .design-scan .skill:after { content:"  •  "; color:#57918e; }
 .design-scan .skill:last-child:after { content:""; }
 .design-scan ul { margin:1px 0 4px 17px; } .design-scan li { margin-bottom:2px; padding-left:2px; }
+
+.headline {color:#233e63;font-size:11pt;font-weight:bold;margin:0 0 5px;break-after:avoid;}
+${master ? `
+body {font-size:${font}pt;line-height:1.25;padding-top:6px;}
+h1 {font-size:22pt;letter-spacing:.01em;}
+.contact {border-bottom:1px solid #233e63;padding-bottom:6px;margin-bottom:7px;}
+.summary {background:transparent;border:0;padding:0;font-size:inherit;line-height:inherit;margin-bottom:6px;}
+h2 {margin-top:${gap + 5}px;margin-bottom:4px;}
+h3.role {font-size:inherit;}
+.role-details {font-weight:normal;}
+.education,.skill,.skills-group {font-size:inherit;}
+.skills-group {font-weight:normal;margin-bottom:3px;}
+.project_item {margin:0 0 ${gap}px;}
+li {margin-bottom:${gap}px;}
+` : ''}
 </style></head><body class="design-${design.id}">${body.join('\n')}</body></html>`;
 }
 
@@ -154,8 +180,9 @@ export function renderResumeBrowser(document, { style = 'navy' } = {}) {
   try {
     const html = path.join(temp, 'resume.html');
     const pdf = path.join(temp, 'resume.pdf');
-    const htmlText = resumeHtml(document, { style: design.id });
-    fs.writeFileSync(html, htmlText, { mode: 0o600 });
+    let htmlText; let measured; let selectedDensity = 0;
+    const attempts = [];
+    const master = document.presentation?.mode === 'master';
     // Probe the same CSS at Letter's printable width. The browser measures
     // actual laid-out boxes before export; the PDF page count remains a
     // separate post-render check below.
@@ -168,27 +195,42 @@ export function renderResumeBrowser(document, { style = 'navy' } = {}) {
       const maxX=Math.max(root.right,...boxes.map(box=>box.right))-root.left;
       const minX=Math.min(root.left,...boxes.map(box=>box.left))-root.left;
       const maxY=Math.max(root.bottom,...boxes.map(box=>box.bottom))-root.top;
+      const content=[...document.querySelectorAll('h1,h2,h3,p,li,.skill')];
+      const minBodyPt=Math.min(...content.filter(el=>el.matches('li,.education,.skill,.project_item,.skills-group')).map(el=>parseFloat(getComputedStyle(el).fontSize)*.75));
+      const visibleBottom=Math.max(...content.map(el=>el.getBoundingClientRect().bottom))-root.top;
+      let bottom=root.top,maxGap=0;
+      for(const box of content.map(el=>el.getBoundingClientRect()).sort((a,b)=>a.top-b.top)){maxGap=Math.max(maxGap,box.top-bottom);bottom=Math.max(bottom,box.bottom)}
       document.title='JOBSSS_QA:'+btoa(JSON.stringify({maxX,minX,maxY,scrollWidth:document.body.scrollWidth,
-        scrollHeight:document.body.scrollHeight,bodyFontPx:parseFloat(getComputedStyle(document.body).fontSize)}));
+        scrollHeight:document.body.scrollHeight,minBodyPt,maxGap,visibleFill:visibleBottom/977.28,bodyFontPx:parseFloat(getComputedStyle(document.body).fontSize)}));
     </script>`;
-    fs.writeFileSync(qaHtml, htmlText.replace("default-src 'none'; style-src 'unsafe-inline'",
-      "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'")
-      .replace('</body>', `${script}</body>`), { mode: 0o600 });
     const commonFlags = ['--headless', '--disable-gpu', '--disable-extensions', '--disable-background-networking',
       '--host-resolver-rules=MAP * ~NOTFOUND', '--no-first-run', '--no-default-browser-check', '--no-sandbox',
       '--disable-dev-shm-usage', `--user-data-dir=${path.join(temp, 'browser-profile')}`];
-    const layoutRun = spawnSync(capability.executable, [...commonFlags, '--dump-dom', pathToFileURL(qaHtml).href],
-      { encoding: 'utf8', timeout: 45000, windowsHide: true });
-    const encoded = layoutRun.stdout?.match(/JOBSSS_QA:([A-Za-z0-9+/=]+)/)?.[1];
-    if (layoutRun.error || layoutRun.status !== 0 || !encoded) {
-      throw Object.assign(new Error(`Local browser could not measure resume layout (status ${layoutRun.status}; ${layoutRun.error?.message || layoutRun.stderr?.slice(0, 500) || 'QA marker absent'}).`), { code: 'resume_layout_qa_failed' });
+    let best = null;
+    for (const density of master ? [0, 1, 2, 3, 4, 5, 6] : [0]) {
+      const candidateHtml = resumeHtml(document, { style: design.id, density });
+      fs.writeFileSync(qaHtml, candidateHtml.replace("default-src 'none'; style-src 'unsafe-inline'",
+        "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'")
+        .replace('</body>', `${script}</body>`), { mode: 0o600 });
+      const run = spawnSync(capability.executable, [...commonFlags, '--dump-dom', pathToFileURL(qaHtml).href],
+        { encoding: 'utf8', timeout: 45000, windowsHide: true });
+      const encoded = run.stdout?.match(/JOBSSS_QA:([A-Za-z0-9+/=]+)/)?.[1];
+      if (run.error || run.status !== 0 || !encoded) throw Object.assign(new Error('Local browser could not measure resume layout.'), { code: 'resume_layout_qa_failed' });
+      const facts = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+      const bounded = facts.minX >= -1 && facts.maxX <= printableWidthPx + 1
+        && facts.maxY <= printableHeightPx + 1 && facts.scrollWidth <= printableWidthPx + 1
+        && facts.scrollHeight <= printableHeightPx + 1 && facts.bodyFontPx >= 12
+        && (!master || (facts.minBodyPt >= 9.5 && facts.maxGap <= 36));
+      attempts.push({ density, ...facts, bounded });
+      if (bounded && (!best || Math.abs(facts.visibleFill - .93) < Math.abs(best.facts.visibleFill - .93))) best = { facts, html: candidateHtml, density };
+      if (bounded && (!master || (facts.visibleFill >= .90 && facts.visibleFill <= .96))) break;
     }
-    const measured = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
-    if (measured.minX < -1 || measured.maxX > printableWidthPx + 1 || measured.maxY > printableHeightPx + 1
-        || measured.scrollWidth > printableWidthPx + 1 || measured.scrollHeight > printableHeightPx + 1
-        || measured.bodyFontPx < 12) {
-      throw Object.assign(new Error('Resume layout exceeds Letter printable bounds or uses unreadable body type.'), { code: 'resume_layout_qa_failed' });
+    if (!best) throw Object.assign(new Error('Resume layout exceeds Letter printable bounds or uses unreadable body type.'), { code: 'resume_layout_qa_failed' });
+    measured = best.facts; htmlText = best.html; selectedDensity = best.density;
+    if (document.presentation?.fillPage && (measured.visibleFill < .88 || measured.visibleFill > .96)) {
+      throw Object.assign(new Error('Supported source cannot meet full-page balance within the readable layout limits.'), { code: 'resume_page_fill_unresolved', layoutAttempts: attempts });
     }
+    fs.writeFileSync(html, htmlText, { mode: 0o600 });
     const flags = [...commonFlags, '--no-pdf-header-footer',
       `--print-to-pdf=${pdf}`, pathToFileURL(html).href];
     const result = spawnSync(capability.executable, flags, { encoding: 'utf8', timeout: 45000, windowsHide: true });
@@ -200,12 +242,15 @@ export function renderResumeBrowser(document, { style = 'navy' } = {}) {
     if (pageCount !== 1 || !bytes.includes(Buffer.from('/ToUnicode'))) {
       throw Object.assign(new Error(`Resume PDF QA failed: ${pageCount} page(s) or missing searchable-text mapping.`), { code: 'resume_pdf_qa_failed' });
     }
-    return { bytes, pageCount, pageSize: 'Letter', bodyFontSize: design.bodyFontSize, marginsPt: 28.8,
+    return { bytes, pageCount, pageSize: 'Letter', bodyFontSize: measured.bodyFontPx * .75, marginsPt: 28.8,
       pageMarginsPt: { top: 28.8, right: 34.56, bottom: 30.24, left: 34.56 },
       engine: 'local-chrome-edge', rendererExecutable: capability.executable,
       design: { id: design.id, name: design.name, version: design.version, description: design.description },
       designId: design.id,
-      qa: { onePage: true, searchableTextMapping: true, designId: design.id,
+      qa: { headline: document.headline || null, headlineKind: document.headlineKind || null,
+        presentation: document.presentation || null, visibleFill: measured.visibleFill, minBodyPt: measured.minBodyPt,
+        maxGapPx: measured.maxGap, selectedDensity, layoutAttempts: attempts,
+        fullPageBalanced: measured.visibleFill >= .88 && measured.visibleFill <= .96, onePage: true, searchableTextMapping: true, designId: design.id,
         layoutBoundsPx: { minX: measured.minX, maxX: measured.maxX, maxY: measured.maxY,
           printableWidth: printableWidthPx, printableHeight: printableHeightPx },
         measuredBodyFontPx: measured.bodyFontPx, contentReview: 'required', visualReview: 'required' } };

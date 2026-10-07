@@ -421,6 +421,16 @@ function defaultPreferences(input = {}, resumeText = '') {
   if (Object.prototype.hasOwnProperty.call(supplied, 'coverLetterVoice') && supplied.coverLetterVoice !== null) {
     result.coverLetterVoice = normalizeCoverLetterVoice(supplied.coverLetterVoice);
   }
+  if (supplied.resumePresentation != null) {
+    const value = supplied.resumePresentation;
+    const invalid = () => { throw error('resume_presentation_invalid', 'resumePresentation accepts mode (master or navy), maxBulletsPerRole (1–12), and fillPage (boolean).'); };
+    if (typeof value !== 'object' || Array.isArray(value)) invalid();
+    if (Object.keys(value).some(key => !['mode', 'maxBulletsPerRole', 'fillPage'].includes(key))) invalid();
+    if (value.mode !== undefined && !['master', 'navy'].includes(value.mode)) invalid();
+    if (value.maxBulletsPerRole !== undefined && (!Number.isInteger(value.maxBulletsPerRole) || value.maxBulletsPerRole < 1 || value.maxBulletsPerRole > 12)) invalid();
+    if (value.fillPage !== undefined && typeof value.fillPage !== 'boolean') invalid();
+    result.resumePresentation = { ...value };
+  }
   return result;
 }
 

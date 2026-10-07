@@ -234,6 +234,7 @@ export function buildResumeMaterial(profile, selected = [], omittedProofs = [], 
     activeProofPointIds: profileText === source ? options.activeProofPointIds ?? null : null,
     excludeClaimIds: options.excludeClaimIds || [],
     preferClaimIds: options.preferClaimIds || [],
+    presentation: options.preferences?.resumePresentation || {},
   });
   return { content: canonical.content, blocks: canonical.blocks, parsed: canonical.profile, canonical };
 }

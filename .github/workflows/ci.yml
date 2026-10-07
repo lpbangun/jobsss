@@ -48,6 +48,10 @@ jobs:
           tests/cover-letter-layout.test.mjs
           tests/cover-letter-revisions.test.mjs
           tests/conversational-tailoring.test.mjs
+      - name: Run resume master-parity benchmark with a real local browser
+        run: |
+          node --input-type=module -e "import {detectResumeRenderer} from './src/resume-browser.js'; if (!detectResumeRenderer().available) throw new Error('Resume benchmark requires local Chrome/Edge');"
+          node --test --test-concurrency=1 tests/resume-master-parity.test.mjs tests/resume-pocs.test.mjs tests/reviewer-resume-pocs.acceptance.test.mjs
       - name: Run deterministic acceptance bar
         run: >-
           node --test --test-concurrency=1

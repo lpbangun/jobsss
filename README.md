@@ -19,7 +19,8 @@ and keep track of what comes next — in a workspace on your machine.
 | --- | --- |
 | **Know your strengths** | Build a profile from your resume and collect experience to support your applications. |
 | **Choose where to apply** | Import job descriptions or public job links, compare fit, and see the reasons behind each score. |
-| **Prepare your application** | Draft tailored resumes, cover letters, and answers using your own experience. |
+| **Prepare your application** | Inspect the posting and questions, then edit tailored resume content and answers in one saved application review. |
+| **Stage for final review** | With your authorization and supported host browser capability, fill the current in-app application tab and stop before submission. |
 | **Keep things moving** | Organize roles, application preparation, tasks, and your review queue in one place. |
 | **Plan your outreach** | Map your contacts and draft messages for you to review and send. |
 | **Get ready for interviews** | Prepare STAR stories, practice questions, and identify gaps. |
@@ -89,6 +90,8 @@ Give your agent your resume and a job description, then try:
 
 Then continue with:
 
+- “Inspect this posting and application, ask for missing facts, and prepare one editable review.”
+- “Stage the reviewed application in my current in-app browser tab and stop before Submit.”
 - “Prepare a tailored resume and cover letter for this role.”
 - “Show my pipeline and the tasks I should work on next.”
 - “Draft an outreach message for me to review.”
@@ -114,9 +117,34 @@ the network. Information shared in chat follows your agent host's and model
 provider's data policies.
 
 JobSSS drafts materials and messages. **You review, send, and submit.**
-Resume proof points and interview stories need your verification. Local
-review decisions use the trusted human CLI described in the
+Resume proof points and interview stories need your verification. Application
+review and staging approval use the trusted local review page;
+other human-only decisions use the trusted CLI described in the
 [technical reference](TECHNICAL.md#human-only-authority).
+
+## Review and stage one application
+
+1. **Inspect the actual posting and form.** Your agent records the questions, required and user-expected fields, options, character limits and upload constraints. Inaccessible pages or unknown requirements stay unresolved.
+2. **Ground the application.** The agent uses the selected profile's canonical evidence and standing decisions, asks for missing facts, and drafts tailored answers and resume content. It must not invent qualifications, eligibility, compensation preferences or consent.
+3. **Edit one saved review.** The local page is the application's source of truth for the posting, requirements, confirmed facts, answers and resume. Your edits survive regeneration and reopening. The generation button requests work from the host agent; it does not call a model itself.
+4. **Regenerate and review exact artifacts.** Resume edits regenerate the actual PDF. Every applicable independent quality criterion must score **at least 9/10**, with no averaging; unknown evidence or a lower score blocks approval. Inspect the final PDF pixels and answers, confirm factual accuracy, then approve that exact revision. Later edits invalidate the artifact binding, quality review, approval and staging receipt.
+5. **Dispatch actual staging.** Explicitly request staging after review. The default is the current **Codex/ChatGPT desktop in-app browser**, using the host's supported browser capability. The host fills the reviewed values, replaces the resume upload and checks actual field/file read-back against the approved revision. It never silently opens external Chrome. Preparing a manifest alone does not fill a form.
+6. **Inspect and submit yourself.** Check the staged form and handle signatures, privacy acknowledgments and consent/waiver decisions. **Submit is a separate user action.** Successful staging does not establish that the ATS will accept final submission.
+
+After the agent creates the review, keep using the same data directory and the returned profile/job IDs. In an initialized workspace:
+
+```bash
+node jobsss.mjs doctor
+node jobsss.mjs review --data .jobsss/data --profile <profile-id> --job <job-id>
+```
+
+The second command starts a loopback server and prints a session-specific `reviewUrl`; open that URL in the in-app browser and keep the server running while editing. The workspace wrapper requires explicit `--data` for `review`. For a source checkout, use `./bin/jobsss review --data <configured-data-dir> --profile <profile-id> --job <job-id>`. An installed plugin must use its existing host-provided `PLUGIN_DATA`; do not create a second store for review. Local Chrome/Edge is needed for resume PDF rendering, which is separate from employer-site browser access.
+
+Keep the review and application tab in the **same local task and host**. Use the existing populated tab; a new tab at the same URL can be blank. A queued cross-host attachment is not a verified visible handoff. If the owner tab is not exposed to the worker's supported capability, staging must continue on the owner host or be handed off explicitly.
+
+The runtime accepts a host browser adapter through `startMcp({hostBrowserAdapter})`; standalone stdio has no automatic IAB connection and `stage_application` returns `host_browser_required`. The review page's staging button prepares a manifest for the host; the host must execute staging and record verified read-back.
+
+Synthetic tests cover editing, reopening, validation, replacement uploads and stopping before submission. Manual local IAB checks verified fields, narratives, a displayed resume filename and arrival at final questions; a complete live MCP-managed receipt and cross-host handoff remain unverified. The site did not expose remote uploaded PDF bytes/hash, so a filename cannot certify those bytes. A WSL renderer attempt timed out; separate Windows rendering succeeded. Missing rendering or read-back evidence must remain explicit. See the [application-review workflow and limitations](docs/APPLICATION_REVIEW.md).
 
 ## Architecture
 
@@ -124,12 +152,14 @@ The full architecture flow is preserved below, including the agent host,
 bundled runtime, local storage, human decisions, and optional companions.
 
 <p align="center">
-  <img src="docs/jobsss-architecture.svg" alt="JobSSS architecture: the agent host loads the skill and calls the bundled MCP runtime; local state lives under PLUGIN_DATA; a trusted local CLI records human decisions; people-finder and contact-brief are separate optional plugins." width="100%" />
+  <img src="docs/jobsss-architecture.svg" alt="JobSSS architecture: the agent host loads the skill and calls the bundled MCP runtime; local state lives under PLUGIN_DATA; a local review page and trusted CLI record human decisions; people-finder and contact-brief are separate optional plugins." width="100%" />
 </p>
 
 The agent calls JobSSS tools; the bundled runtime manages the local workspace.
-The host provides the data folder (`PLUGIN_DATA`), and human decisions stay on a
-separate local CLI. Companions pass results through the host and cannot write
+The host provides the data folder (`PLUGIN_DATA`). Application confirmations and
+staging approval use the local review page; other human decisions stay on the
+trusted local CLI. Browser capability belongs to the host, not the runtime.
+Companions pass results through the host and cannot write
 JobSSS state directly.
 
 [Architecture details](TECHNICAL.md#architecture) ·

@@ -82,9 +82,11 @@ export function resumeHtml(document, { style = 'navy', density = 0 } = {}) {
   const nodes = document.nodes.filter(node => node.renderPolicy === 'required');
   const body = [];
   let list = false;
+  let groupedSkills = false;
   const close = () => { if (list) { body.push('</ul>'); list = false; } };
   for (const node of nodes) {
-    if (master && node.type === 'skill') continue;
+    if (node.type === 'skill' && (master || groupedSkills)) continue;
+    groupedSkills = node.type === 'skills_group' && Array.isArray(node.items);
     if (node.type === 'achievement' || (node.type === 'project_item' && !master)) {
       if (!list) { body.push('<ul>'); list = true; }
       body.push(`<li>${escape(node.text)}</li>`);
@@ -96,8 +98,8 @@ export function resumeHtml(document, { style = 'navy', density = 0 } = {}) {
       project: 'h3', education: 'p', skills_group: 'p', skill: 'span',
     }[node.type] || 'p';
     const klass = ({ contact: 'contact', summary: 'summary', education: 'education', skills_group: 'skills-group', skill: 'skill' })[node.type] || node.type;
-    const value = node.type === 'skills_group' && master
-      ? `<strong>${escape(node.text)}:</strong> ${(node.items || []).map(escape).join(', ')}`
+    const value = node.type === 'skills_group' && Array.isArray(node.items)
+      ? `${node.text ? '<strong>' + escape(node.text) + ':</strong> ' : ''}${(node.items || []).map(escape).join(', ')}`
       : node.type === 'role' && master
       ? `<strong>${escape(node.text.split('\n')[0])}</strong><br><span class="role-details">${node.text.split('\n').slice(1).map(escape).join(' | ')}</span>`
       : ['role', 'education'].includes(node.type) ? String(node.text).split('\n').map(escape).join('<br>')

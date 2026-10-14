@@ -29,7 +29,7 @@ Complete evidence is recorded once:
 The 2026-09-30 release candidate is version 0.1.2. It addresses issues #15 and #26–#30 and adds voice-guided cover-letter preparation, preserved editorial revisions, and ordinary Word/PDF letter layout. Two fresh processes with separate empty external caches reproduced the canonical native evidence byte for byte (B67). Official inputs, injector, and validators remain pinned; cross-built targets remain unverified at runtime.
 
 - Repository path: `evidence/native-validation.json`
-- SHA-256: `a54f03d932bdb09d0d53333c7c1e672fc757a21c1a288824600f50ff448a04a9`
+- SHA-256: `5c2f89869bc207106b1ec89a8ab7c79bedbb6ee9304d6dd689f4ec801439c904`
 - Exact reproduction command:
 
 ```bash
@@ -128,3 +128,5 @@ Current native artifact refresh (2026-09-30, workspace initialization): after ad
 Cover-letter requirements policy refresh (2026-10-01): structural native-format evidence was regenerated after integrating the policy with the workspace setup runtime. The current SHA-256 is `a54f03d932bdb09d0d53333c7c1e672fc757a21c1a288824600f50ff448a04a9`. Cross-built targets remain unverified on matching hosts. Behavior and regression results are recorded in docs/COVER_LETTER_POLICY.md.
 
 Current native artifact refresh (2026-10-06, master-resume parity): two fresh processes with separate initially empty external caches reproduced the final runtime artifact byte for byte at SHA-256 `a54f03d932bdb09d0d53333c7c1e672fc757a21c1a288824600f50ff448a04a9`. The compiler now retains master sections and separate target positioning; the local browser measures visible page fill and honors source-preserving presentation preferences. Official native inputs, injector and validators remain pinned. This is structural build evidence; cross-built targets remain unverified at runtime.
+
+Application-review implementation refresh (2026-10-14): current isolated runtime structural evidence SHA-256 `5c2f89869bc207106b1ec89a8ab7c79bedbb6ee9304d6dd689f4ec801439c904`. Synthetic application-review checks pass; this evidence does not establish live owner-pane attachment, remote upload bytes, user consent or final submission acceptance. See docs/APPLICATION_REVIEW.md for scope and limitations.

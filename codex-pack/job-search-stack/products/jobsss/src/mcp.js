@@ -1,3 +1,4 @@
+import * as applicationReview from './application-review.js';
 // Bundled JobSSS MCP server — stdio JSON-RPC.
 import * as domain from './domain.js';
 import * as composition from './composition.js';
@@ -12,6 +13,16 @@ const jobProfile = { jobId: string, profileId: string, expectedRevision: { type:
 const tool = (name, description, inputSchema = schema()) => ({ name, description, inputSchema });
 
 const TOOLS = [
+  tool('stage_application', 'Execute actual field filling, replacement resume upload and read-back verification in the current Codex in-app browser through the host browser adapter. Requires the current reviewed revision; never submits. If browser capabilities are unavailable, return an explicit capability error rather than a prepared or staged claim.', schema(jobProfile, ['profileId', 'jobId'])),
+  tool('record_application_resume_preview', 'Bind a host-rendered PNG page to the exact regenerated PDF for in-page visual inspection. Host must actually render the PDF; no PDF rasterizer is bundled.', schema({ ...jobProfile, resumeSha256: string, imagePath: string, provenance: { type: 'object' } }, ['profileId', 'jobId', 'expectedRevision', 'resumeSha256', 'imagePath', 'provenance'])),
+  tool('record_application_quality_review', 'Record the actual independent artifact-quality review bound to exact content, posting and PDF hashes. Keeps the existing resume-quality.v2 bar; does not approve the application.', schema({ ...jobProfile, contentHash: string, postingHash: string, resumeSha256: string, independent: { type: 'boolean' }, criteria: { type: 'object' }, notApplicable: { type: 'object' }, visualInspection: { type: 'object' }, canonicalQuotes: { type: 'array' }, notes: string, provenance: { type: 'object' } }, ['profileId', 'jobId', 'expectedRevision', 'contentHash', 'postingHash', 'resumeSha256', 'independent', 'criteria', 'notApplicable', 'visualInspection', 'canonicalQuotes', 'notes', 'provenance'])),
+  tool('prepare_application_review', 'Persist the observed form inventory and canonical application review in the owned application record. No browser action or approval.', schema({ ...jobProfile, fields: { type: 'array' }, fieldsComplete: { type: 'boolean' }, ownerThreadId: string, sourceUrl: string, formUrl: string, artifactId: string }, ['profileId', 'jobId', 'fields', 'expectedRevision'])),
+  tool('get_application_review', 'Read the complete persisted review, missing questions, confirmed facts and host generation brief. Read after every restart.', schema(jobProfile, ['profileId', 'jobId'])),
+  tool('save_application_generation', 'Merge host-authored answers and resume with provider/run provenance; preserve all user edits. This runtime does not call a model or confirm facts.', schema({ ...jobProfile, answers: { type: 'object' }, resume: { type: 'object' }, provenance: { type: 'object' } }, ['profileId', 'jobId', 'expectedRevision', 'provenance'])),
+  tool('edit_application_review', 'Edit draft answers, resume nodes or unconfirmed facts. Human confirmation and staging approval remain on the trusted local review page.', schema({ ...jobProfile, patch: { type: 'object' } }, ['profileId', 'jobId', 'expectedRevision', 'patch'])),
+  tool('get_application_staging_manifest', 'Return only the exact locally reviewed revision and verified regenerated PDF for host-owned IAB staging. No submission or browser connection.', schema(jobProfile, ['profileId', 'jobId'])),
+  tool('record_application_staging', 'Record host-observed IAB field values and upload hash only if they match the reviewed revision. Never records submission or applied status.', schema({ ...jobProfile, version: { type: 'integer' }, hash: string, browser: string, targetUrl: string, tabId: string, ownerThreadId: string, visible: { type: 'boolean' }, values: { type: 'object' }, resumeSha256: string, submitted: { type: 'boolean' } }, ['profileId', 'jobId', 'expectedRevision', 'version', 'hash', 'browser', 'targetUrl', 'tabId', 'values', 'resumeSha256', 'submitted'])),
+
   tool('doctor', 'Read-only diagnostics for the selected PLUGIN_DATA store, including its stable store ID. Optional scanRoots inspect only explicit caller-selected directories; low-certainty unused initial stores are reported for manual review and never deleted.', schema({ scanRoots: { type: 'array', items: string, maxItems: 8 } })),
   tool('start', 'Initialize or migrate versioned durable state under PLUGIN_DATA and return its persistent store ID, creation time, and revision. For a new workspace, outputMode compact keeps only canonical state and requested document exports; existing workspaces retain their selected mode.', schema({ expectedRevision: { type: 'integer' }, outputMode: { type: 'string', enum: ['full', 'compact'] } })),
   tool('create_profile', 'Create a profile or reimport into an explicit profileId or its former name. Resume email collisions are reported as identityCollisionProfileIds; no other profile is overwritten. Correct extracted identity later with update_profile.resumeIdentity.', schema({ ...profile, name: string, resumeText: string, text: string, content: string, resumePath: string, path: string, filePath: string, resumeIdentity: { type: 'object', properties: { name: string, email: string } }, preferences: { type: 'object' }, expectedRevision: { type: 'integer' } })),
@@ -81,6 +92,15 @@ const TOOLS = [
 ];
 
 const HANDLERS = Object.freeze({
+  record_application_resume_preview: applicationReview.recordApplicationResumePreview,
+  record_application_quality_review: applicationReview.recordApplicationQualityReview,
+  prepare_application_review: applicationReview.prepareApplicationReview,
+  get_application_review: applicationReview.getApplicationReview,
+  save_application_generation: applicationReview.saveApplicationGeneration,
+  edit_application_review: applicationReview.editApplicationReview,
+  get_application_staging_manifest: applicationReview.getApplicationStagingManifest,
+  record_application_staging: applicationReview.recordApplicationStaging,
+
   doctor: domain.doctor, start: domain.start, create_profile: domain.createProfile,
   list_profiles: domain.listProfiles, list_resumes: domain.listResumes,
   get_resume: domain.getResume, inspect_resume_requirements: domain.inspectResumeRequirements,
@@ -128,7 +148,7 @@ function parseDataDir(argv) {
   return eq ? eq.slice('--data='.length) : process.env.PLUGIN_DATA || null;
 }
 function isAdvertisedTool(name) {
-  return typeof name === 'string' && Object.prototype.hasOwnProperty.call(HANDLERS, name);
+  return typeof name === 'string' && TOOLS.some(entry => entry.name === name);
 }
 function toolSchemaFor(name) {
   const found = TOOLS.find(entry => entry.name === name);
@@ -193,13 +213,17 @@ function validateToolInput(name, args) {
     }
   }
 }
-async function callTool(dataDir, name, args = {}) {
+async function callTool(dataDir, name, args = {}, { hostBrowserAdapter = null } = {}) {
   // Own advertised tool membership only: inherited names (constructor,
   // toString, hasOwnProperty, ...) are never dispatched.
   if (!isAdvertisedTool(name)) throw Object.assign(new Error('Requested tool is blocked or not available to MCP.'), { code: 'mcp_tool_not_available' });
   // Central input-schema enforcement before any domain dispatch, so invalid
   // arguments never mutate canonical state.
   validateToolInput(name, args);
+  if (name === 'stage_application') {
+    if (!hostBrowserAdapter) throw Object.assign(new Error('Actual staging requires the supported Codex IAB host adapter. Connect currentTab, inspect, fill, upload and read capabilities; preparing a manifest is not staging.'), { code: 'host_browser_required' });
+    return result(await applicationReview.stageReviewedApplication(dataDir, args, hostBrowserAdapter));
+  }
   return result(await HANDLERS[name](dataDir, args));
 }
 function toolErrorResult(message, code) {
@@ -214,7 +238,7 @@ function send(message, framing = 'header') {
   process.stdout.write(framing === 'jsonl' ? `${json}\n` : `Content-Length: ${Buffer.byteLength(json, 'utf8')}\r\n\r\n${json}`);
 }
 
-export function startMcp({ dataDir, input = process.stdin, sendResponse = send, handleRequest = null, maxRequestBytes = 1024 * 1024, maxHeaderBytes = 8 * 1024 } = {}) {
+export function startMcp({ dataDir, input = process.stdin, sendResponse = send, handleRequest = null, hostBrowserAdapter = null, maxRequestBytes = 1024 * 1024, maxHeaderBytes = 8 * 1024 } = {}) {
   if (!dataDir) throw new Error('Missing --data <dir> and PLUGIN_DATA');
   dataDir = ensureDataDir(dataDir);
   let buffer = Buffer.alloc(0), active = null, ended = false, closing = false, settled = false, resolveCompleted;
@@ -251,7 +275,7 @@ export function startMcp({ dataDir, input = process.stdin, sendResponse = send, 
     buffer = buffer.subarray(frame.consumed);
     if (!frame.line) { pump(); return; }
     input.pause?.();
-    active = Promise.resolve((handleRequest || handleLine)(dataDir, frame.line, msg => sendResponse(msg, frame.framing)))
+    active = Promise.resolve((handleRequest || handleLine)(dataDir, frame.line, msg => sendResponse(msg, frame.framing), { hostBrowserAdapter }))
       .catch(() => {}).finally(() => { active = null; if (closing) finish(); else pump(); });
   };
   const onData = chunk => { if (closing) return; const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)); if (buffer.length + bytes.length > maxRequestBytes + maxHeaderBytes) { parseError('MCP input buffer exceeds limit'); return; } buffer = buffer.length ? Buffer.concat([buffer, bytes]) : Buffer.from(bytes); pump(); };
@@ -261,7 +285,7 @@ export function startMcp({ dataDir, input = process.stdin, sendResponse = send, 
   return { completed, close() { beginClose(); } };
 }
 
-async function handleLine(dataDir, line, respond) {
+async function handleLine(dataDir, line, respond, { hostBrowserAdapter = null } = {}) {
   let msg;
   try { msg = JSON.parse(line); } catch (cause) { respond({ jsonrpc: '2.0', id: null, error: { code: -32700, message: cause.message } }); return; }
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -293,7 +317,7 @@ async function handleLine(dataDir, line, respond) {
     if (msg.method === 'tools/call') {
       const { name, arguments: args } = msg.params;
       try {
-        respond({ jsonrpc: '2.0', id: msg.id, result: await callTool(dataDir, name, args) });
+        respond({ jsonrpc: '2.0', id: msg.id, result: await callTool(dataDir, name, args, { hostBrowserAdapter }) });
       } catch (cause) {
         // Genuine protocol errors (unknown tools, invalid params/schemas)
         // remain protocol errors; domain/business execution failures return

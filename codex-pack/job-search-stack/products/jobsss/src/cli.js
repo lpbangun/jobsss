@@ -1,3 +1,4 @@
+import { runApplicationReviewServer } from './application-review-server.js';
 // Shared CLI routing for the bundled JobSSS runtime. Source and standalone
 // release launchers both route through runCli for consistent behavior.
 
@@ -25,6 +26,8 @@ const IS_STANDALONE =
 function printHelp() {
   console.log(`jobsss bundled runtime v${PRODUCT_VERSION}
 Usage:
+  jobsss review --data <dir> --profile <id> --job <id>
+                            Open the persisted editable application review locally
   jobsss init [folder]      Create a dedicated job-search workspace
   jobsss mcp --data <dir>     Start MCP stdio server with PLUGIN_DATA
   jobsss doctor --data <dir> [--scan <root> ...]
@@ -73,6 +76,9 @@ export function runCli(argv = process.argv.slice(2)) {
     try { initWorkspace(argv.slice(1), { repoRoot: ROOT, standalone: IS_STANDALONE }); }
     catch (error) { console.error(error.message); process.exitCode = 1; }
     return;
+  }
+  if (cmd === 'review') {
+    return runApplicationReviewServer(argv.slice(1));
   }
   if (cmd === 'mcp') {
     runFromArgv(argv.slice(1));

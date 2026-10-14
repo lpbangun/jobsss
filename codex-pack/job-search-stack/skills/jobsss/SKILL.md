@@ -1,6 +1,6 @@
 ---
 name: jobsss
-description: Standalone job-search skill for offline local workflows over the bundled ./bin/jobsss MCP runtime and PLUGIN_DATA — profile/preferences, secure staged/inline job & contact intake, discovery, scoring, pipeline, materials, tasks, networking drafts, interview prep, and sync preview, without requiring external services or API keys.
+description: Use for job search, finding jobs, resume/CV tailoring, application preparation, and requests to fill an application or upload a resume, including Ashby, plus networking, outreach email/LinkedIn drafts and interview preparation. Routes local preparation through the bundled JobSSS runtime and authorized real application staging through the current host-owned Codex in-app browser tab; final submission is human-only. Core local workflows need no API keys and no external product runtime.
 ---
 
 # JobSSS — standalone bundled runtime
@@ -28,8 +28,11 @@ What JobSSS does, and what it never claims:
   `./bin/jobsss decide`, and that record is attributed to the human, never to
   JobSSS;
 - unsupported / deferred — external sending, application submission, interview
-  scheduling or attestation, packet freezing, and browser automation against sites are
-  blocked, out of scope, and never claimed.
+  scheduling or attestation and packet freezing are blocked, out of scope, and never claimed. User-authorized host staging is described below; final submission remains human-only.
+
+## Application routing
+
+Use this skill for resume/CV tailoring, application preparation, and requests to fill an application or upload a resume. Preparation alone does not authorize external form filling. A specific authorized stage-only request targets the current Codex in-app browser tab; never silently open external Chrome. Final submission belongs to the user.
 
 ## Core journey (offline, local, no API key)
 
@@ -240,6 +243,56 @@ advise running `./bin/jobsss mcp --data ${PLUGIN_DATA}` and then `doctor` →
 do not invent or claim success, jobs, scores, proofs, sends, or submissions
 while diagnosing. Do not claim, invent, or fabricate success.
 
+## Editable application preparation and IAB staging
+
+Use one profile-owned application review record as the source of truth. Inspect the actual posting and the complete current application form with the supported host in-app browser. Inventory exact questions, types, required flags, select options, attachments, field locators and source evidence. Do not mark fieldsComplete true for a partial or inaccessible form.
+
+1. Read the current store revision and use prepare_application_review with the observed inventory, exact formUrl and a profile/job-owned resume artifactId when available. Re-inspection preserves user answers and edits, but changed questions invalidate old approval.
+2. Read get_application_review. Its generationBrief exposes the posting, requirements, missing questions, confirmed facts, current resume and user edits. Ask the user for missing facts and legally significant declarations. Never invent answers, accomplishments or consent.
+3. Author tailored answers and resume with the host agent's actual model using the current tailoring brief and source evidence. Persist the result with save_application_generation, including the real provider and runId. This tool stores a host proposal; it does not invoke a model. User-edited answers and resume nodes remain authoritative. Use stable node ids/nodeIds across revisions. Review generationRequest when the local page asks for regeneration, and do not mark it complete without producing the actual requested content.
+4. Open the integrated local page by running ./bin/jobsss review --data <the configured directory> --profile <profileId> --job <jobId>. Use its returned reviewUrl in the Codex in-app browser. The page reads/writes the canonical application record, lets the user edit all answers, confirmed facts and canonical resume nodes, and flags missing/unsupported content. It does not create another store. User factual confirmations and approval happen on this local page, not through MCP.
+5. The user saves edits, regenerates the actual PDF, inspects the PDF preview, and explicitly approves that exact content revision. Editing afterward clears the approval, staged observation and PDF binding. Rendering failures leave the application unapproved. The PDF artifact is content-addressed under the configured data directory.
+6. Read get_application_staging_manifest. It fails until the latest revision is approved, validated and bound to unchanged PDF bytes. Select the current official application tab in the in-app browser and verify its identity, current inventory and upload capability. Stage only manifest field values and its exact PDF; replace earlier uploads. Never silently switch to external Chrome. The stageReviewedApplication adapter contract requires currentTab, inspect, fill, upload and read operations supplied by the supported host; it creates no browser connection and has no submit action. Do not claim that the contract itself connects to the desktop browser.
+7. Compare actual readback values and uploaded bytes with the reviewed manifest, then record_application_staging with the IAB tab id, exact URL, version/hash, values, resume SHA-256 and submitted:false. If readback cannot verify upload bytes, preserve a blocked/unverified result instead of inventing a hash. Do not set applied/submitted status. Stop before the final submit action; staging is not evidence that an ATS will accept submission.
+
+The page's generation button records a pending host request. Its staging button prepares a reviewed manifest; it does not operate an employer form itself. A host must execute those requests using its supported model and browser tools and record the results honestly.
+
+### Preserve the existing quality acceptance contract
+
+Functional staging success never substitutes for artifact quality. Freeze applicability from the complete observed form before drafting; include exact field-required status, character limits, accepted file types and size limits. Set constraintsObserved only after inspecting these, including an observed absence of limits. Keep unknown requirements unresolved.
+
+The recovered prior contract requires threshold_each = 9 for every applicable criterion, with no averaging. A 10 means no identified improvement; 9 means ready for human use with minor optional polish; 8 or below requires material revision. Missing evidence cannot pass, and execution or authority failures override scores. Intake/evidence require accuracy, sufficiency and provenance. Resume/cover letter require factual support, employer relevance, voice fidelity, completeness and visual quality. Every answer and outreach variation is scored separately on the first four dimensions. Changed artifacts need fresh independent acceptance.
+
+After rendering, read get_application_review.qualityReviewBrief and have an independent reviewer inspect the actual final content, canonical evidence, current form and PDF pixels. Record only the real review with record_application_quality_review: per-criterion numeric scores (null for unknown), exact canonical quotations with a semanticSupport explanation per rendered resume item and answer, provider/run provenance, exact content/posting/PDF hashes, actual visualInspection and explicit notApplicable reasons for channels/artifacts outside this staging scope. No report, unknown evidence, a low individual score or stale hashes blocks approval and staging. Contacts, outreach and an unrequested optional/absent cover letter are outside this page's scope; required additional attachments remain blocked, rather than silently declared passed.
+
+Keep resume-quality.v2: one-page searchable Letter default, 88–96% printable-height fill (target 92%), body type at least 9.5pt, no overflow, no unexplained gaps over 36px and no literal Markdown links. Sparse truthful output remains unresolved; never add invented filler. Missing qualifications are separate fit gaps, not resume defects. Preserve authored headlines, wording and bullets through edits and regeneration. Inspect accuracy, ownership, relevant omissions, clarity, density and private-note leakage as substantive review work. Do not infer factual support from a quote that changes the actor, population or scope (for example personal teaching reach versus a wider pilot's aggregate reach). Use the selected user's own confirmed voice; never hardcode one person's facts or style into this workflow.
+
+
+
+
+If the in-app browser PDF viewer is blank or unsupported, use the host’s supported local PDF renderer to rasterize the actual saved PDF to a PNG page under the configured data directory. Bind it with record_application_resume_preview (exact PDF SHA-256, imagePath, actual renderer/run provenance), then refresh the local review page to inspect the embedded actual-PDF pixels. The runtime verifies the image bytes and PDF binding; it does not bundle a PDF rasterizer or claim that HTML preview is visual inspection of the uploaded PDF. Preview metadata is invalidated after edits.
+
+## Host-owned application staging
+
+The current browser means the user's actual visible application tab in the chat that requested staging, on that chat's host. Preserve its tab identity and existing form state. Record the intended ownerThreadId during preparation; the IAB host adapter must verify visible:true and the matching ownerThreadId before staging and again at read-back. A hidden local worker tab, a same-URL duplicate, and an open_in_codex response of queued do not prove user-visible completion. Never reopen a URL as a substitute for attaching the already populated tab. If the owner chat is on a different host and its tab is not exposed to the worker's supported browser capabilities, keep preparation local and report that exact host/attachment gap; the owner-host browser must carry out staging.
+
+Before calling applicant data missing, reconcile the selected profile with relevant prior application records and standing decisions that the user identifies. A freshly created testing profile or empty answer bank does not erase existing user decisions. Preserve exact provenance, scope and dates; do not turn relocation willingness into current domicile, infer immigration expiry, or silently change contact addresses. Reuse supported standing answers, retain the quality bar, and consolidate only genuinely unresolved decisions at the submit boundary.
+
+The advertised `stage_application` tool executes the existing staging executor when the embedding host supplies `startMcp({ hostBrowserAdapter })` with currentTab, inspect, fill, upload and read capabilities. Bind the supported Codex IAB adapter; do not invent a browser connection or silently fall back to Chrome. A standalone stdio server has no IAB adapter and returns `host_browser_required`. In that host, use its supported IAB tools to carry out the authorized staging and verify actual values/uploads. Never label a capability request, prepared manifest, pending draft or blank form as staged. Preserve all exact-revision review and quality gates; this tool grants no consent or final-submission authority.
+
+
+When the user explicitly authorizes staging for a specific application and the host has verified browser capability, the host may inspect and stage that application in the current Codex in-app browser tab for the user’s final review and submission. The explicit staging request must dispatch actual host browser filling, file upload and read-back; preparing a packet or manifest does not fulfill it. Do not blanket-reject an authorized stage-only request merely because the runtime lacks browser APIs.
+
+For real application field filling and uploads, use the current Codex in-app browser tab. Verify its tab identity, official destination, site access and required upload capability before staging. Never silently open or switch to external Chrome. If the in-app browser or upload operation is unavailable, report the concrete capability failure and preserve the reviewed application for later staging. A local PDF renderer proves only PDF export, not browser staging capability.
+
+Use one persisted per-application review state for the source posting, observed field requirements, user-confirmed facts, authored answers and resume content. Ask for missing facts rather than inventing them. Preserve user edits across regeneration and reopen. Stage the reviewed revision only: editing answers or resume content invalidates prior review and staging approval. Resume changes must regenerate and re-review the uploaded artifact. Audit required answers and unsupported claims first. Verify the actual field values and uploaded artifact against that reviewed revision, including replacement uploads. Stop before final submission; never infer ATS submission acceptance from successful staging.
+
+Before staging, verify the exact official role, employer/ATS destination, current form, field meanings and attachment destinations. Observe site permissions and the user’s authorized scope. Use only source-grounded answers and specifically authorized files. Reuse clear existing user authorization for the specific role, site and materials before sharing personal data; ask only when authorization is missing or ambiguous. Hand off missing facts, sensitive or legally significant declarations, signatures and consent decisions to the user.
+
+If authorization, destination checks, site permission or verified host browser capability is missing, hand off to the user and state the concrete gap. Never claim fields or uploads were staged without checking their actual state. Never auto-submit, send, click the final application action, approve, sign or attest completion. Keep final submission with the user.
+
+JobSSS does not expose `inspect_application_form`, `assist_application_form` or `submit_application_form`; those runtime APIs remain unsupported. Do not invent them or imply that this guidance activates them. Installed plugin caches and host security settings are outside this repository correction.
+
 ## Out of scope — blocked or handed off
 
 Local planning and drafting for these domains is available via the bundled MCP
@@ -249,7 +302,7 @@ or handed off to a trusted human and must never be claimed via MCP:
 - network — out of scope and blocked (human-only handoff required; no autonomous outreach or `mark_outreach_sent`; local `map_reachable_network`/`plan_outreach`/`draft_outreach` never send).
 - interview — out of scope and blocked (human-only handoff required; no `verify_interview_story` or similar via MCP; local `draft_interview_story`/`interview_prep` do not verify or schedule).
 - scheduling — out of scope and blocked (human-only handoff required; no autonomous calendar or scheduler via MCP).
-- browser automation including `inspect_application_form` and `assist_application_form` — out of scope and blocked (human-only handoff required; no browser apply).
+- JobSSS-owned browser automation including unsupported `inspect_application_form` and `assist_application_form` — out of scope and blocked. Authorized host-owned IAB staging uses the reviewed workflow above; final submission requires a human-only handoff.
 
 Additional blocked MCP names that must not appear on `tools/list`:
 `submit_application_form`, `inspect_application_form`, `assist_application_form`
